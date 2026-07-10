@@ -2,6 +2,6 @@ services:
   - type: web
     name: ieee-docs-evaluator-backend
     env: docker
-    rootDir: Backend/docs-evaluator
+    rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/settings

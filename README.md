@@ -56,16 +56,15 @@ SyncTrace then verifies the completeness of the traceability network, detects co
 
 ```
 SynctraceV3/
-├── Backend/
-│   └── docs-evaluator/
-│       └── src/main/java/com/ieee/evaluator/synctrace/
-│           ├── config/
-│           ├── controller/
-│           ├── model/
-│           ├── repository/
-│           └── service/
+├── backend/
+│   └── src/main/java/com/ieee/evaluator/synctrace/
+│       ├── config/
+│       ├── controller/
+│       ├── model/
+│       ├── repository/
+│       └── service/
 │
-├── Frontend/
+├── frontend/
 │   └── src/synctrace/
 │       ├── components/
 │       ├── pages/
@@ -78,12 +77,12 @@ SynctraceV3/
 ## Frontend Setup
 
 ```bash
-cd Frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-Create a `.env.local` file in the `Frontend/` directory:
+Create a `.env.local` file in the `frontend/` directory:
 
 ```
 VITE_API_BASE_URL=http://localhost:8080/api
@@ -95,11 +94,11 @@ VITE_GOOGLE_CLIENT_ID=your_google_client_id
 ## Backend Setup
 
 ```bash
-cd Backend/docs-evaluator
+cd backend
 mvn spring-boot:run
 ```
 
-For local development, create `Backend/docs-evaluator/src/main/resources/application-secrets.properties` and fill in real values:
+For local development, create `backend/src/main/resources/application-secrets.properties` and fill in real values:
 
 ```properties
 # Database (Supabase Pooler)
@@ -136,18 +135,18 @@ Run tests:
 ## Local Development Workflow
 
 - **Do not edit deployment files for local secrets.**
-- Put local backend secrets only in `Backend/docs-evaluator/src/main/resources/application-secrets.properties` (already git-ignored).
-- Put local frontend secrets only in `Frontend/.env.local` (already git-ignored).
+- Put local backend secrets only in `backend/src/main/resources/application-secrets.properties` (already git-ignored).
+- Put local frontend secrets only in `frontend/.env.local` (already git-ignored).
 
 Start services locally:
 
 ```bash
 # Terminal 1
-cd Backend/docs-evaluator
+cd backend
 ./mvnw spring-boot:run
 
 # Terminal 2
-cd Frontend
+cd frontend
 npm install
 npm run dev
 ```
