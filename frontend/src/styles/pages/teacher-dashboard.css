@@ -1,0 +1,479 @@
+.layout--teacher .teacher-sidebar {
+  width: 260px;
+  background: linear-gradient(180deg, var(--bg-sidebar-start), var(--bg-sidebar-end));
+  color: var(--sidebar-text);
+  padding: 1.4rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.teacher-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.teacher-sidebar__brand-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+
+.teacher-sidebar__caption {
+  margin: 0.25rem 0 1rem;
+  color: var(--sidebar-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.teacher-sidebar__nav {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.teacher-sidebar__spacer {
+  flex: 1;
+}
+
+.teacher-sidebar__theme-toggle {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  margin-top: 0.3rem;
+  border-color: var(--sidebar-border);
+  color: var(--sidebar-text);
+  background: transparent;
+  padding: 0.6rem 0.75rem;
+}
+
+.teacher-sidebar__theme-toggle:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.teacher-sidebar__theme-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.teacher-sidebar__theme-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.teacher-sidebar__signout {
+  width: 100%;
+  text-align: center;
+  margin-top: 0.8rem;
+}
+
+.nav-btn {
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sidebar-text);
+  text-align: left;
+  padding: 0.62rem 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease, color 160ms ease, transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.nav-btn:hover {
+  transform: translateX(2px);
+  box-shadow: 0 6px 16px rgba(16, 32, 51, 0.12);
+}
+
+.nav-btn--active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.nav-btn--submissions {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
+.nav-btn--reports {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
+.nav-btn--workspace {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
+.nav-btn--settings {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
+.nav-btn--submissions:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--reports:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--workspace:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--settings:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+/* Active (clicked) state uses a lighter, subtle colored background */
+.nav-btn--submissions.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+.nav-btn--reports.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+.nav-btn--workspace.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+.nav-btn--settings.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+/* Dark mode: avoid white active backgrounds and keep colored text/glow */
+[data-theme='dark'] .nav-btn--submissions.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--reports.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--workspace.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--settings.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--submissions:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+[data-theme='dark'] .nav-btn--reports:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+[data-theme='dark'] .nav-btn--workspace:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+[data-theme='dark'] .nav-btn--settings:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.status-chip {
+  display: inline-flex;
+  padding: 0.16rem 0.52rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-chip--sent {
+  background: color-mix(in srgb, #0b7e58 18%, transparent);
+  color: #22c58b;
+}
+
+.status-chip--pending {
+  background: color-mix(in srgb, #d97706 18%, transparent);
+  color: #f59e0b;
+}
+
+.settings-actions {
+  margin-bottom: 0.9rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.settings-input {
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  padding: 0.56rem 0.62rem;
+}
+
+.theme-switch {
+  margin-top: 0.7rem;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 0.35rem;
+}
+
+.theme-switch__btn {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  padding: 0.58rem 0.95rem;
+  min-width: 110px;
+  text-align: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-switch__btn--active {
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
+  color: var(--brand);
+}
+
+.teacher-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.teacher-header-search {
+  width: min(300px, 46vw);
+  min-width: 260px;
+  padding: 0.6rem 0.9rem;
+  border-radius: 12px;
+  border: 2px solid color-mix(in srgb, var(--brand) 28%, var(--line-soft));
+  background: color-mix(in srgb, var(--brand) 4%, var(--bg-surface));
+  color: var(--text-main);
+  outline: none;
+  box-shadow: 0 3px 10px var(--shadow);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.teacher-header-search::placeholder {
+  color: var(--text-muted);
+}
+
+.teacher-header-search:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--glow), 0 6px 16px color-mix(in srgb, var(--brand) 10%, transparent);
+}
+
+.teacher-header-select {
+  min-width: 124px;
+  padding: 0.58rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  outline: none;
+}
+
+.teacher-header-select:focus {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 38%, transparent);
+}
+
+.teacher-chip-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.teacher-chip {
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border-radius: 999px;
+  padding: 0.38rem 0.72rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teacher-chip--active {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
+  background: var(--brand-soft);
+}
+
+.teacher-reports-filter-panel {
+  margin-bottom: 0.9rem;
+  padding: 0.95rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  display: grid;
+  gap: 0.9rem;
+}
+
+.teacher-reports-filter-row {
+  display: grid;
+  gap: 0.9rem 1.1rem;
+}
+
+.teacher-reports-filter-row--top {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.teacher-reports-filter-row--bottom {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.teacher-reports-filter-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.teacher-reports-filter-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.teacher-submissions__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+
+#teacher-submission-table th:nth-child(2),
+#teacher-submission-table td:nth-child(2) {
+  text-align: center;
+  padding-left: 1.4rem;
+}
+
+#teacher-submission-table th:nth-child(4),
+#teacher-submission-table td:nth-child(4) {
+  text-align: center;
+  padding-left: 1.4rem;
+}
+
+.teacher-submissions__action-btn,
+.teacher-submissions__history-btn {
+  width: 10.25rem;
+  min-width: 10.25rem;
+  white-space: nowrap;
+}
+
+.teacher-submissions__history-btn {
+  margin-left: 0;
+}
+
+@media (max-width: 960px) {
+  .teacher-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .teacher-header-search {
+    width: 100%;
+  }
+
+  .teacher-header-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .teacher-chip-group {
+    width: 100%;
+  }
+
+  .teacher-reports-filter-panel {
+    width: 100%;
+  }
+
+  .teacher-reports-filter-row--top,
+  .teacher-reports-filter-row--bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-submissions__history-btn {
+    margin-left: 0;
+  }
+
+  .teacher-submissions__actions {
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .teacher-submissions__action-btn,
+  .teacher-submissions__history-btn {
+    width: auto;
+    min-width: 0;
+  }
+
+}
+
+[data-theme='dark'] .theme-switch {
+  background: var(--bg-surface-2);
+}

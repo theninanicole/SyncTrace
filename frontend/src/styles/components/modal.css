@@ -1,0 +1,778 @@
+.app-modal__overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 17, 31, 0.62);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.app-modal__container {
+  width: min(1000px, 100%);
+  max-height: 90vh;
+  background: var(--bg-surface);
+  border-radius: 16px;
+  border: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-modal__container.submission-history-modal {
+  width: min(1200px, 100%);
+}
+
+.app-modal__container.teacher-analyze-modal {
+  width: min(1000px, 100%);
+}
+
+.submission-history-modal .app-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.app-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.app-modal__title {
+  margin: 0;
+  color: var(--text-main);
+}
+
+.app-modal__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+}
+
+.app-modal__close {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-2);
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-modal__close:hover {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--bg-surface-2) 75%, var(--brand) 25%);
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 42%, transparent);
+}
+
+.app-modal__close:focus-visible {
+  outline: none;
+  color: var(--brand);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 60%, transparent);
+}
+
+.app-modal__body {
+  padding: 1rem 1.2rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-modal__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.teacher-analyze-modal .app-modal__body {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+.teacher-analyze-modal .app-modal__body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  display: block;
+}
+
+.teacher-analyze-modal .app-modal__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.teacher-analyze-modal .app-modal__body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line-strong) 70%, var(--brand));
+}
+
+.teacher-analyze-modal .app-modal__body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--line-strong) 55%, var(--brand));
+}
+
+.student-report-modal .app-modal__body {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+.student-report-modal .app-modal__body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  display: block;
+}
+
+.student-report-modal .app-modal__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.student-report-modal .app-modal__body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line-strong) 70%, var(--brand));
+}
+
+.student-report-modal .app-modal__body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--line-strong) 55%, var(--brand));
+}
+
+.app-modal__footer {
+  border-top: 1px solid var(--line-soft);
+  padding: 0.9rem 1.2rem;
+}
+
+.report-content {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  padding: 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-2);
+  color: var(--text-main);
+  max-height: min(56vh, 480px);
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.report-content::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.report-textarea {
+  width: 100%;
+  min-height: 280px;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-2);
+  color: var(--text-main);
+  padding: 0.8rem 1rem; /* ensure consistent left spacing */
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+  display: block;
+  margin: 0;
+  position: relative; /* keep above nearby overlays */
+  z-index: 1;
+}
+
+.report-textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--glow) 28%, transparent);
+}
+
+[data-theme='dark'] .report-textarea {
+  background: var(--bg-surface-2);
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--line-soft) 40%, #ffffff 10%);
+}
+
+[data-theme='dark'] .app-modal__overlay {
+  background: rgba(19, 24, 32, 0.7);
+}
+
+[data-theme='dark'] .app-modal__container {
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .app-modal__close {
+  background: color-mix(in srgb, var(--bg-surface-2) 90%, #ffffff 10%);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.modal-actions--end {
+  justify-content: flex-end;
+}
+
+.btn.btn--return-history {
+  background: linear-gradient(140deg, #0f766e, #0ea5a4);
+  border: none;
+  color: #ffffff;
+}
+
+.btn.btn--return-history:hover {
+  filter: brightness(1.04);
+}
+
+.submission-history-modal__footer-actions .btn.btn--return-history {
+  margin-right: auto;
+}
+
+.submission-history-modal__footer-actions {
+  gap: 0.5rem;
+}
+
+.submission-history-modal__row-actions {
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+/* Centers the word "ACTION" in the table header */
+.submission-history-modal__table th:nth-child(5) {
+  text-align: center;
+}
+
+.submission-history-modal__row-actions .btn {
+  white-space: nowrap;
+}
+
+.submission-history-modal .app-table th:nth-child(3) {
+  text-align: left;
+}
+
+.submission-history-modal .app-table td:nth-child(3) {
+  text-align: left;
+}
+
+.submission-history-modal__table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.submission-history-modal__table th:nth-child(1),
+.submission-history-modal__table td:nth-child(1) {
+  width: 100px;
+}
+
+.submission-history-modal__table th:nth-child(2),
+.submission-history-modal__table td:nth-child(2) {
+  width: 200px;
+}
+
+.submission-history-modal__table th:nth-child(3),
+.submission-history-modal__table td:nth-child(3) {
+  width: 300px;
+}
+
+.submission-history-modal__table th:nth-child(4),
+.submission-history-modal__table td:nth-child(4) {
+  width: 150px;
+}
+
+.submission-history-modal__table th:nth-child(4) {
+  text-align: left;
+}
+
+.submission-history-modal__table td:nth-child(4) {
+  text-align: left;
+}
+
+@media (max-width: 840px) {
+  .app-modal__container.submission-history-modal {
+    width: min(100%, 980px);
+  }
+
+  .submission-history-modal__row-actions {
+    flex-wrap: wrap;
+  }
+
+  .submission-history-modal__table {
+    table-layout: auto;
+  }
+
+  .submission-history-modal__table th:nth-child(3),
+  .submission-history-modal__table td:nth-child(3),
+  .submission-history-modal__table th:nth-child(4),
+  .submission-history-modal__table td:nth-child(4) {
+    width: auto;
+  }
+}
+
+.btn.btn--openai {
+  background: linear-gradient(140deg, #0f766e, #0e9f6e);
+  border: none;
+  color: #ffffff;
+}
+
+.btn.btn--openai:hover {
+  filter: brightness(1.04);
+}
+
+.btn.btn--gemini {
+  background: linear-gradient(140deg, #3b82f6, #1d4ed8);
+  border: none;
+  color: #ffffff;
+}
+
+.btn.btn--gemini:hover {
+  filter: brightness(1.04);
+}
+
+.btn.btn--gemini-native {
+  background: linear-gradient(140deg, #8b5cf6, #7c3aed);
+  border: none;
+  color: #ffffff;
+}
+
+.btn.btn--gemini-native:hover {
+  filter: brightness(1.04);
+}
+
+.btn.btn--gemini31lite {
+  background: linear-gradient(140deg, #f97316, #ea580c);
+  border: none;
+  color: #ffffff;
+}
+
+.btn.btn--gemini31lite:hover {
+  filter: brightness(1.04);
+}
+
+/* Analyze Modal - Model Picker */
+.analyze-model-picker {
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.analyze-model-picker__label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.analyze-model-picker .modal-actions {
+  justify-content: center;
+}
+
+/* Evaluation Results Card Styles */
+.eval-report {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.eval-card {
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+
+.eval-card__header {
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.eval-card__heading {
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+
+.eval-card--summary   .eval-card__header { background: color-mix(in srgb, var(--brand)  12%, var(--bg-surface-2)); }
+.eval-card--strengths .eval-card__header { background: color-mix(in srgb, #22c55e       12%, var(--bg-surface-2)); }
+.eval-card--weaknesses .eval-card__header { background: color-mix(in srgb, #f59e0b      12%, var(--bg-surface-2)); }
+.eval-card--conclusion .eval-card__header { background: color-mix(in srgb, #a78bfa      12%, var(--bg-surface-2)); }
+.eval-card--rubric .eval-card__header { background: color-mix(in srgb, #0ea5e9 12%, var(--bg-surface-2)); }
+.eval-card--missing .eval-card__header { background: color-mix(in srgb, #ef4444 12%, var(--bg-surface-2)); }
+.eval-card--recommendations .eval-card__header { background: color-mix(in srgb, #14b8a6 12%, var(--bg-surface-2)); }
+
+.eval-card--summary   .eval-card__heading { color: var(--brand); }
+.eval-card--strengths .eval-card__heading { color: #16a34a; }
+.eval-card--weaknesses .eval-card__heading { color: #d97706; }
+.eval-card--conclusion .eval-card__heading { color: #7c3aed; }
+.eval-card--rubric .eval-card__heading { color: #0284c7; }
+.eval-card--missing .eval-card__heading { color: #dc2626; }
+.eval-card--recommendations .eval-card__heading { color: #0f766e; }
+
+.eval-card__body {
+  padding: 0.8rem 1rem;
+  background: var(--bg-surface-2);
+  color: var(--text-main);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.eval-card__list {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.eval-card__list li {
+  line-height: 1.55;
+  color: var(--text-main);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.eval-card__note {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.eval-report .eval-card__note {
+  color: var(--text-main);
+}
+
+[data-theme='dark'] .eval-card--strengths .eval-card__heading { color: #4ade80; }
+[data-theme='dark'] .eval-card--weaknesses .eval-card__heading { color: #fbbf24; }
+[data-theme='dark'] .eval-card--conclusion .eval-card__heading { color: #c4b5fd; }
+[data-theme='dark'] .eval-card--rubric .eval-card__heading { color: #38bdf8; }
+[data-theme='dark'] .eval-card--missing .eval-card__heading { color: #f87171; }
+[data-theme='dark'] .eval-card--recommendations .eval-card__heading { color: #5eead4; }
+
+/* Teacher Feedback Card */
+.eval-card--feedback .eval-card__header { background: color-mix(in srgb, #ec4899 12%, var(--bg-surface-2)); }
+.eval-card--feedback .eval-card__heading { color: #db2777; }
+[data-theme='dark'] .eval-card--feedback .eval-card__heading { color: #f472b6; }
+
+/* Report View Container */
+.report-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/* Report Edit Container */
+.report-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.report-edit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.report-edit-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand);
+}
+
+.report-edit-label--feedback {
+  color: #db2777;
+}
+
+[data-theme='dark'] .report-edit-label--feedback {
+  color: #f472b6;
+}
+
+.report-textarea--feedback {
+  min-height: 140px;
+  border-color: color-mix(in srgb, #ec4899 30%, var(--line-soft));
+}
+
+.submission-history-modal .modal-actions--end {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.submission-history-modal .modal-actions--end .btn {
+  white-space: nowrap;
+}
+
+.eval-card--revision .eval-card__header { background: color-mix(in srgb, #0284c7 12%, var(--bg-surface-2)); }
+.eval-card--revision .eval-card__heading { color: #0284c7; }
+[data-theme='dark'] .eval-card--revision .eval-card__heading { color: #38bdf8; }
+
+/* --- New Subheading Styles --- */
+.eval-card__subheading {
+  margin: 1.2rem 0 0.4rem 0;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-style: normal; /* Overrides the italic from the note class */
+  line-height: 1.4;
+}
+
+.eval-card__subheading:first-child {
+  margin-top: 0.2rem;
+}
+
+.eval-card__large-score {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+/* --- Status Badge Styles --- */
+.eval-card__status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0 1.2rem 0;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.eval-status-badge {
+  padding: 0.2rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.eval-status-badge--improved {
+  background: color-mix(in srgb, #22c55e 15%, transparent);
+  color: #16a34a;
+  border: 1px solid color-mix(in srgb, #22c55e 30%, transparent);
+}
+
+.eval-status-badge--worsened {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+  color: #dc2626;
+  border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+}
+
+.eval-status-badge--same {
+  background: color-mix(in srgb, #64748b 15%, transparent);
+  color: #475569;
+  border: 1px solid color-mix(in srgb, #64748b 30%, transparent);
+}
+
+/* Dark mode support for the badges */
+[data-theme='dark'] .eval-status-badge--improved { color: #4ade80; }
+[data-theme='dark'] .eval-status-badge--worsened { color: #f87171; }
+[data-theme='dark'] .eval-status-badge--same { color: #94a3b8; }
+
+/* --- Custom Rules Input Styles --- */
+.custom-rules-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%; /* Forces it to span the full modal width */
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: left; /* Fixes the weird centering */
+}
+
+.custom-rules-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b; /* Safe muted text color */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+}
+
+.custom-rules-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background-color: var(--bg-surface-2);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: none;
+  transition: all 0.2s ease;
+}
+
+.custom-rules-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.custom-rules-textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 38%, transparent);
+  background-color: var(--bg-surface);
+}
+
+.custom-rules-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* --- Dark Mode Support (if your app uses data-theme='dark') --- */
+[data-theme='dark'] .custom-rules-label {
+  color: var(--text-muted);
+}
+
+.analyze-loading {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 0.45rem;
+  padding: 1.1rem 0.6rem 0.3rem;
+}
+
+.analyze-loading__spinner {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 0.25rem;
+  position: relative;
+}
+
+.analyze-loading__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #7ec4ff;
+  border-left-color: #39a0ff;
+  animation: analyzeLoadingSpin 0.9s linear infinite;
+}
+
+.analyze-loading__ring--delay {
+  inset: 8px;
+  border-top-color: #9bf2cc;
+  border-left-color: #00a36f;
+  animation-duration: 1.2s;
+  animation-direction: reverse;
+}
+
+.analyze-loading__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.analyze-loading__subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+@keyframes analyzeLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* File: Frontend/src/styles/components/modal.css */
+
+/* Limit the height of the modal body so it scrolls, keeping header/footer visible */
+.app-modal__body {
+  max-height: calc(100vh - 220px); /* Leaves room for header, footer, and padding */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px; /* Prevent scrollbar from hugging the content too tightly */
+}
+
+/* --- Optional: Beautiful Custom Scrollbar Styling --- */
+.app-modal__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-modal__body::-webkit-scrollbar-track {
+  background: transparent; 
+}
+
+.app-modal__body::-webkit-scrollbar-thumb {
+  background-color: var(--line-soft, #cbd5e1); 
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.app-modal__body::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted, #94a3b8); 
+}
+
+/* ── Template selector in TeacherAnalyzeModal ────────────────────────────── */
+.custom-rules-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.72rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background-color: var(--bg-surface-2);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.35rem;
+}
+
+.custom-rules-select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 38%, transparent);
+  background-color: var(--bg-surface);
+}
+
+.custom-rules-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+[data-theme='dark'] .custom-rules-select {
+  background-color: var(--bg-surface-2);
+  color: var(--text-main);
+  border-color: var(--line-soft);
+}
+
+/* --- Soft Danger Button (Matches 'View Details' style) --- */
+.btn.btn--danger {
+  /* Light red background, transparent */
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #dc2626; /* Dark red text */
+  border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+}
+
+.btn.btn--danger:hover {
+  /* Darkens slightly on hover */
+  background: color-mix(in srgb, #ef4444 20%, transparent);
+  color: #b91c1c; 
+}
+
+/* Dark mode support (if your app uses it) */
+[data-theme='dark'] .btn.btn--danger {
+  color: #f87171; 
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+}
+
+[data-theme='dark'] .btn.btn--danger:hover {
+  background: color-mix(in srgb, #ef4444 25%, transparent);
+  color: #fca5a5;
+}
