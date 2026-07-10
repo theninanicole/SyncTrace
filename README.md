@@ -49,13 +49,11 @@ SyncTrace then verifies the completeness of the traceability network, detects co
 | Storage | Google Drive API |
 | Spreadsheet | Google Sheets API |
 | AI Provider | OpenAI API |
-| PDF Rendering | Apache PDFBox |
-| Text Extraction | Apache Tika |
 
 ## Project Structure
 
 ```
-SynctraceV3/
+SyncTrace/
 ├── backend/
 │   └── src/main/java/com/ieee/evaluator/synctrace/
 │       ├── config/
