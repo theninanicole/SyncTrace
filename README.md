@@ -100,7 +100,7 @@ For local development, create `backend/src/main/resources/application-secrets.pr
 
 ```properties
 # Database (Supabase Pooler)
-spring.datasource.url=jdbc:postgresql://<project-host>.pooler.supabase.com:6543/postgres?sslmode=require
+spring.datasource.url=jdbc:postgresql://<project-host>.pooler.supabase.com:5432/postgres?sslmode=require
 spring.datasource.username=postgres.<project-ref>
 spring.datasource.password=<db-password>
 
@@ -128,25 +128,6 @@ Run tests:
 
 ```bash
 ./mvnw test
-```
-
-## Local Development Workflow
-
-- **Do not edit deployment files for local secrets.**
-- Put local backend secrets only in `backend/src/main/resources/application-secrets.properties` (already git-ignored).
-- Put local frontend secrets only in `frontend/.env.local` (already git-ignored).
-
-Start services locally:
-
-```bash
-# Terminal 1
-cd backend
-./mvnw spring-boot:run
-
-# Terminal 2
-cd frontend
-npm install
-npm run dev
 ```
 
 ## Group Details
