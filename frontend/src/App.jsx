@@ -4,12 +4,14 @@ import { verifyStudentWithBackend } from './api';
 import Login from './pages/auth/LoginPage';
 import Home from './Home';
 import TeacherDashboard from './pages/teacher/TeacherDashboardPage';
+import SyncTraceDashboardPage from './synctrace';
 import LoadingScreen from './components/common/LoadingScreen';
 
 function App() {
   const [studentData, setStudentData]   = useState(null);
   const [authError, setAuthError]       = useState('');
   const [isVerifying, setIsVerifying]   = useState(false);
+  const [showSyncTrace, setShowSyncTrace] = useState(false);
   // ── NEW: true until we've confirmed whether a session exists or not ────────
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -84,6 +86,7 @@ function App() {
       if (event === 'SIGNED_OUT') {
         isVerifiedRef.current = false;
         setStudentData(null);
+        setShowSyncTrace(false);
 
         if (pendingErrorRef.current) {
           setAuthError(pendingErrorRef.current);
@@ -111,7 +114,11 @@ function App() {
     <div className="app-container">
       {studentData ? (
         studentData.role === 'TEACHER' ? (
-          <TeacherDashboard user={studentData} />
+          showSyncTrace ? (
+            <SyncTraceDashboardPage onBack={() => setShowSyncTrace(false)} />
+          ) : (
+            <TeacherDashboard user={studentData} onOpenSyncTrace={() => setShowSyncTrace(true)} />
+          )
         ) : (
           <Home studentData={studentData} />
         )

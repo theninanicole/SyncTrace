@@ -21,7 +21,7 @@ import '../../styles/pages/teacher-dashboard.css';
 import '../../styles/components/layout.css';
 import '../../styles/components/tutorial.css';
 
-function TeacherDashboardPage({ user }) {
+function TeacherDashboardPage({ user, onOpenSyncTrace }) {
   const { toast, showToast, hideToast } = useToast();
   const { themeMode, setThemeMode } = useTheme();
   const tutorial = useTutorial({
@@ -80,6 +80,14 @@ function TeacherDashboardPage({ user }) {
     vm.startEditingHistory(item);
   }
 
+  function handleSidebarNavigate(key) {
+    if (key === 'synctrace') {
+      onOpenSyncTrace();
+      return;
+    }
+    vm.setCurrentView(key);
+  }
+
   function handleHistoryDetailsClose() {
     vm.closeHistoryModal();
     if (isSubmissionHistoryFlow && submissionHistoryFile?.id) {
@@ -116,7 +124,7 @@ function TeacherDashboardPage({ user }) {
 
       <TeacherSidebar
         currentView={vm.currentView}
-        onNavigate={vm.setCurrentView}
+        onNavigate={handleSidebarNavigate}
         onTutorialStart={tutorial.startTutorial}
       />
 
