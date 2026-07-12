@@ -75,6 +75,15 @@
   margin-top: 0.8rem;
 }
 
+.teacher-sidebar__back {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
 .nav-btn {
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
@@ -130,6 +139,30 @@
   font-weight: 800;
 }
 
+.nav-btn--traceability {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
+.nav-btn--overview {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
+.nav-btn--synctrace {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
 .nav-btn--submissions:hover {
   transform: translateX(6px) scale(1.03);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
@@ -146,6 +179,21 @@
 }
 
 .nav-btn--settings:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--traceability:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--overview:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--synctrace:hover {
   transform: translateX(6px) scale(1.03);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
 }
@@ -170,6 +218,24 @@
 }
 
 .nav-btn--settings.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+.nav-btn--traceability.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+.nav-btn--overview.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
+.nav-btn--synctrace.nav-btn--active {
   border-color: var(--srs);
   background: #ffffff;
   color: var(--srs);
@@ -200,6 +266,24 @@
   border-color: var(--srs);
 }
 
+[data-theme='dark'] .nav-btn--traceability.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--overview.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--synctrace.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
 [data-theme='dark'] .nav-btn--submissions:hover {
   transform: translateX(6px) scale(1.03);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
@@ -220,6 +304,21 @@
   box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
 }
 
+[data-theme='dark'] .nav-btn--traceability:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+[data-theme='dark'] .nav-btn--overview:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+[data-theme='dark'] .nav-btn--synctrace:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
 .status-chip {
   display: inline-flex;
   padding: 0.16rem 0.52rem;
@@ -236,6 +335,11 @@
 .status-chip--pending {
   background: color-mix(in srgb, #d97706 18%, transparent);
   color: #f59e0b;
+}
+
+.status-chip--critical {
+  background: color-mix(in srgb, #dc2626 18%, transparent);
+  color: #ef4444;
 }
 
 .settings-actions {

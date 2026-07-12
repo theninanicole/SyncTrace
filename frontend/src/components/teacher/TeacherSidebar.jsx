@@ -1,13 +1,15 @@
+/* eslint-disable no-unused-vars */
 import { signOut } from '../../services/authService';
 import TutorialButton from '../common/TutorialButton';
 import { useTheme } from '../../hooks/useTheme';
 import appLogo from '../../assets/logo.png';
 
 const NAV_ITEMS = [
-  { key: 'submissions', label: 'Student Submissions' },
-  { key: 'reports',     label: 'AI Reports' },
-  { key: 'workspace',   label: 'AI Configurations' },
-  { key: 'settings',    label: 'System Settings' },
+  { key: 'submissions',   label: 'Student Submissions' },
+  { key: 'reports',       label: 'AI Reports' },
+  { key: 'synctrace',     label: 'SyncTrace' },
+  { key: 'workspace',     label: 'AI Configurations' },
+  { key: 'settings',      label: 'System Settings' },
 ];
 
 function TeacherSidebar({ currentView, onNavigate, onTutorialStart }) {
