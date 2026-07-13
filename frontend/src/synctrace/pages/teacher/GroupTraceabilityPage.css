@@ -1,0 +1,36 @@
+/* ── Group Traceability Page ─────────────────────────────────────────────── */
+
+.gtp-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.gtp-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.gtp-back:hover {
+  color: var(--brand);
+}
+
+.gtp-alignment {
+  margin: 0 0 1rem;
+}
+
+.gtp-alignment strong {
+  color: var(--text-main);
+  font-weight: 800;
+}

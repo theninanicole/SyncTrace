@@ -30,16 +30,13 @@ import java.util.regex.Pattern;
 @Slf4j
 public class ComponentExtractionService {
 
-    // Matches the "Diagram Analysis" heading line, optionally markdown-styled.
     private static final Pattern DIAGRAM_SECTION_HEADING =
         Pattern.compile("(?im)^[ \\t]*(?:#{1,3}[ \\t]*)?\\*{0,2}diagram analysis\\*{0,2}:?[ \\t]*$");
 
-    // Matches the next top-level report heading, marking the end of the diagram section.
     private static final Pattern NEXT_SECTION_HEADING = Pattern.compile(
         "(?im)^[ \\t]*(?:#{1,3}[ \\t]*)?\\*{0,2}(?:missing sections|weaknesses|recommendations|strengths|" +
         "summary|conclusion|rubric evaluation|revision analysis)\\*{0,2}:?[ \\t]*$");
 
-    // Matches a single diagram entry line, e.g. "* [IMG-3] - Class Diagram: <summary>".
     private static final Pattern DIAGRAM_ENTRY =
         Pattern.compile("(?i)^\\*?\\s*\\[IMG-(\\d+)]\\s*-\\s*(.+?):(.*)$");
 
@@ -83,8 +80,6 @@ public class ComponentExtractionService {
             String baseName = entry.type.trim();
             if (baseName.isEmpty()) continue;
 
-            // Disambiguate repeated diagram types within the same document
-            // (e.g. two "Class Diagram" entries) so they don't collapse into one component.
             int occurrence = namesSeenThisRun.merge(baseName.toLowerCase(), 1, Integer::sum);
             String name = occurrence == 1 ? baseName : baseName + " (" + occurrence + ")";
 
@@ -106,8 +101,6 @@ public class ComponentExtractionService {
                     return componentRepository.save(c);
                 });
 
-            // Backfill the diagram image for components that were extracted before
-            // image linking existed, without disturbing any manual edits since.
             if (component.getImageData() == null && imageData != null) {
                 component.setImageData(imageData);
                 component = componentRepository.save(component);
@@ -123,9 +116,6 @@ public class ComponentExtractionService {
         DocType mapped = toDocType(typeDetector.detect(fileName, report));
         if (mapped != null) return mapped;
 
-        // The evaluation report itself states its detected type near the top
-        // (e.g. "Document Type: SRS" or "Type Override: SDD") — fall back to that
-        // since the report text won't contain the document's own cover-page title.
         Matcher matcher = DOC_TYPE_TOKEN.matcher(report);
         while (matcher.find()) {
             try {
