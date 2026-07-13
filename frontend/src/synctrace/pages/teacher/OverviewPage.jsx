@@ -4,7 +4,7 @@ import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
 import { formatDate } from '../../../utils/dashboardUtils';
-import { useGroupOverview } from '../../hooks/useGroupOverview';
+import { useGroupOverview, STATUS_META } from '../../hooks/useGroupOverview';
 import './TraceabilityMappingPage.css';
 import './OverviewPage.css';
 
@@ -15,13 +15,7 @@ const FILTERS = [
   { key: 'critical', label: 'Critical' },
 ];
 
-const STATUS_META = {
-  ready:    { label: 'Ready',          chip: 'status-chip--sent' },
-  revision: { label: 'Needs Revision', chip: 'status-chip--pending' },
-  critical: { label: 'Critical Gap',   chip: 'status-chip--critical' },
-};
-
-function OverviewPage() {
+function OverviewPage({ onOpenGroup }) {
   const { toast, showToast, hideToast } = useToast();
   const { groups, loading } = useGroupOverview(showToast);
   const [search, setSearch] = useState('');
@@ -113,7 +107,7 @@ function OverviewPage() {
           {filteredGroups.map((g) => {
             const meta = STATUS_META[g.status];
             return (
-              <div className="ov-goal-card" key={g.teamCode}>
+              <button type="button" className="ov-goal-card" key={g.teamCode} onClick={() => onOpenGroup?.(g.teamCode)}>
                 <div className={`ov-ring ov-ring--${g.status}`} style={{ '--pct': g.percent }}>
                   <span className="ov-ring__value">{g.percent}%</span>
                 </div>
@@ -126,13 +120,13 @@ function OverviewPage() {
                   <div className="ov-goal-card__meta">
                     <span className={`status-chip ${meta.chip}`}>{meta.label}</span>
                     {g.lastTraceability && (
-                      <span className="ov-goal-card__date">Last traceability update {formatDate(g.lastTraceability)}</span>
+                      <span className="ov-goal-card__date">Traceability updated at {formatDate(g.lastTraceability)}</span>
                     )}
                   </div>
                 </div>
 
                 <ChevronRight size={18} className="ov-goal-card__chevron" />
-              </div>
+              </button>
             );
           })}
         </div>

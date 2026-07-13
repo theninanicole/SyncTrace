@@ -10,6 +10,12 @@ export function groupStatus(coveredCount, totalCells) {
   return 'revision';
 }
 
+export const STATUS_META = {
+  ready:    { label: 'Ready',          chip: 'status-chip--sent' },
+  revision: { label: 'Needs Revision', chip: 'status-chip--pending' },
+  critical: { label: 'Critical Gap',   chip: 'status-chip--critical' },
+};
+
 export function useGroupOverview(showToast) {
   const [goals, setGoals] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -25,8 +31,6 @@ export function useGroupOverview(showToast) {
       ]);
       setGoals(goalList);
 
-      // historyId -> resolved team code, keyed off the filename convention already
-      // used elsewhere in the app (extractSubmissionMeta).
       const historyTeamMap = new Map();
       history.forEach((h) => {
         const meta = extractSubmissionMeta(h.fileName);
@@ -34,33 +38,36 @@ export function useGroupOverview(showToast) {
       });
 
       const teamSectionMap = new Map();
-      const teamCodes = new Set();
+      const displayCodeByKey = new Map();
+      const teamKeys = new Set();
       roster.forEach((s) => {
         if (!s.groupCode) return;
-        teamCodes.add(s.groupCode);
-        if (s.section && !teamSectionMap.has(s.groupCode)) teamSectionMap.set(s.groupCode, s.section);
+        const key = s.groupCode.toUpperCase();
+        teamKeys.add(key);
+        if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, s.groupCode);
+        if (s.section && !teamSectionMap.has(key)) teamSectionMap.set(key, s.section);
       });
 
       const perGoalComponents = await Promise.all(
         goalList.map((g) => getGoalComponents(g.id).catch(() => []))
       );
 
-      // teamCode -> Set of "goalId:docType" cells covered by that team's own components,
-      // and the most recent time a component covering one of those cells was mapped.
       const coverageByTeam = new Map();
       const lastTraceabilityByTeam = new Map();
       goalList.forEach((goal, gi) => {
         (perGoalComponents[gi] || []).forEach((c) => {
           const teamCode = c.sourceHistoryId != null ? historyTeamMap.get(c.sourceHistoryId) : null;
           if (!teamCode) return;
-          teamCodes.add(teamCode);
-          if (!coverageByTeam.has(teamCode)) coverageByTeam.set(teamCode, new Set());
-          coverageByTeam.get(teamCode).add(`${goal.id}:${c.docType}`);
+          const key = teamCode.toUpperCase();
+          teamKeys.add(key);
+          if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, teamCode);
+          if (!coverageByTeam.has(key)) coverageByTeam.set(key, new Set());
+          coverageByTeam.get(key).add(`${goal.id}:${c.docType}`);
 
           if (c.createdAt) {
-            const prev = lastTraceabilityByTeam.get(teamCode);
+            const prev = lastTraceabilityByTeam.get(key);
             if (!prev || new Date(c.createdAt) > new Date(prev)) {
-              lastTraceabilityByTeam.set(teamCode, c.createdAt);
+              lastTraceabilityByTeam.set(key, c.createdAt);
             }
           }
         });
@@ -68,8 +75,9 @@ export function useGroupOverview(showToast) {
 
       const totalCells = goalList.length * DOC_TYPES.length;
 
-      const groupList = [...teamCodes].sort((a, b) => a.localeCompare(b)).map((teamCode) => {
-        const covered = coverageByTeam.get(teamCode) || new Set();
+      const groupList = [...teamKeys].sort((a, b) => a.localeCompare(b)).map((key) => {
+        const teamCode = displayCodeByKey.get(key) || key;
+        const covered = coverageByTeam.get(key) || new Set();
         const perGoal = goalList.map((goal, gi) => {
           const docTypeStatus = {};
           DOC_TYPES.forEach((dt) => { docTypeStatus[dt] = covered.has(`${goal.id}:${dt}`); });
@@ -81,12 +89,12 @@ export function useGroupOverview(showToast) {
 
         return {
           teamCode,
-          section: teamSectionMap.get(teamCode) || '',
+          section: teamSectionMap.get(key) || '',
           percent,
           coveredCount,
           totalCells,
           status: groupStatus(coveredCount, totalCells),
-          lastTraceability: lastTraceabilityByTeam.get(teamCode) || null,
+          lastTraceability: lastTraceabilityByTeam.get(key) || null,
           perGoal,
         };
       });
