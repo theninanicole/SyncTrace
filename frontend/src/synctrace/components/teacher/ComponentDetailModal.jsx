@@ -1,24 +1,36 @@
 import { useEffect, useState } from 'react';
 import { Check, Loader2, Pencil, X } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
-import { renameTraceComponent } from '../../api';
+import { renameTraceComponent, getTraceComponent } from '../../api';
 
 function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
   const [isEditing, setIsEditing]     = useState(false);
   const [draftName, setDraftName]     = useState('');
   const [saving, setSaving]           = useState(false);
   const [imageExpanded, setImageExpanded] = useState(false);
+  // List views omit content/imageData to keep them lightweight — fetch the full
+  // component (with its image) only when it's actually opened here.
+  const [detail, setDetail]           = useState(null);
 
   useEffect(() => {
     setIsEditing(false);
     setDraftName(component?.name || '');
     setImageExpanded(false);
+    setDetail(null);
+
+    if (!component?.id) return;
+    let cancelled = false;
+    getTraceComponent(component.id)
+      .then((full) => { if (!cancelled) setDetail(full); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [component?.id, component?.name]);
 
   if (!component) return null;
 
-  const contentLines = component.content
-    ? component.content.split('\n').map((line) => line.trim()).filter(Boolean)
+  const merged = detail || component;
+  const contentLines = merged.content
+    ? merged.content.split('\n').map((line) => line.trim()).filter(Boolean)
     : [];
 
   function startEditing() {
@@ -40,6 +52,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
     setSaving(true);
     try {
       const updated = await renameTraceComponent(component.id, trimmed);
+      setDetail(updated);
       onRenamed?.(updated);
       setIsEditing(false);
       showToast?.('Component renamed.', 'success');
@@ -90,10 +103,10 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
       }
     >
       <div className="tm-detail">
-        {component.imageData && (
+        {merged.imageData && (
           <img
             className="tm-detail__image"
-            src={`data:image/jpeg;base64,${component.imageData}`}
+            src={`data:image/jpeg;base64,${merged.imageData}`}
             alt={`${component.name} diagram`}
             title="Click to enlarge"
             onClick={() => setImageExpanded(true)}
@@ -107,17 +120,17 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
               ))}
             </ul>
           ) : (
-            component.content || component.name
+            merged.content || component.name
           )}
         </div>
-        {component.aiExtracted && (
+        {merged.aiExtracted && (
           <p className="tm-muted" style={{ marginTop: '0.75rem' }}>
             Auto-extracted from an evaluated submission.
           </p>
         )}
       </div>
 
-      {imageExpanded && component.imageData && (
+      {imageExpanded && merged.imageData && (
         <div className="tm-lightbox" onClick={() => setImageExpanded(false)}>
           <button
             className="tm-lightbox__close"
@@ -127,7 +140,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
             <X size={20} />
           </button>
           <img
-            src={`data:image/jpeg;base64,${component.imageData}`}
+            src={`data:image/jpeg;base64,${merged.imageData}`}
             alt={`${component.name} diagram`}
             onClick={(e) => e.stopPropagation()}
           />
