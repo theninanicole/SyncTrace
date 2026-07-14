@@ -4,6 +4,7 @@ import com.ieee.evaluator.synctrace.model.GoalSummaryDTO;
 import com.ieee.evaluator.synctrace.model.Goal;
 import com.ieee.evaluator.synctrace.model.Component;
 import com.ieee.evaluator.synctrace.model.ComponentMapping;
+import com.ieee.evaluator.synctrace.model.ComponentSummaryDTO;
 import com.ieee.evaluator.synctrace.model.DocType;
 import com.ieee.evaluator.synctrace.repository.GoalRepository;
 import com.ieee.evaluator.synctrace.repository.ComponentMappingRepository;
@@ -47,20 +48,23 @@ public class MappingController {
             List<Goal> goals = goalRepository.findAllByOrderByIdAsc();
             List<Long> goalIds = goals.stream().map(Goal::getId).toList();
 
-            Map<Long, List<ComponentMapping>> mappingsByGoal = mappingRepository
-                .findByGoalIdIn(goalIds).stream()
+            List<ComponentMapping> mappings = mappingRepository.findByGoalIdIn(goalIds);
+            Map<Long, List<ComponentMapping>> mappingsByGoal = mappings.stream()
                 .collect(Collectors.groupingBy(ComponentMapping::getGoalId));
 
-            Map<Long, Component> componentsById = componentRepository.findAll().stream()
-                .collect(Collectors.toMap(Component::getId, c -> c));
+            Set<Long> componentIds = mappings.stream().map(ComponentMapping::getComponentId).collect(Collectors.toSet());
+            Map<Long, DocType> docTypeById = componentIds.isEmpty()
+                ? Map.of()
+                : componentRepository.findDocTypesByIdIn(componentIds).stream()
+                    .collect(Collectors.toMap(ComponentRepository.DocTypeOnly::getId, ComponentRepository.DocTypeOnly::getDocType));
 
             List<GoalSummaryDTO> result = goals.stream().map(goal -> {
                 Map<DocType, Boolean> status = new EnumMap<>(DocType.class);
                 for (DocType dt : DocType.values()) status.put(dt, false);
 
                 for (ComponentMapping m : mappingsByGoal.getOrDefault(goal.getId(), List.of())) {
-                    Component c = componentsById.get(m.getComponentId());
-                    if (c != null) status.put(c.getDocType(), true);
+                    DocType dt = docTypeById.get(m.getComponentId());
+                    if (dt != null) status.put(dt, true);
                 }
                 return new GoalSummaryDTO(goal, status);
             }).toList();
@@ -161,6 +165,20 @@ public class MappingController {
         }
     }
 
+    @GetMapping("/components/{componentId}")
+    public ResponseEntity<?> getComponent(@PathVariable Long componentId) {
+        try {
+            Component component = componentRepository.findById(componentId).orElse(null);
+            if (component == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Component not found."));
+            }
+            return ResponseEntity.ok(component);
+        } catch (Exception e) {
+            log.error("Failed to load component {}: {}", componentId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to load component."));
+        }
+    }
+
     @PutMapping("/components/{componentId}")
     public ResponseEntity<?> renameComponent(@PathVariable Long componentId, @RequestBody Map<String, String> payload) {
         try {
@@ -233,10 +251,36 @@ public class MappingController {
             List<Long> componentIds = mappingRepository.findByGoalId(goalId).stream()
                 .map(ComponentMapping::getComponentId)
                 .toList();
-            List<Component> components = componentRepository.findAllById(componentIds);
+            List<ComponentSummaryDTO> components = componentIds.isEmpty()
+                ? List.of()
+                : componentRepository.findSummariesByIdIn(componentIds);
             return ResponseEntity.ok(components);
         } catch (Exception e) {
             log.error("Failed to load mappings for goal {}: {}", goalId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to load mappings."));
+        }
+    }
+
+    @GetMapping("/goals/components")
+    public ResponseEntity<?> getAllGoalComponents() {
+        try {
+            List<ComponentMapping> mappings = mappingRepository.findAll();
+            Set<Long> componentIds = mappings.stream().map(ComponentMapping::getComponentId).collect(Collectors.toSet());
+            Map<Long, ComponentSummaryDTO> summariesById = componentIds.isEmpty()
+                ? Map.of()
+                : componentRepository.findSummariesByIdIn(componentIds).stream()
+                    .collect(Collectors.toMap(ComponentSummaryDTO::getId, s -> s));
+
+            Map<Long, List<ComponentSummaryDTO>> byGoal = new HashMap<>();
+            for (ComponentMapping m : mappings) {
+                ComponentSummaryDTO summary = summariesById.get(m.getComponentId());
+                if (summary != null) {
+                    byGoal.computeIfAbsent(m.getGoalId(), k -> new ArrayList<>()).add(summary);
+                }
+            }
+            return ResponseEntity.ok(byGoal);
+        } catch (Exception e) {
+            log.error("Failed to load goal component mappings: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to load mappings."));
         }
     }

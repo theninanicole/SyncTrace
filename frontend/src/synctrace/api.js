@@ -89,6 +89,21 @@ export const getGoalComponents = async (goalId) => {
     return data;
 };
 
+// Mapped components for every goal in one call — avoids an N+1 fetch loop per goal.
+export const getAllGoalComponents = async () => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals/components`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch goal mappings.');
+    return data;
+};
+
+export const getTraceComponent = async (componentId) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch component.');
+    return data;
+};
+
 export const addGoalComponents = async (goalId, componentIds) => {
     const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`, {
         method: 'POST',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getSmartGoals, getGoalComponents } from '../api';
+import { getSmartGoals, getAllGoalComponents } from '../api';
 import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
@@ -24,10 +24,11 @@ export function useGroupOverview(showToast) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [goalList, roster, history] = await Promise.all([
+      const [goalList, roster, history, componentsByGoal] = await Promise.all([
         getSmartGoals(),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
+        getAllGoalComponents().catch(() => ({})),
       ]);
       setGoals(goalList);
 
@@ -48,9 +49,7 @@ export function useGroupOverview(showToast) {
         if (s.section && !teamSectionMap.has(key)) teamSectionMap.set(key, s.section);
       });
 
-      const perGoalComponents = await Promise.all(
-        goalList.map((g) => getGoalComponents(g.id).catch(() => []))
-      );
+      const perGoalComponents = goalList.map((g) => componentsByGoal[g.id] || []);
 
       const coverageByTeam = new Map();
       const lastTraceabilityByTeam = new Map();
