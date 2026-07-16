@@ -1,0 +1,286 @@
+/* ── Issue Analysis Panel (issue list + detail) ─────────────────────────── */
+
+.iap-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.iap-sidebar {
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  padding: 1.1rem;
+  box-shadow: 0 8px 20px var(--shadow);
+  animation: iap-slide-in 0.3s ease;
+}
+
+.iap-issues-header {
+  font-weight: 800;
+  margin-bottom: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.iap-issues-count {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.iap-filter-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin-bottom: 0.9rem;
+  scrollbar-width: thin;
+}
+
+.iap-filter-chip {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-surface-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.iap-filter-chip:hover {
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--brand) 12%, var(--bg-surface-2));
+}
+
+.iap-filter-chip--active {
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand), var(--brand-strong));
+}
+
+.iap-filter-chip--active:hover {
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand), var(--brand-strong));
+}
+
+[data-theme='dark'] .iap-filter-chip--active,
+[data-theme='dark'] .iap-filter-chip--active:hover {
+  background: var(--brand);
+  color: #17202b;
+}
+
+.iap-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.iap-issue-card {
+  text-align: left;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: var(--bg-surface-2);
+  cursor: pointer;
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  color: var(--text-main);
+  transition: all 0.15s ease;
+  animation: iap-fade-in 0.2s ease;
+}
+
+.iap-issue-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 30%, var(--line-soft));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow) 70%, transparent);
+  transform: translateX(2px);
+}
+
+.iap-issue-card--active {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft));
+  background: var(--brand-soft);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--glow) 50%, transparent);
+}
+
+.iap-issue-level {
+  font-weight: 800;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.iap-issue-level--high {
+  background: color-mix(in srgb, var(--danger-text) 14%, var(--bg-surface-2));
+  color: var(--danger-text);
+}
+
+.iap-issue-level--medium {
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-surface-2));
+  color: var(--warn);
+}
+
+.iap-issue-level--low {
+  background: color-mix(in srgb, var(--brand) 14%, var(--bg-surface-2));
+  color: var(--brand);
+}
+
+.iap-issue-title {
+  font-weight: 700;
+  margin-top: 0.1rem;
+  color: var(--text-main);
+  line-height: 1.3;
+  font-size: 0.95rem;
+}
+
+.iap-issue-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+  line-height: 1.3;
+}
+
+.iap-detail {
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  padding: 1.3rem;
+  color: var(--text-main);
+  box-shadow: 0 8px 20px var(--shadow);
+  animation: iap-fade-in 0.25s ease;
+}
+
+.iap-detail__meta {
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.iap-detail__reported {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.iap-detail__title {
+  margin: 0.4rem 0 1rem;
+  color: var(--text-main);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.iap-confidence {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
+  color: var(--text-main);
+  animation: iap-fade-in 0.3s ease;
+}
+
+.iap-confidence__label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 100px;
+}
+
+.iap-confidence__bar {
+  flex: 1;
+  height: 10px;
+  background: var(--bg-surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+}
+
+.iap-confidence__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--warn), color-mix(in srgb, var(--warn) 40%, var(--brand)));
+  animation: iap-progress-fill 0.5s ease;
+}
+
+.iap-confidence__value {
+  min-width: 45px;
+  font-weight: 800;
+  color: var(--text-main);
+  text-align: right;
+}
+
+.iap-section {
+  border-left: 4px solid var(--line-soft);
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 0.9rem;
+  background: var(--bg-surface-2);
+  color: var(--text-main);
+  transition: all 0.15s ease;
+}
+
+.iap-section h3 {
+  color: var(--text-main);
+  margin: 0 0 0.5rem;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.iap-section p {
+  color: var(--text-main);
+  margin: 0;
+  line-height: 1.6;
+  font-size: 0.9rem;
+}
+
+.iap-section--positive {
+  border-left-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 8%, var(--bg-surface-2));
+}
+
+/* ── Animations ──────────────────────────────────────────────────────── */
+@keyframes iap-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes iap-slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes iap-progress-fill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .iap-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .iap-sidebar {
+    order: 2;
+  }
+
+  .iap-detail {
+    order: 1;
+  }
+}

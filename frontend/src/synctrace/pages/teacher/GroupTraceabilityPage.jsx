@@ -8,6 +8,8 @@ import { useGroupTraceability } from '../../hooks/useGroupTraceability';
 import { STATUS_META } from '../../hooks/useGroupOverview';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import TraceabilityResults from '../../components/common/TraceabilityResults';
+import SendButton from '../../components/common/SendButton';
+import ExportReportButton from '../../components/common/ExportReportButton';
 import './TraceabilityMappingPage.css';
 import './GroupTraceabilityPage.css';
 
@@ -15,7 +17,7 @@ function GroupTraceabilityPage({ teamCode, onBack }) {
   const { toast, showToast, hideToast } = useToast();
   const { loading, section, rows, status, lastTraceability, reload } = useGroupTraceability(teamCode, showToast);
   const [previewComponent, setPreviewComponent] = useState(null);
-
+  //eslint-disable-next-line no-unused-vars
   const meta = STATUS_META[status];
 
   return (
@@ -31,10 +33,8 @@ function GroupTraceabilityPage({ teamCode, onBack }) {
         subtitle={section || 'Group traceability results'}
         actions={
           <div className="teacher-header-actions">
-            <span className={`status-chip ${meta.chip}`}>{meta.label}</span>
-            <button type="button" className="btn btn--soft" onClick={() => showToast('Report export is coming soon.', 'error')}>
-              <Download size={14} /> Export report
-            </button>
+            <SendButton showToast={showToast} />
+            <ExportReportButton showToast={showToast} />
           </div>
         }
       />

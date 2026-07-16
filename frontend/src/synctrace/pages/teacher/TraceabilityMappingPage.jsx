@@ -43,7 +43,7 @@ function TraceabilityMappingPage({ initialGoalId = null }) {
         subtitle="Map and verify goal continuity across engineering artifacts"
         actions={
           <div className="teacher-header-actions">
-            <button className="btn btn--soft tm-link-btn" onClick={() => setIsExtractModalOpen(true)}>
+            <button className="btn btn--primary tm-link-btn" onClick={() => setIsExtractModalOpen(true)}>
               Extract Components
             </button>
           </div>

@@ -3,8 +3,7 @@ import SyncTraceSidebar from '../../components/teacher/SyncTraceSidebar';
 import OverviewPage from './OverviewPage';
 import TraceabilityMappingPage from './TraceabilityMappingPage';
 import GroupTraceabilityPage from './GroupTraceabilityPage';
-import MatrixPage from './MatrixPage';
-import GapAnalysisPage from './GapAnalysisPage';
+import TraceabilityResultsPage from './TraceabilityResultsPage';
 import '../../../styles/pages/teacher-dashboard.css';
 import '../../../styles/components/layout.css';
 
@@ -30,8 +29,7 @@ function SyncTraceDashboardPage({ onBack }) {
       <main className="layout__main">
         {currentView === 'overview' && <OverviewPage onOpenGoal={openGoal} onOpenGroup={openGroupResults} />}
         {currentView === 'traceability' && <TraceabilityMappingPage initialGoalId={focusGoalId} />}
-        {currentView === 'matrix' && <MatrixPage />}
-        {currentView === 'gap' && <GapAnalysisPage />}
+        {currentView === 'traceability-results' && <TraceabilityResultsPage />}
         {currentView === 'results' && (
           <GroupTraceabilityPage teamCode={selectedTeamCode} onBack={() => setCurrentView('overview')} />
         )}
