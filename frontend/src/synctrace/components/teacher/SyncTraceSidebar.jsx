@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { key: 'traceability', label: 'Traceability Mapping' },
   { key: 'matrix',       label: 'Matrix' },
   { key: 'gap',          label: 'Gap Analysis' },
+  { key: 'source',       label: 'Source Code' },
 ];
 
 function SyncTraceSidebar({ currentView, onNavigate, onBack }) {

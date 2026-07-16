@@ -5,6 +5,7 @@ import TraceabilityMappingPage from './TraceabilityMappingPage';
 import GroupTraceabilityPage from './GroupTraceabilityPage';
 import MatrixPage from './MatrixPage';
 import GapAnalysisPage from './GapAnalysisPage';
+import SourceCodePage from './SourceCodePage';
 import '../../../styles/pages/teacher-dashboard.css';
 import '../../../styles/components/layout.css';
 
@@ -32,6 +33,7 @@ function SyncTraceDashboardPage({ onBack }) {
         {currentView === 'traceability' && <TraceabilityMappingPage initialGoalId={focusGoalId} />}
         {currentView === 'matrix' && <MatrixPage />}
         {currentView === 'gap' && <GapAnalysisPage />}
+        {currentView === 'source' && <SourceCodePage />}
         {currentView === 'results' && (
           <GroupTraceabilityPage teamCode={selectedTeamCode} onBack={() => setCurrentView('overview')} />
         )}
