@@ -5,8 +5,7 @@ import appLogo from '../../../assets/logo.png';
 const NAV_ITEMS = [
   { key: 'overview',     label: 'Overview' },
   { key: 'traceability', label: 'Traceability Mapping' },
-  { key: 'matrix',       label: 'Matrix' },
-  { key: 'gap',          label: 'Gap Analysis' },
+  { key: 'traceability-results', label: 'Traceability Results' },
 ];
 
 function SyncTraceSidebar({ currentView, onNavigate, onBack }) {

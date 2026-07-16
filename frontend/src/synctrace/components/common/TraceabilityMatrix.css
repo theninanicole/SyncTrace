@@ -3,16 +3,16 @@
 .trm-table-wrap {
   width: 100%;
   overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface);
 }
 
 .trm-table {
   display: grid;
-  grid-template-columns: 1.5fr repeat(5, 1fr) 0.9fr;
-  min-width: 980px;
-  border: 1px solid var(--line-soft);
-  border-radius: 14px;
-  overflow: hidden;
-  background: var(--bg-surface);
+  grid-template-columns: 260px repeat(5, minmax(160px, 1fr)) 140px;
+  width: max-content;
+  min-width: 100%;
 }
 
 .trm-row {
@@ -35,6 +35,18 @@
 
 .trm-th--last {
   border-right: none;
+}
+
+.trm-th--goal,
+.trm-cell--goal {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--bg-surface-2);
+}
+
+.trm-cell--goal {
+  background: var(--bg-surface);
 }
 
 .trm-th__subtitle {
