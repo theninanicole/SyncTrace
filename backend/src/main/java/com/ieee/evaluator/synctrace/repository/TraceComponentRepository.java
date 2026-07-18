@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface TraceComponentRepository extends JpaRepository<TraceComponent, Long> {
 
     Optional<TraceComponent> findFirstByDocTypeAndNameIgnoreCase(String docType, String name);
+
+    boolean existsBySourceTypeAndSourceHash(String sourceType, String sourceHash);
 }

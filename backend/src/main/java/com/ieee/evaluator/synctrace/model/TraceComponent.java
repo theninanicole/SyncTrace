@@ -26,6 +26,21 @@ public class TraceComponent {
     @Column(name = "source_history_id")
     private Long sourceHistoryId;
 
+    @Column(name = "source_type", length = 40)
+    private String sourceType;
+
+    @Column(name = "source_ref", length = 300)
+    private String sourceRef;
+
+    @Column(name = "source_url", length = 600)
+    private String sourceUrl;
+
+    @Column(name = "source_hash", length = 64)
+    private String sourceHash;
+
+    @Column(name = "source_captured_at")
+    private LocalDateTime sourceCapturedAt;
+
     @Column(name = "image_data", columnDefinition = "TEXT")
     private String imageData;
 
@@ -42,6 +57,9 @@ public class TraceComponent {
         }
         if (aiExtracted == null) {
             aiExtracted = false;
+        }
+        if (sourceCapturedAt == null) {
+            sourceCapturedAt = createdAt;
         }
     }
 }

@@ -2,15 +2,20 @@ package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
+import com.ieee.evaluator.synctrace.model.GitHubRepositoryLink;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
+import com.ieee.evaluator.synctrace.repository.GitHubRepositoryLinkRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -19,22 +24,31 @@ import java.util.stream.Collectors;
 public class SyncTraceService {
 
     private static final List<String> DOC_TYPES = List.of("SRS", "SDD", "SPMP", "STD", "IMPLEMENTATION");
+    private static final String SOURCE_TYPE_GITHUB = "GITHUB";
+    private static final String SOURCE_TYPE_EVALUATION_HISTORY = "EVALUATION_HISTORY";
+    private static final String SOURCE_TYPE_MANUAL = "MANUAL";
 
     private final SmartGoalRepository smartGoalRepository;
     private final TraceComponentRepository traceComponentRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final EvaluationHistoryRepository evaluationHistoryRepository;
+    private final GitHubRepositoryLinkRepository gitHubRepositoryLinkRepository;
+    private final GitHubSourceIngestionService gitHubSourceIngestionService;
 
     public SyncTraceService(
         SmartGoalRepository smartGoalRepository,
         TraceComponentRepository traceComponentRepository,
         GoalComponentMappingRepository mappingRepository,
-        EvaluationHistoryRepository evaluationHistoryRepository
+        EvaluationHistoryRepository evaluationHistoryRepository,
+        GitHubRepositoryLinkRepository gitHubRepositoryLinkRepository,
+        GitHubSourceIngestionService gitHubSourceIngestionService
     ) {
         this.smartGoalRepository = smartGoalRepository;
         this.traceComponentRepository = traceComponentRepository;
         this.mappingRepository = mappingRepository;
         this.evaluationHistoryRepository = evaluationHistoryRepository;
+        this.gitHubRepositoryLinkRepository = gitHubRepositoryLinkRepository;
+        this.gitHubSourceIngestionService = gitHubSourceIngestionService;
     }
 
     public List<Map<String, Object>> getSmartGoals() {
@@ -62,12 +76,12 @@ public class SyncTraceService {
                 categoryStatus.put(dt, covered.contains(dt));
             }
 
-            response.add(Map.of(
-                "id", goal.getId(),
-                "description", goal.getDescription(),
-                "createdAt", goal.getCreatedAt(),
-                "categoryStatus", categoryStatus
-            ));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", goal.getId());
+            row.put("description", goal.getDescription());
+            row.put("createdAt", goal.getCreatedAt());
+            row.put("categoryStatus", categoryStatus);
+            response.add(row);
         }
 
         return response;
@@ -127,6 +141,11 @@ public class SyncTraceService {
         component.setName(name.trim());
         component.setContent(content == null || content.trim().isEmpty() ? null : content.trim());
         component.setAiExtracted(false);
+        component.setSourceType(SOURCE_TYPE_MANUAL);
+        component.setSourceCapturedAt(LocalDateTime.now());
+        if (component.getContent() != null) {
+            component.setSourceHash(sha256(component.getContent()));
+        }
 
         TraceComponent saved = traceComponentRepository.save(component);
         return toTraceComponentPayload(saved);
@@ -252,13 +271,90 @@ public class SyncTraceService {
         return Map.of("components", payload, "count", payload.size());
     }
 
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getGitHubRepositoryLinks() {
+        return gitHubRepositoryLinkRepository.findAllByOrderByCreatedAtDesc().stream()
+            .map(this::toGitHubRepositoryPayload)
+            .toList();
+    }
+
+    public Map<String, Object> linkGitHubRepository(String repositoryUrl, String defaultBranch) {
+        GitHubSourceIngestionService.ParsedRepository parsed = gitHubSourceIngestionService.parseRepositoryUrl(repositoryUrl);
+        String branch = (defaultBranch == null || defaultBranch.trim().isEmpty()) ? "main" : defaultBranch.trim();
+
+        GitHubRepositoryLink repository = gitHubRepositoryLinkRepository
+            .findByOwnerAndRepo(parsed.owner(), parsed.repo())
+            .orElseGet(GitHubRepositoryLink::new);
+
+        repository.setOwner(parsed.owner());
+        repository.setRepo(parsed.repo());
+        repository.setRepositoryUrl(parsed.normalizedUrl());
+        repository.setDefaultBranch(branch);
+        repository.setActive(true);
+
+        GitHubRepositoryLink saved = gitHubRepositoryLinkRepository.save(repository);
+        return toGitHubRepositoryPayload(saved);
+    }
+
+    public Map<String, Object> ingestGitHubRepository(Long repositoryId, String accessToken, Integer maxFiles) {
+        GitHubRepositoryLink repository = gitHubRepositoryLinkRepository.findById(repositoryId)
+            .orElseThrow(() -> new IllegalArgumentException("Repository link not found."));
+
+        int requestedMaxFiles = (maxFiles == null ? 80 : maxFiles);
+        List<GitHubSourceIngestionService.GitHubSourceFile> files = gitHubSourceIngestionService.ingestRepository(
+            repository.getOwner(),
+            repository.getRepo(),
+            repository.getDefaultBranch(),
+            accessToken,
+            requestedMaxFiles
+        );
+
+        int added = 0;
+        int skippedDuplicates = 0;
+
+        for (GitHubSourceIngestionService.GitHubSourceFile file : files) {
+            if (traceComponentRepository.existsBySourceTypeAndSourceHash(SOURCE_TYPE_GITHUB, file.sourceHash())) {
+                skippedDuplicates++;
+                continue;
+            }
+
+            TraceComponent component = new TraceComponent();
+            component.setDocType("IMPLEMENTATION");
+            component.setName(file.path());
+            component.setContent(file.normalizedContent());
+            component.setAiExtracted(false);
+            component.setSourceType(SOURCE_TYPE_GITHUB);
+            component.setSourceRef(file.path());
+            component.setSourceUrl(file.htmlUrl());
+            component.setSourceHash(file.sourceHash());
+            component.setSourceCapturedAt(LocalDateTime.now());
+            traceComponentRepository.save(component);
+            added++;
+        }
+
+        repository.setLastIngestedAt(LocalDateTime.now());
+        gitHubRepositoryLinkRepository.save(repository);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("repository", toGitHubRepositoryPayload(repository));
+        result.put("scanned", files.size());
+        result.put("added", added);
+        result.put("skippedDuplicates", skippedDuplicates);
+        return result;
+    }
+
     private TraceComponent createExtractedComponent(EvaluationHistory history, String docType, String titlePrefix) {
         TraceComponent component = new TraceComponent();
         component.setDocType(docType);
         component.setName(titlePrefix + " #" + history.getId());
-        component.setContent(buildExtractedContent(history));
+        String extractedContent = buildExtractedContent(history);
+        component.setContent(extractedContent);
         component.setSourceHistoryId(history.getId());
         component.setAiExtracted(true);
+        component.setSourceType(SOURCE_TYPE_EVALUATION_HISTORY);
+        component.setSourceRef(history.getFileName());
+        component.setSourceHash(sha256(extractedContent));
+        component.setSourceCapturedAt(LocalDateTime.now());
         return traceComponentRepository.save(component);
     }
 
@@ -288,14 +384,33 @@ public class SyncTraceService {
         return "IMPLEMENTATION";
     }
 
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte b : hash) {
+                builder.append(String.format("%02x", b));
+            }
+            return builder.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to hash source content.", ex);
+        }
+    }
+
     private Map<String, Object> toComponentSummary(TraceComponent component) {
-        return Map.of(
-            "id", component.getId(),
-            "docType", normalizeDocType(component.getDocType()),
-            "name", component.getName(),
-            "sourceHistoryId", component.getSourceHistoryId(),
-            "createdAt", component.getCreatedAt()
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", component.getId());
+        payload.put("docType", normalizeDocType(component.getDocType()));
+        payload.put("name", component.getName());
+        payload.put("sourceHistoryId", component.getSourceHistoryId());
+        payload.put("sourceType", component.getSourceType());
+        payload.put("sourceRef", component.getSourceRef());
+        payload.put("sourceUrl", component.getSourceUrl());
+        payload.put("sourceHash", component.getSourceHash());
+        payload.put("sourceCapturedAt", component.getSourceCapturedAt());
+        payload.put("createdAt", component.getCreatedAt());
+        return payload;
     }
 
     private Map<String, Object> toTraceComponentPayload(TraceComponent component) {
@@ -305,9 +420,28 @@ public class SyncTraceService {
         payload.put("name", component.getName());
         payload.put("content", component.getContent());
         payload.put("sourceHistoryId", component.getSourceHistoryId());
+        payload.put("sourceType", component.getSourceType());
+        payload.put("sourceRef", component.getSourceRef());
+        payload.put("sourceUrl", component.getSourceUrl());
+        payload.put("sourceHash", component.getSourceHash());
+        payload.put("sourceCapturedAt", component.getSourceCapturedAt());
         payload.put("imageData", component.getImageData());
         payload.put("aiExtracted", Boolean.TRUE.equals(component.getAiExtracted()));
         payload.put("createdAt", component.getCreatedAt());
+        return payload;
+    }
+
+    private Map<String, Object> toGitHubRepositoryPayload(GitHubRepositoryLink repository) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", repository.getId());
+        payload.put("owner", repository.getOwner());
+        payload.put("repo", repository.getRepo());
+        payload.put("repositoryUrl", repository.getRepositoryUrl());
+        payload.put("defaultBranch", repository.getDefaultBranch());
+        payload.put("active", repository.getActive());
+        payload.put("lastIngestedAt", repository.getLastIngestedAt());
+        payload.put("createdAt", repository.getCreatedAt());
+        payload.put("updatedAt", repository.getUpdatedAt());
         return payload;
     }
 

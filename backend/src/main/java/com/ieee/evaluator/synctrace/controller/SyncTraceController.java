@@ -183,6 +183,49 @@ public class SyncTraceController {
         }
     }
 
+    @GetMapping("/github/repositories")
+    public ResponseEntity<?> getGitHubRepositories() {
+        try {
+            return ResponseEntity.ok(syncTraceService.getGitHubRepositoryLinks());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to load linked repositories: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/github/repositories/link")
+    public ResponseEntity<?> linkGitHubRepository(@RequestBody Map<String, String> payload) {
+        try {
+            return ResponseEntity.ok(syncTraceService.linkGitHubRepository(
+                payload.get("repositoryUrl"),
+                payload.get("defaultBranch")
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to link repository: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/github/repositories/{repositoryId}/ingest")
+    public ResponseEntity<?> ingestGitHubRepository(
+        @PathVariable Long repositoryId,
+        @RequestBody(required = false) Map<String, Object> payload
+    ) {
+        try {
+            String accessToken = payload == null ? null : (payload.get("accessToken") == null ? null : payload.get("accessToken").toString());
+            Integer maxFiles = payload == null ? null : toInt(payload.get("maxFiles"));
+
+            return ResponseEntity.ok(syncTraceService.ingestGitHubRepository(repositoryId, accessToken, maxFiles));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to ingest repository sources: " + e.getMessage()));
+        }
+    }
+
     private Long toLong(Object value) {
         if (value == null) return null;
         if (value instanceof Long l) return l;
@@ -190,6 +233,17 @@ public class SyncTraceController {
         if (value instanceof Number n) return n.longValue();
         try {
             return Long.parseLong(value.toString());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private Integer toInt(Object value) {
+        if (value == null) return null;
+        if (value instanceof Integer i) return i;
+        if (value instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(value.toString());
         } catch (NumberFormatException ex) {
             return null;
         }

@@ -77,3 +77,17 @@ export const addGoalComponents = async (goalId, componentIds) => request(`/goals
 export const removeGoalComponent = async (goalId, componentId) => request(`/goals/${goalId}/components/${componentId}`, {
   method: 'DELETE',
 });
+
+export const getLinkedGitHubRepositories = async () => request('/github/repositories');
+
+export const linkGitHubRepository = async (repositoryUrl, defaultBranch = 'main') => request('/github/repositories/link', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ repositoryUrl, defaultBranch }),
+});
+
+export const ingestGitHubRepository = async (repositoryId, { accessToken, maxFiles } = {}) => request(`/github/repositories/${repositoryId}/ingest`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ accessToken, maxFiles }),
+});
