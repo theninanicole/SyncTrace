@@ -1,0 +1,36 @@
+package com.ieee.evaluator.synctrace.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "trace_components")
+public class TraceComponent {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Enumerated(EnumType.STRING)
+    private DocType docType;
+
+    private String name;
+
+    @Column(columnDefinition = "TEXT")
+    private String content;
+
+    private Long sourceHistoryId;
+
+    @Column(columnDefinition = "TEXT")
+    private String imageData;
+
+    private Boolean aiExtracted = false;
+
+    private LocalDateTime createdAt;
+
+    public enum DocType {
+        SRS, SDD, SPMP, STD, IMPLEMENTATION, PROPOSAL
+    }
+}

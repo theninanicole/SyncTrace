@@ -1,191 +1,219 @@
+import { API_BASE_URL } from '../api';
+
 // ── SyncTrace: Traceability Mapping ─────────────────────────────────────────
-// Mock data only
-
-const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD', 'IMPLEMENTATION'];
-
-const delay = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
-
-let nextGoalId = 4;
-let nextComponentId = 7;
-
-const goals = [
-  { id: 1, description: 'Enable automated submission management via Google Sheets integration by end of development', createdAt: '2026-05-01T09:00:00' },
-  { id: 2, description: 'Achieve 95% test coverage on the evaluation scoring engine before the SPMP milestone', createdAt: '2026-05-03T09:00:00' },
-  { id: 3, description: 'Deliver a responsive teacher dashboard with real-time submission status by SDD review', createdAt: '2026-05-05T09:00:00' },
-];
-
-const components = [
-  { id: 1, docType: 'SRS', name: 'FR-12 Google Sheets Sync', content: 'The system shall synchronize roster data with the linked Google Sheet on a five-minute interval.', sourceHistoryId: null, imageData: null, aiExtracted: false, createdAt: '2026-05-01T10:00:00' },
-  { id: 2, docType: 'SDD', name: 'SheetsSyncService class diagram', content: 'Class diagram detailing SheetsSyncService and its collaborators.', sourceHistoryId: null, imageData: null, aiExtracted: true, createdAt: '2026-05-02T11:00:00' },
-  { id: 3, docType: 'SPMP', name: 'Sprint 3 milestone: Sheets integration', content: 'Milestone covering delivery of the sheets sync feature.', sourceHistoryId: null, imageData: null, aiExtracted: false, createdAt: '2026-05-02T12:00:00' },
-  { id: 4, docType: 'STD', name: 'TC-045 Roster sync round trip', content: 'Verifies roster changes made in Sheets propagate back to the roster within 5 minutes.', sourceHistoryId: null, imageData: null, aiExtracted: false, createdAt: '2026-05-03T09:00:00' },
-  { id: 5, docType: 'IMPLEMENTATION', name: 'SheetsSyncService.java', content: 'Implementation of the periodic sync polling loop.', sourceHistoryId: null, imageData: null, aiExtracted: true, createdAt: '2026-05-03T10:00:00' },
-  { id: 6, docType: 'SDD', name: 'ScoringEngine sequence diagram', content: 'Sequence diagram for the automated scoring pipeline.', sourceHistoryId: null, imageData: null, aiExtracted: false, createdAt: '2026-05-04T09:00:00' },
-];
-
-const mappings = [
-  { goalId: 1, componentId: 1 },
-  { goalId: 1, componentId: 2 },
-  { goalId: 1, componentId: 3 },
-  { goalId: 1, componentId: 4 },
-  { goalId: 1, componentId: 5 },
-  { goalId: 2, componentId: 6 },
-];
-
-function computeCategoryStatus(goalId) {
-  const status = {};
-  DOC_TYPES.forEach((dt) => { status[dt] = false; });
-  mappings
-    .filter((m) => m.goalId === goalId)
-    .forEach((m) => {
-      const component = components.find((c) => c.id === m.componentId);
-      if (component) status[component.docType] = true;
-    });
-  return status;
-}
-
-function toSummary(component) {
-  const { id, docType, name, sourceHistoryId, createdAt } = component;
-  return { id, docType, name, sourceHistoryId, createdAt };
-}
 
 export const getSmartGoals = async () => {
-  await delay();
-  return goals.map((g) => ({ ...g, categoryStatus: computeCategoryStatus(g.id) }));
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch SMART goals.');
+    return data;
 };
 
 export const createSmartGoal = async (description) => {
-  await delay();
-  const goal = { id: nextGoalId++, description, createdAt: new Date().toISOString() };
-  goals.push(goal);
-  return goal;
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create goal.');
+    return data;
 };
 
 export const deleteSmartGoal = async (goalId) => {
-  await delay();
-  const idx = goals.findIndex((g) => g.id === goalId);
-  if (idx === -1) throw new Error('Goal not found.');
-  goals.splice(idx, 1);
-  for (let i = mappings.length - 1; i >= 0; i--) {
-    if (mappings[i].goalId === goalId) mappings.splice(i, 1);
-  }
-  return { message: 'Goal deleted.' };
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}`, {
+        method: 'DELETE',
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to delete goal.');
+    return data;
 };
 
 export const getTraceComponents = async (docType, search) => {
-  await delay();
-  return components
-    .filter((c) => !docType || c.docType === docType)
-    .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
-    .slice()
-    .sort((a, b) => b.id - a.id);
+    const params = new URLSearchParams();
+    if (docType) params.set('docType', docType);
+    if (search) params.set('search', search);
+    const query = params.toString();
+    const response = await fetch(`${API_BASE_URL}/synctrace/components${query ? `?${query}` : ''}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch components.');
+    return data;
 };
 
 export const createTraceComponent = async (docType, name, content) => {
-  await delay();
-  const existing = components.find((c) => c.docType === docType && c.name.toLowerCase() === name.toLowerCase());
-  if (existing) return existing;
-  const component = {
-    id: nextComponentId++,
-    docType,
-    name,
-    content: content || null,
-    sourceHistoryId: null,
-    imageData: null,
-    aiExtracted: false,
-    createdAt: new Date().toISOString(),
-  };
-  components.push(component);
-  return component;
+    const response = await fetch(`${API_BASE_URL}/synctrace/components`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docType, name, content }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create component.');
+    return data;
 };
 
 export const renameTraceComponent = async (componentId, name) => {
-  await delay();
-  const component = components.find((c) => c.id === componentId);
-  if (!component) throw new Error('Component not found.');
-  const duplicate = components.find(
-    (c) => c.id !== componentId && c.docType === component.docType && c.name.toLowerCase() === name.toLowerCase()
-  );
-  if (duplicate) throw new Error(`Another ${component.docType} component already has that name.`);
-  component.name = name;
-  return component;
+    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to rename component.');
+    return data;
 };
 
 export const deleteTraceComponent = async (componentId) => {
-  await delay();
-  const idx = components.findIndex((c) => c.id === componentId);
-  if (idx === -1) throw new Error('Component not found.');
-  components.splice(idx, 1);
-  for (let i = mappings.length - 1; i >= 0; i--) {
-    if (mappings[i].componentId === componentId) mappings.splice(i, 1);
-  }
-  return { message: 'Component deleted.' };
+    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
+        method: 'DELETE',
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to delete component.');
+    return data;
 };
 
-const EXTRACTION_SAMPLES = [
-  { docType: 'SDD', name: 'Auto-extracted class diagram' },
-  { docType: 'IMPLEMENTATION', name: 'Auto-extracted implementation snippet' },
-];
-
 export const extractTraceComponents = async (historyId) => {
-  await delay(600);
-  const extracted = EXTRACTION_SAMPLES.map((sample) => ({
-    id: nextComponentId++,
-    docType: sample.docType,
-    name: `${sample.name} #${historyId}`,
-    content: 'Extracted from the diagram analysis section of the evaluated submission.',
-    sourceHistoryId: historyId,
-    imageData: null,
-    aiExtracted: true,
-    createdAt: new Date().toISOString(),
-  }));
-  components.push(...extracted);
-  return { components: extracted, count: extracted.length };
+    const response = await fetch(`${API_BASE_URL}/synctrace/components/extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historyId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Extraction failed.');
+    return data;
 };
 
 export const getGoalComponents = async (goalId) => {
-  await delay();
-  return mappings
-    .filter((m) => m.goalId === goalId)
-    .map((m) => components.find((c) => c.id === m.componentId))
-    .filter(Boolean)
-    .map(toSummary);
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch goal mappings.');
+    return data;
 };
 
 export const getAllGoalComponents = async () => {
-  await delay();
-  const byGoal = {};
-  mappings.forEach((m) => {
-    const component = components.find((c) => c.id === m.componentId);
-    if (!component) return;
-    if (!byGoal[m.goalId]) byGoal[m.goalId] = [];
-    byGoal[m.goalId].push(toSummary(component));
-  });
-  return byGoal;
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals/components`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch all goal components.');
+    return data;
 };
 
 export const getTraceComponent = async (componentId) => {
-  await delay();
-  const component = components.find((c) => c.id === componentId);
-  if (!component) throw new Error('Component not found.');
-  return component;
+    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch component.');
+    return data;
 };
 
 export const addGoalComponents = async (goalId, componentIds) => {
-  await delay();
-  if (!goals.some((g) => g.id === goalId)) throw new Error('Goal not found.');
-  let added = 0;
-  componentIds.forEach((componentId) => {
-    if (mappings.some((m) => m.goalId === goalId && m.componentId === componentId)) return;
-    mappings.push({ goalId, componentId });
-    added++;
-  });
-  return { added };
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ componentIds }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to add components.');
+    return data;
 };
 
 export const removeGoalComponent = async (goalId, componentId) => {
-  await delay();
-  const idx = mappings.findIndex((m) => m.goalId === goalId && m.componentId === componentId);
-  if (idx !== -1) mappings.splice(idx, 1);
-  return { message: 'Mapping removed.' };
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
+        method: 'DELETE',
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to remove component.');
+    return data;
+};
+
+// ── SyncTrace: Proposal Analysis ─────────────────────────────────────────────
+
+export const extractSmartGoalsFromProposal = async (fileId, fileName, model, sessionId) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/proposals/extract-goals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId, fileName, model, sessionId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to extract SMART goals.');
+    return data;
+};
+
+// ── SyncTrace: Continuity Analysis ────────────────────────────────────────────
+
+export const analyzeSourceCodeAlignment = async (teamCode, model, sessionId) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/align`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, model, sessionId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to analyze source code alignment.');
+    return data;
+};
+
+export const detectContinuityGaps = async (teamCode, goalId) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/detect-gaps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, goalId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to detect continuity gaps.');
+    return data;
+};
+
+export const generateDiagnosticRecommendations = async (teamCode, model, sessionId) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, model, sessionId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to generate recommendations.');
+    return data;
+};
+
+// ── SyncTrace: GitHub Ingestion ───────────────────────────────────────────────
+
+export const getTeamRepositories = async () => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/github/teams`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch team repositories.');
+    return data;
+};
+
+export const ingestRepository = async ({ teamCode, githubUrl, sessionId }) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/github/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, githubUrl, sessionId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to ingest repository.');
+    return data;
+};
+
+// ── SyncTrace: Audit Export ─────────────────────────────────────────────────
+
+export const exportAuditReport = async (teamCode, format = 'json') => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/audit/${teamCode}/export?format=${format}`);
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to export audit report.');
+    }
+    
+    // Handle binary response for PDF/CSV
+    if (format === 'pdf' || format === 'csv') {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit-report-${teamCode}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        return { success: true };
+    }
+    
+    // JSON response
+    return response.json();
 };
