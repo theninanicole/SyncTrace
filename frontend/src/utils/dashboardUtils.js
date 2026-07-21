@@ -70,7 +70,7 @@ export function extractSubmissionMeta(fileName) {
   const name = String(fileName || '');
   const upper = name.toUpperCase();
 
-  const docMatch = upper.match(/^\[(SRS|SDD|SPMP|STD)\]/) || upper.match(/\b(SRS|SDD|SPMP|STD)\b/);
+  const docMatch = upper.match(/^\[(SRS|SDD|SPMP|STD|PROPOSAL)\]/) || upper.match(/\b(SRS|SDD|SPMP|STD|PROPOSAL)\b/);
   const sectionMatch = upper.match(/\bG[O0]?\d\b/);
   const teamMatch = upper.match(/\b\d{4}-SEM\d-IT\d+-\d{2}\b/);
   const studentPart = name.includes('|') ? name.split('|').pop().trim() : '';

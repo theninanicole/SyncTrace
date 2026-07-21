@@ -88,7 +88,7 @@ function IssueAnalysisPanel({
             <h2 className="iap-detail__title">{selectedIssue.title}</h2>
 
             <div className="iap-confidence">
-              <div className="iap-confidence__label">AI confidence</div>
+              <div className="iap-confidence__label">Severity</div>
               <div className="iap-confidence__bar"><div className="iap-confidence__fill" style={{ width: `${selectedIssue.confidence}%` }} /></div>
               <div className="iap-confidence__value">{selectedIssue.confidence}%</div>
             </div>
