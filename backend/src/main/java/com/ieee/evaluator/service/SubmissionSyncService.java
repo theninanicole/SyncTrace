@@ -5,6 +5,7 @@ import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.ieee.evaluator.model.DriveFile;
 import com.ieee.evaluator.model.DeliverableConfig;
+import com.ieee.evaluator.model.TeamRepository;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -57,6 +58,7 @@ public class SubmissionSyncService {
         int colSdd       = getColumnIndexSafely("COL_INDEX_SDD");
         int colSpmp      = getColumnIndexSafely("COL_INDEX_SPMP");
         int colStd       = getColumnIndexSafely("COL_INDEX_STD");
+        int colProposal  = getColumnIndexSafely("COL_INDEX_PROPOSAL");
 
         ValueRange response = sheetsService.spreadsheets().values()
                 .get(spreadsheetId, responsesRange)
@@ -75,14 +77,45 @@ public class SubmissionSyncService {
                 String teamCode     = row.size() > colTeam      && colTeam >= 0      ? row.get(colTeam).toString()      : "No Team";
                 String section      = row.size() > colSection   && colSection >= 0   ? row.get(colSection).toString()   : "No Section";
 
-                extractAndAddFile(row, colSrs,  "SRS",  studentName, teamCode, section, timestampStr, configMap, submissionMap);
-                extractAndAddFile(row, colSdd,  "SDD",  studentName, teamCode, section, timestampStr, configMap, submissionMap);
-                extractAndAddFile(row, colSpmp, "SPMP", studentName, teamCode, section, timestampStr, configMap, submissionMap);
-                extractAndAddFile(row, colStd,  "STD",  studentName, teamCode, section, timestampStr, configMap, submissionMap);
+                extractAndAddFile(row, colSrs,     "SRS",     studentName, teamCode, section, timestampStr, configMap, submissionMap);
+                extractAndAddFile(row, colSdd,     "SDD",     studentName, teamCode, section, timestampStr, configMap, submissionMap);
+                extractAndAddFile(row, colSpmp,    "SPMP",    studentName, teamCode, section, timestampStr, configMap, submissionMap);
+                extractAndAddFile(row, colStd,     "STD",     studentName, teamCode, section, timestampStr, configMap, submissionMap);
+                extractAndAddFile(row, colProposal, "PROPOSAL", studentName, teamCode, section, timestampStr, configMap, submissionMap);
             }
         }
 
         return new ArrayList<>(submissionMap.values());
+    }
+
+    public List<TeamRepository> getTeamRepositories() throws IOException {
+        String spreadsheetId   = configService.getValue("GOOGLE_SHEET_ID");
+        String responsesRange  = configService.getValue("GOOGLE_RESPONSES_RANGE");
+
+        int colTeam      = getColumnIndexSafely("COL_INDEX_TEAM");
+        int colGithub    = getColumnIndexSafely("COL_INDEX_GITHUB");
+
+        ValueRange response = sheetsService.spreadsheets().values()
+                .get(spreadsheetId, responsesRange)
+                .execute();
+
+        List<List<Object>> values = response.getValues();
+        List<TeamRepository> repositories = new ArrayList<>();
+
+        if (values != null) {
+            for (List<Object> row : values) {
+                if (row.isEmpty()) continue;
+
+                String teamCode  = row.size() > colTeam   && colTeam >= 0   ? row.get(colTeam).toString()   : null;
+                String githubUrl = row.size() > colGithub && colGithub >= 0 ? row.get(colGithub).toString() : null;
+
+                if (teamCode != null && !teamCode.isBlank() && githubUrl != null && !githubUrl.isBlank()) {
+                    repositories.add(new TeamRepository(teamCode, githubUrl.trim()));
+                }
+            }
+        }
+
+        return repositories;
     }
 
     private int getColumnIndexSafely(String key) {

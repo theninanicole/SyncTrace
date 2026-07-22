@@ -6,6 +6,7 @@ import { useToast } from '../../../hooks/useToast';
 import AddComponentModal from '../../components/teacher/AddComponentModal';
 import CategoryCard from '../../components/teacher/CategoryCard';
 import ExtractComponentsModal from '../../components/teacher/ExtractComponentsModal';
+import ExtractGoalsModal from '../../components/teacher/ExtractGoalsModal';
 import NewGoalForm from '../../components/teacher/NewGoalForm';
 import { useTraceability, DOC_TYPES } from '../../hooks/useTraceability';
 import './TraceabilityMappingPage.css';
@@ -18,6 +19,7 @@ function TraceabilityMappingPage({ initialGoalId = null }) {
   const [modalDocType, setModalDocType] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExtractModalOpen, setIsExtractModalOpen] = useState(false);
+  const [isExtractGoalsModalOpen, setIsExtractGoalsModalOpen] = useState(false);
 
   function openAddModal(docType) {
     setModalDocType(docType);
@@ -27,6 +29,12 @@ function TraceabilityMappingPage({ initialGoalId = null }) {
   async function handleCreateGoal(description) {
     const goal = await tm.createGoal(description);
     if (goal) setShowNewGoalForm(false);
+  }
+
+  async function handleGoalsExtracted() {
+    // Refresh goals list after extraction
+    await tm.loadGoals();
+    setIsExtractGoalsModalOpen(false);
   }
 
   const mappedByType = DOC_TYPES.reduce((acc, dt) => {
@@ -43,6 +51,9 @@ function TraceabilityMappingPage({ initialGoalId = null }) {
         subtitle="Map and verify goal continuity across engineering artifacts"
         actions={
           <div className="teacher-header-actions">
+            <button className="btn btn--soft tm-link-btn" onClick={() => setIsExtractGoalsModalOpen(true)}>
+              <Sparkles size={14} /> Extract Goals from Proposal
+            </button>
             <button className="btn btn--primary tm-link-btn" onClick={() => setIsExtractModalOpen(true)}>
               Extract Components
             </button>
@@ -147,6 +158,13 @@ function TraceabilityMappingPage({ initialGoalId = null }) {
         isOpen={isExtractModalOpen}
         onClose={() => setIsExtractModalOpen(false)}
         showToast={showToast}
+      />
+
+      <ExtractGoalsModal
+        isOpen={isExtractGoalsModalOpen}
+        onClose={() => setIsExtractGoalsModalOpen(false)}
+        showToast={showToast}
+        onExtracted={handleGoalsExtracted}
       />
     </div>
   );

@@ -11,8 +11,6 @@ import SendButton from '../../components/common/SendButton';
 import ExportReportButton from '../../components/common/ExportReportButton';
 import './TraceabilityResultsPage.css';
 
-const TEAM_CODE = '2026-SEM1-IT01-05';
-
 function TraceabilityResultsPage() {
   const { toast, showToast, hideToast } = useToast();
   const [goals, setGoals] = useState([]);
@@ -86,12 +84,7 @@ function TraceabilityResultsPage() {
 
       <PanelHeader
         title="Traceability Results"
-        subtitle={
-          <>
-            Traceability coverage across SMART goals and project artifacts
-            <span className="tp-team-badge">Team {TEAM_CODE}</span>
-          </>
-        }
+        subtitle="Traceability coverage across SMART goals and project artifacts"
         actions={
           <div className="teacher-header-actions">
             <SendButton showToast={showToast} />

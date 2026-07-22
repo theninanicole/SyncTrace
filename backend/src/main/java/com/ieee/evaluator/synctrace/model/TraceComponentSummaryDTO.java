@@ -1,0 +1,13 @@
+package com.ieee.evaluator.synctrace.model;
+
+import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
+import java.time.LocalDateTime;
+
+public record TraceComponentSummaryDTO(
+    Long id,
+    DocType docType,
+    String name,
+    Boolean aiExtracted,
+    Long sourceHistoryId,
+    LocalDateTime createdAt
+) {}

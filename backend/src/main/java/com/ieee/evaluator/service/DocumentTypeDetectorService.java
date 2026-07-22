@@ -10,16 +10,18 @@ public class DocumentTypeDetectorService {
     private static final int HEADER_WINDOW = 500;
 
     // ── Full document type names as they appear on cover pages ────────────────
-    private static final String[] SRS_NAMES  = { "software requirements specification", "software requirements specifications" };
-    private static final String[] SDD_NAMES  = { "software design description", "software design descriptions" };
-    private static final String[] SPMP_NAMES = { "software project management plan", "software project management plans" };
-    private static final String[] STD_NAMES  = { "software test documentation", "software test document" };
+    private static final String[] SRS_NAMES     = { "software requirements specification", "software requirements specifications" };
+    private static final String[] SDD_NAMES     = { "software design description", "software design descriptions" };
+    private static final String[] SPMP_NAMES    = { "software project management plan", "software project management plans" };
+    private static final String[] STD_NAMES     = { "software test documentation", "software test document" };
+    private static final String[] PROPOSAL_NAMES = { "project proposal" };
 
     // ── Abbreviations as they appear in file names e.g. _SRS_ or [SRS] ─────────
-    private static final String[] TAG_SRS  = { "_srs_", "_srs.", "[srs]" };
-    private static final String[] TAG_SDD  = { "_sdd_", "_sdd.", "[sdd]" };
-    private static final String[] TAG_SPMP = { "_spmp_", "_spmp.", "[spmp]" };
-    private static final String[] TAG_STD  = { "_std_", "_std.", "[std]" };
+    private static final String[] TAG_SRS     = { "_srs_", "_srs.", "[srs]" };
+    private static final String[] TAG_SDD     = { "_sdd_", "_sdd.", "[sdd]" };
+    private static final String[] TAG_SPMP    = { "_spmp_", "_spmp.", "[spmp]" };
+    private static final String[] TAG_STD     = { "_std_", "_std.", "[std]" };
+    private static final String[] TAG_PROPOSAL = { "_proposal_", "_proposal.", "[proposal]" };
 
     public DocumentType detect(String fileName, String content) {
         String normalizedFileName = normalize(fileName);
@@ -38,6 +40,9 @@ public class DocumentTypeDetectorService {
         }
         if (matchesTag(normalizedFileName, TAG_STD) || matchesHeader(header, STD_NAMES)) {
             return DocumentType.STD;
+        }
+        if (matchesTag(normalizedFileName, TAG_PROPOSAL) || matchesHeader(header, PROPOSAL_NAMES)) {
+            return DocumentType.PROPOSAL;
         }
 
         // ── Step 2: Nothing matched — treat as out of scope ───────────────────
