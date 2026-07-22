@@ -33,6 +33,12 @@ function SourceCodePage() {
     loadTeams();
   }, []);
 
+  useEffect(() => {
+    if (selectedTeam && selectedTeam.githubUrl) {
+      setGithubUrl(selectedTeam.githubUrl);
+    }
+  }, [selectedTeam]);
+
   async function loadTeams() {
     setLoadingTeams(true);
     try {
