@@ -1,39 +1,114 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import SyncTraceSidebar from '../../components/teacher/SyncTraceSidebar';
 import OverviewPage from './OverviewPage';
 import TraceabilityMappingPage from './TraceabilityMappingPage';
 import GroupTraceabilityPage from './GroupTraceabilityPage';
 import TraceabilityResultsPage from './TraceabilityResultsPage';
 import SourceCodePage from './SourceCodePage';
+import { useSyncTraceProgress } from '../../hooks/useSyncTraceProgress';
+import {
+  buildSyncTracePath,
+  isSyncTracePath,
+  navigatePath,
+  pathToView,
+} from '../../routes';
 import '../../../styles/pages/teacher-dashboard.css';
 import '../../../styles/components/layout.css';
+import './SyncTraceShell.css';
+
+function readLocation() {
+  const loc = pathToView(window.location.pathname, window.location.search);
+  return loc || {
+    view: 'overview',
+    teamCode: null,
+    focusGoalId: null,
+    focusStep: null,
+    focusDocType: null,
+  };
+}
 
 function SyncTraceDashboardPage({ onBack }) {
-  const [currentView, setCurrentView] = useState('overview');
-  const [focusGoalId, setFocusGoalId] = useState(null);
-  const [selectedTeamCode, setSelectedTeamCode] = useState(null);
+  const [loc, setLoc] = useState(readLocation);
+  const progress = useSyncTraceProgress();
 
-  function openGoal(goalId) {
-    setFocusGoalId(goalId);
-    setCurrentView('traceability');
+  const syncFromUrl = useCallback(() => {
+    if (!isSyncTracePath()) return;
+    const next = readLocation();
+    if (next.redirectTo) {
+      window.history.replaceState(null, '', next.redirectTo);
+      setLoc(pathToView(next.redirectTo, window.location.search) || {
+        view: 'overview',
+        teamCode: null,
+        focusGoalId: null,
+        focusStep: null,
+        focusDocType: null,
+      });
+      return;
+    }
+    setLoc(next);
+  }, []);
+
+  useEffect(() => {
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, [syncFromUrl]);
+
+  function handleNavigate(view, options = {}) {
+    const path = buildSyncTracePath(view, {
+      teamCode: options.teamCode,
+      focusGoalId: options.focusGoalId,
+      focusStep: options.focusStep,
+      focusDocType: options.focusDocType,
+    });
+    navigatePath(path);
   }
 
   function openGroupResults(teamCode) {
-    setSelectedTeamCode(teamCode);
-    setCurrentView('results');
+    handleNavigate('results', { teamCode });
   }
+
+  function handleBack() {
+    onBack?.();
+  }
+
+  const currentView = loc.view;
+  const focusGoalId = loc.focusGoalId;
+  const focusStep = loc.focusStep;
+  const focusDocType = loc.focusDocType;
+  const selectedTeamCode = loc.teamCode;
+
+  // Sidebar: highlight "Overview" when viewing a group detail
+  const sidebarView = currentView === 'results' ? 'overview' : currentView;
 
   return (
     <div className="layout layout--teacher">
-      <SyncTraceSidebar currentView={currentView} onNavigate={setCurrentView} onBack={onBack} />
+      <SyncTraceSidebar currentView={sidebarView} onNavigate={handleNavigate} onBack={handleBack} />
 
       <main className="layout__main">
-        {currentView === 'overview' && <OverviewPage onOpenGoal={openGoal} onOpenGroup={openGroupResults} />}
-        {currentView === 'traceability' && <TraceabilityMappingPage initialGoalId={focusGoalId} />}
-        {currentView === 'traceability-results' && <TraceabilityResultsPage />}
-        {currentView === 'source' && <SourceCodePage />}
+        {currentView === 'overview' && (
+          <OverviewPage onOpenGroup={openGroupResults} />
+        )}
+        {currentView === 'traceability' && (
+          <TraceabilityMappingPage
+            initialGoalId={focusGoalId}
+            focusStep={focusStep}
+            focusDocType={focusDocType}
+            onProgressRefresh={progress.refresh}
+          />
+        )}
+        {currentView === 'traceability-results' && (
+          <TraceabilityResultsPage onNavigate={handleNavigate} />
+        )}
+        {currentView === 'source' && (
+          <SourceCodePage onProgressRefresh={progress.refresh} />
+        )}
         {currentView === 'results' && (
-          <GroupTraceabilityPage teamCode={selectedTeamCode} onBack={() => setCurrentView('overview')} />
+          <GroupTraceabilityPage
+            teamCode={selectedTeamCode}
+            onBack={() => handleNavigate('overview')}
+            onNavigate={handleNavigate}
+          />
         )}
       </main>
     </div>

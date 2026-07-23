@@ -97,11 +97,14 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
 
     try {
       const selectedDoc = historyItems.find(item => item.id === selectedId);
+      const meta = extractSubmissionMeta(selectedDoc?.fileName);
+      const teamCode = meta.teamCode && meta.teamCode !== 'Unassigned' ? meta.teamCode : null;
       const data = await extractSmartGoalsFromProposal(
         selectedDoc.fileId,
         selectedDoc.fileName,
         'auto',
-        sessionId
+        sessionId,
+        teamCode
       );
       
       setResult(data);
@@ -127,7 +130,7 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
       isOpen={isOpen}
       onClose={onClose}
       title="Extract SMART Goals from Proposal"
-      subtitle="Select a PROPOSAL document to extract SMART goals using AI analysis."
+      subtitle="Select a PROPOSAL to extract GENERAL (→ modules) and SPECIFIC (→ functions/transactions) SMART goals."
       footer={
         <div className="modal-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
           <span className="tm-muted">

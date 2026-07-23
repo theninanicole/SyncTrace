@@ -59,6 +59,7 @@ public class SubmissionSyncService {
         int colSpmp      = getColumnIndexSafely("COL_INDEX_SPMP");
         int colStd       = getColumnIndexSafely("COL_INDEX_STD");
         int colProposal  = getColumnIndexSafely("COL_INDEX_PROPOSAL");
+        int colGithub    = getColumnIndexSafely("COL_INDEX_GITHUB");
 
         ValueRange response = sheetsService.spreadsheets().values()
                 .get(spreadsheetId, responsesRange)
@@ -82,6 +83,7 @@ public class SubmissionSyncService {
                 extractAndAddFile(row, colSpmp,    "SPMP",    studentName, teamCode, section, timestampStr, configMap, submissionMap);
                 extractAndAddFile(row, colStd,     "STD",     studentName, teamCode, section, timestampStr, configMap, submissionMap);
                 extractAndAddFile(row, colProposal, "PROPOSAL", studentName, teamCode, section, timestampStr, configMap, submissionMap);
+                extractAndAddGithub(row, colGithub, studentName, teamCode, section, timestampStr, submissionMap);
             }
         }
 
@@ -136,7 +138,7 @@ public class SubmissionSyncService {
         if (colIndex < 0 || colIndex >= row.size()) return;
 
         String url = row.get(colIndex).toString().trim();
-        if (url.isEmpty()) return;
+        if (url.isEmpty() || url.equalsIgnoreCase("none")) return;
 
         String fileId = extractIdFromUrl(url);
         if (fileId == null) return;
@@ -175,6 +177,29 @@ public class SubmissionSyncService {
         file.setMimeType(mimeType);
 
         submissionMap.put(fileId + "_" + docType, file);
+    }
+
+    private void extractAndAddGithub(
+            List<Object> row, int colIndex,
+            String studentName, String teamCode, String section,
+            String timestampStr, Map<String, DriveFile> submissionMap) {
+
+        if (colIndex < 0 || colIndex >= row.size()) return;
+
+        String url = row.get(colIndex).toString().trim();
+        if (url.isEmpty() || url.equalsIgnoreCase("none") || !url.toLowerCase().contains("github.com")) {
+            return;
+        }
+
+        String stableId = "github_" + Integer.toUnsignedString(url.hashCode());
+        DriveFile file = new DriveFile();
+        file.setId(stableId);
+        file.setWebViewLink(url);
+        file.setName("[GITHUB] " + section + " - " + teamCode + " | " + studentName);
+        file.setSubmittedAt(timestampStr);
+        file.setMimeType("text/x-github-url");
+
+        submissionMap.put(stableId + "_GITHUB", file);
     }
 
     private String extractIdFromUrl(String url) {

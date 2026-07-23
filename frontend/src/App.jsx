@@ -6,19 +6,22 @@ import Home from './Home';
 import TeacherDashboard from './pages/teacher/TeacherDashboardPage';
 import SyncTraceDashboardPage from './synctrace';
 import LoadingScreen from './components/common/LoadingScreen';
+import {
+  buildSyncTracePath,
+  isSyncTracePath,
+  navigatePath,
+  pathToView,
+} from './synctrace/routes';
 
 function App() {
   const [studentData, setStudentData]   = useState(null);
   const [authError, setAuthError]       = useState('');
   const [isVerifying, setIsVerifying]   = useState(false);
-  const [showSyncTrace, setShowSyncTrace] = useState(false);
-  // ── NEW: true until we've confirmed whether a session exists or not ────────
+  const [showSyncTrace, setShowSyncTrace] = useState(() => isSyncTracePath());
   const [isInitializing, setIsInitializing] = useState(true);
 
   const isVerifiedRef  = useRef(false);
   const pendingErrorRef = useRef('');
-
-  // ── Shared verify logic ───────────────────────────────────────────────────
 
   async function verifySession(currentSession) {
     if (!currentSession) return;
@@ -59,9 +62,6 @@ function App() {
     }
   }
 
-  // ── On mount: check for an existing session immediately ──────────────────
-  // This prevents the login flash on page refresh when a valid session exists.
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -72,13 +72,10 @@ function App() {
     });
   }, []);
 
-  // ── Auth state changes (sign in / sign out events) ────────────────────────
-
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
 
       if (event === 'SIGNED_IN' && currentSession) {
-        // Skip if we already verified this session in the getSession() call above
         if (isVerifiedRef.current) return;
         await verifySession(currentSession);
       }
@@ -87,6 +84,9 @@ function App() {
         isVerifiedRef.current = false;
         setStudentData(null);
         setShowSyncTrace(false);
+        if (isSyncTracePath()) {
+          window.history.replaceState(null, '', '/');
+        }
 
         if (pendingErrorRef.current) {
           setAuthError(pendingErrorRef.current);
@@ -99,7 +99,36 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Show loading screen while checking initial session OR verifying ────────
+  // Keep SyncTrace shell in sync with the browser URL (back/forward + pushState).
+  useEffect(() => {
+    function syncRoute() {
+      const onSyncTrace = isSyncTracePath();
+      setShowSyncTrace(onSyncTrace);
+
+      if (onSyncTrace) {
+        const loc = pathToView(window.location.pathname, window.location.search);
+        if (loc?.redirectTo) {
+          window.history.replaceState(null, '', loc.redirectTo);
+        }
+      }
+    }
+
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
+
+  function openSyncTrace() {
+    navigatePath(buildSyncTracePath('overview'));
+    setShowSyncTrace(true);
+  }
+
+  function closeSyncTrace() {
+    if (isSyncTracePath()) {
+      navigatePath('/');
+    }
+    setShowSyncTrace(false);
+  }
 
   if (isInitializing || isVerifying) {
     return (
@@ -115,9 +144,9 @@ function App() {
       {studentData ? (
         studentData.role === 'TEACHER' ? (
           showSyncTrace ? (
-            <SyncTraceDashboardPage onBack={() => setShowSyncTrace(false)} />
+            <SyncTraceDashboardPage onBack={closeSyncTrace} />
           ) : (
-            <TeacherDashboard user={studentData} onOpenSyncTrace={() => setShowSyncTrace(true)} />
+            <TeacherDashboard user={studentData} onOpenSyncTrace={openSyncTrace} />
           )
         ) : (
           <Home studentData={studentData} />

@@ -7,8 +7,9 @@ import {
   addGoalComponents,
   removeGoalComponent,
 } from '../api';
+import { DOC_TYPES } from '../constants';
 
-export const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD', 'IMPLEMENTATION'];
+export { DOC_TYPES };
 
 export function useTraceability(showToast, initialGoalId = null) {
   const [goals, setGoals]                 = useState([]);
@@ -58,9 +59,9 @@ export function useTraceability(showToast, initialGoalId = null) {
     loadMappings(selectedGoalId);
   }, [selectedGoalId, loadMappings]);
 
-  async function handleCreateGoal(description) {
+  async function handleCreateGoal(description, options = {}) {
     try {
-      const goal = await createSmartGoal(description);
+      const goal = await createSmartGoal(description, options);
       await loadGoals(true);
       setSelectedGoalId(goal.id);
       showToast?.('Goal created.', 'success');
@@ -105,9 +106,11 @@ export function useTraceability(showToast, initialGoalId = null) {
   }
 
   const selectedGoal = goals.find((g) => g.id === selectedGoalId) || null;
+  const generalGoals = goals.filter((g) => g.goalKind === 'GENERAL');
 
   return {
     goals,
+    generalGoals,
     loadingGoals,
     selectedGoalId,
     setSelectedGoalId,
@@ -115,6 +118,7 @@ export function useTraceability(showToast, initialGoalId = null) {
     mappedComponents,
     loadingMappings,
     loadGoals,
+    loadMappings,
     createGoal: handleCreateGoal,
     deleteGoal: handleDeleteGoal,
     addComponents: handleAddComponents,

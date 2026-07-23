@@ -56,10 +56,14 @@ public class StdPromptService {
                Use this format for each diagram found:
 
                * [IMG-X] - <Diagram Type>:
+                 - Elements: <exact IDs/labels from the document, comma-separated — e.g. TC-01 Login, TC-02 Logout>
                  - Notation observed: <specific symbols, structure, and labels found>
                  - Correctness: <assessment of whether notation is used properly>
                  - Issues: <specific errors, missing elements, or inconsistencies>
                  - Alignment: <whether the diagram matches the written test sections>
+
+               IMPORTANT: Preserve the exact element codes/IDs written in the document
+               (TC-01, TD-02, etc.). Do not invent codes when the document already has them.
 
             If no diagrams or figures are detected in the images, output exactly "None detected."
             """;

@@ -24,6 +24,7 @@ import {
 } from '../services/dashboardService';
 import {
   buildFilterOptions,
+  DOC_TYPES,
   extractSubmissionMeta,
   filterSubmissions,
   normalizeSection,
@@ -352,7 +353,7 @@ export function useTeacherDashboard(showToast) {
       return {
         studentName: matchedNames.length === 1 ? matchedNames[0] : null,
         studentCount: matchedNames.length,
-        docCounts: ['SRS', 'SDD', 'SPMP', 'STD'].map((type) => ({
+        docCounts: DOC_TYPES.map((type) => ({
           type,
           count: matched.filter((f) => extractSubmissionMeta(f.name).documentType === type).length,
         })),
@@ -364,7 +365,7 @@ export function useTeacherDashboard(showToast) {
     return {
       studentName: null,
       studentCount,
-      docCounts: ['SRS', 'SDD', 'SPMP', 'STD'].map((type) => ({
+      docCounts: DOC_TYPES.map((type) => ({
         type,
         count: scoped.filter((f) => extractSubmissionMeta(f.name).documentType === type).length,
       })),

@@ -14,6 +14,7 @@ import java.util.Optional;
 public interface TraceComponentRepository extends JpaRepository<TraceComponent, Long> {
     List<TraceComponent> findByDocTypeOrderByCreatedAtDesc(DocType docType);
     Optional<TraceComponent> findByDocTypeAndNameIgnoreCase(DocType docType, String name);
+    Optional<TraceComponent> findByDocTypeAndCodeNameIgnoreCase(DocType docType, String codeName);
     List<TraceComponent> findByDocTypeAndNameContainingIgnoreCase(DocType docType, String search);
     List<TraceComponent> findByNameContainingIgnoreCase(String search);
 }

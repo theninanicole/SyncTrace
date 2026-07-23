@@ -1,5 +1,6 @@
 package com.ieee.evaluator.synctrace.controller;
 
+import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.service.SmartGoalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,9 +20,9 @@ public class SmartGoalController {
     }
 
     @GetMapping
-    public ResponseEntity<?> getSmartGoals() {
+    public ResponseEntity<?> getSmartGoals(@RequestParam(required = false) String teamCode) {
         try {
-            return ResponseEntity.ok(goalService.getAllGoalsWithCategoryStatus());
+            return ResponseEntity.ok(goalService.getAllGoalsWithCategoryStatus(teamCode));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch SMART goals: " + e.getMessage()));
@@ -39,13 +40,30 @@ public class SmartGoalController {
     }
 
     @PostMapping
-    public ResponseEntity<?> createSmartGoal(@RequestBody Map<String, String> payload) {
+    public ResponseEntity<?> createSmartGoal(@RequestBody Map<String, Object> payload) {
         try {
-            String description = payload.get("description");
+            String description = payload.get("description") != null
+                ? String.valueOf(payload.get("description")) : null;
             if (description == null || description.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Description is required"));
             }
-            return ResponseEntity.ok(goalService.createGoal(description));
+
+            GoalKind goalKind = GoalKind.SPECIFIC;
+            if (payload.get("goalKind") != null && !String.valueOf(payload.get("goalKind")).isBlank()) {
+                goalKind = GoalKind.valueOf(String.valueOf(payload.get("goalKind")).trim().toUpperCase());
+            }
+
+            Long parentGoalId = null;
+            if (payload.get("parentGoalId") != null && !String.valueOf(payload.get("parentGoalId")).isBlank()) {
+                parentGoalId = Long.valueOf(String.valueOf(payload.get("parentGoalId")));
+            }
+
+            String teamCode = payload.get("teamCode") != null
+                ? String.valueOf(payload.get("teamCode")) : null;
+
+            return ResponseEntity.ok(goalService.createGoal(description, goalKind, parentGoalId, teamCode));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to create goal: " + e.getMessage()));

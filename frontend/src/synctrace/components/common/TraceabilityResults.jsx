@@ -1,14 +1,21 @@
 import { useMemo, useState } from 'react';
 import TraceabilityMatrixTable from './TraceabilityMatrix';
 import IssueAnalysisPanel from './IssueAnalysisPanel';
-import { buildGapIssues } from '../../utils/gapIssues';
+import { buildGapIssues, buildRowDiagnosis } from '../../utils/gapIssues';
 import '../../pages/teacher/TraceabilityMappingPage.css';
 import './TraceabilityResults.css';
 
-function TraceabilityResults({ loading, rows, onComponentClick }) {
-  const issues = useMemo(() => buildGapIssues(rows), [rows]);
-  const [selectedIssueId, setSelectedIssueId] = useState(null);
+function TraceabilityResults({ loading, rows, onComponentClick, onAddClick }) {
+  const enrichedRows = useMemo(
+    () => rows.map((row) => ({
+      ...row,
+      diagnosis: row.diagnosis ?? buildRowDiagnosis(row),
+    })),
+    [rows],
+  );
 
+  const issues = useMemo(() => buildGapIssues(enrichedRows), [enrichedRows]);
+  const [selectedIssueId, setSelectedIssueId] = useState(null);
   const selectedIssue = issues.find((issue) => issue.id === selectedIssueId) ?? issues[0] ?? null;
 
   return (
@@ -18,12 +25,13 @@ function TraceabilityResults({ loading, rows, onComponentClick }) {
       ) : (
         <>
           <TraceabilityMatrixTable
-            rows={rows}
+            rows={enrichedRows}
             onComponentClick={onComponentClick}
+            onAddClick={onAddClick}
             emptyMessage="No SMART goals yet."
           />
 
-          {rows.length > 0 && (
+          {enrichedRows.length > 0 && (
             <IssueAnalysisPanel
               issues={issues}
               selectedIssue={selectedIssue}

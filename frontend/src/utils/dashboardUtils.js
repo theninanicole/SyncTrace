@@ -49,12 +49,14 @@ export function getDisplayType(value) {
       return 'Plain Text';
     case 'application/vnd.google-apps.folder':
       return 'FOLDER (Invalid)';
+    case 'text/x-github-url':
+      return 'GitHub Repo';
     default:
       return 'Document';
   }
 }
 
-const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD'];
+export const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD', 'PROPOSAL', 'GITHUB'];
 
 export function normalizeSection(section) {
   if (!section) return '';
@@ -70,7 +72,9 @@ export function extractSubmissionMeta(fileName) {
   const name = String(fileName || '');
   const upper = name.toUpperCase();
 
-  const docMatch = upper.match(/^\[(SRS|SDD|SPMP|STD|PROPOSAL)\]/) || upper.match(/\b(SRS|SDD|SPMP|STD|PROPOSAL)\b/);
+  const docMatch =
+    upper.match(/^\[(SRS|SDD|SPMP|STD|PROPOSAL|GITHUB)\]/) ||
+    upper.match(/\b(SRS|SDD|SPMP|STD|PROPOSAL|GITHUB)\b/);
   const sectionMatch = upper.match(/\bG[O0]?\d\b/);
   const teamMatch = upper.match(/\b\d{4}-SEM\d-IT\d+-\d{2}\b/);
   const studentPart = name.includes('|') ? name.split('|').pop().trim() : '';

@@ -1,5 +1,4 @@
-import { getDisplayType } from '../../utils/dashboardUtils';
-import { formatDateTime } from '../../utils/dashboardUtils';
+import { extractSubmissionMeta, getDisplayType, formatDateTime } from '../../utils/dashboardUtils';
 
 function TeacherSubmissionsTable({ files, loading, isSyncing, analyzedFileIds, onSort, onAnalyze, onViewHistory }) {
   return (
@@ -23,27 +22,45 @@ function TeacherSubmissionsTable({ files, loading, isSyncing, analyzedFileIds, o
               <td colSpan="4" className="muted">No submissions match the selected filters.</td>
             </tr>
           ) : (
-            files.map((file, index) => (
-              <tr key={`${file.id}-${index}`}>
-                <td>
-                  <a href={file.webViewLink} target="_blank" rel="noreferrer" className="strong link-reset">
-                    {file.name}
-                  </a>
-                </td>
-                <td className="teacher-submissions__type-col">{getDisplayType(file.mimeType)}</td>
-                <td>{formatDateTime(file.submittedAt)}</td>
-                <td className="teacher-submissions__actions-col">
-                  <div className="teacher-submissions__actions">
-                    <button className="btn btn--soft teacher-submissions__action-btn" onClick={() => onAnalyze(file)}>
-                      {analyzedFileIds?.has(file.id) ? 'Re-Evaluate' : 'Run AI Analysis'}
-                    </button>
-                    <button className="btn btn--soft teacher-submissions__history-btn" onClick={() => onViewHistory?.(file)}>
-                      View History
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
+            files.map((file, index) => {
+              const docType = extractSubmissionMeta(file.name).documentType;
+              const isGithub = docType === 'GITHUB' || file.mimeType === 'text/x-github-url';
+
+              return (
+                <tr key={`${file.id}-${index}`}>
+                  <td>
+                    <a href={file.webViewLink} target="_blank" rel="noreferrer" className="strong link-reset">
+                      {file.name}
+                    </a>
+                  </td>
+                  <td className="teacher-submissions__type-col">{getDisplayType(file)}</td>
+                  <td>{formatDateTime(file.submittedAt)}</td>
+                  <td className="teacher-submissions__actions-col">
+                    <div className="teacher-submissions__actions">
+                      {isGithub ? (
+                        <a
+                          className="btn btn--soft teacher-submissions__action-btn"
+                          href={file.webViewLink}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open GitHub
+                        </a>
+                      ) : (
+                        <button className="btn btn--soft teacher-submissions__action-btn" onClick={() => onAnalyze(file)}>
+                          {analyzedFileIds?.has(file.id) ? 'Re-Evaluate' : 'Run AI Analysis'}
+                        </button>
+                      )}
+                      {!isGithub && (
+                        <button className="btn btn--soft teacher-submissions__history-btn" onClick={() => onViewHistory?.(file)}>
+                          View History
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>

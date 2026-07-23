@@ -2,18 +2,26 @@ import { API_BASE_URL } from '../api';
 
 // ── SyncTrace: Traceability Mapping ─────────────────────────────────────────
 
-export const getSmartGoals = async () => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals`);
+export const getSmartGoals = async (teamCode) => {
+    const params = new URLSearchParams();
+    if (teamCode) params.set('teamCode', teamCode);
+    const query = params.toString();
+    const response = await fetch(`${API_BASE_URL}/synctrace/goals${query ? `?${query}` : ''}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch SMART goals.');
     return data;
 };
 
-export const createSmartGoal = async (description) => {
+export const createSmartGoal = async (description, options = {}) => {
     const response = await fetch(`${API_BASE_URL}/synctrace/goals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({
+            description,
+            goalKind: options.goalKind || 'SPECIFIC',
+            parentGoalId: options.parentGoalId || null,
+            teamCode: options.teamCode || null,
+        }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to create goal.');
@@ -40,22 +48,25 @@ export const getTraceComponents = async (docType, search) => {
     return data;
 };
 
-export const createTraceComponent = async (docType, name, content) => {
+export const createTraceComponent = async (docType, name, content, artifactKind) => {
     const response = await fetch(`${API_BASE_URL}/synctrace/components`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docType, name, content }),
+        body: JSON.stringify({ docType, name, content, artifactKind }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to create component.');
     return data;
 };
 
-export const renameTraceComponent = async (componentId, name) => {
+export const renameTraceComponent = async (componentId, nameOrPayload) => {
+    const payload = typeof nameOrPayload === 'string'
+        ? { name: nameOrPayload }
+        : nameOrPayload;
     const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to rename component.');
@@ -125,11 +136,11 @@ export const removeGoalComponent = async (goalId, componentId) => {
 
 // ── SyncTrace: Proposal Analysis ─────────────────────────────────────────────
 
-export const extractSmartGoalsFromProposal = async (fileId, fileName, model, sessionId) => {
+export const extractSmartGoalsFromProposal = async (fileId, fileName, model, sessionId, teamCode) => {
     const response = await fetch(`${API_BASE_URL}/synctrace/proposals/extract-goals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, fileName, model, sessionId }),
+        body: JSON.stringify({ fileId, fileName, model, sessionId, teamCode: teamCode || null }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to extract SMART goals.');
@@ -186,8 +197,10 @@ export const ingestRepository = async ({ teamCode, githubUrl, sessionId }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamCode, githubUrl, sessionId }),
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to ingest repository.');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.error || data.message || `GitHub ingestion failed (${response.status})`);
+    }
     return data;
 };
 

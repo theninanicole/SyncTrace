@@ -5,22 +5,13 @@ import com.google.api.client.auth.oauth2.TokenResponse;
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.json.gson.GsonFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Builds a Drive-only OAuth credential from a pre-obtained refresh token.
- *
- * This credential is used exclusively by GoogleDriveConfig to read student
- * submission files shared as "Anyone with the link". It is completely separate
- * from the service account credential used for Google Sheets.
- *
- * To obtain the refresh token, run the OAuth consent flow once using the
- * Google OAuth Playground (https://developers.google.com/oauthplayground):
- *   1. Use your Google Cloud project's client ID and client secret.
- *   2. Authorize the scope: https://www.googleapis.com/auth/drive.readonly
- *   3. Exchange the authorization code for tokens.
- *   4. Copy the refresh token into the GOOGLE_REFRESH_TOKEN environment variable.
+ * Legacy user-OAuth Drive credential. Drive access now uses the service account
+ * ({@code googleCredential}). This bean remains optional for compatibility.
  */
 @Configuration
 public class OAuthCredentialConfig {
@@ -35,6 +26,7 @@ public class OAuthCredentialConfig {
     private String refreshToken;
 
     @Bean(name = "driveOAuthCredential")
+    @ConditionalOnProperty(prefix = "app.google.oauth", name = "refresh-token")
     public Credential driveOAuthCredential() {
         if (clientId == null || clientId.isBlank() ||
             clientSecret == null || clientSecret.isBlank() ||

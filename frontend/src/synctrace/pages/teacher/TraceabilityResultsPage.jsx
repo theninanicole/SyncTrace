@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Send } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
 import { getSmartGoals, getAllGoalComponents } from '../../api';
 import { DOC_TYPES } from '../../hooks/useTraceability';
+import { orderGoalsHierarchically } from '../../constants';
 import TraceabilityResults from '../../components/common/TraceabilityResults';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import SendButton from '../../components/common/SendButton';
 import ExportReportButton from '../../components/common/ExportReportButton';
 import './TraceabilityResultsPage.css';
 
-function TraceabilityResultsPage() {
+function TraceabilityResultsPage({ onNavigate }) {
   const { toast, showToast, hideToast } = useToast();
   const [goals, setGoals] = useState([]);
   const [componentsByGoal, setComponentsByGoal] = useState({});
@@ -36,17 +36,27 @@ function TraceabilityResultsPage() {
   }
 
   const rows = useMemo(() => {
-    return goals.map((goal, gi) => {
+    const ordered = orderGoalsHierarchically(goals);
+    const indexById = new Map(ordered.map((g, i) => [g.id, i]));
+    return ordered.map((goal, gi) => {
+      const mapped = componentsByGoal[goal.id] || componentsByGoal[String(goal.id)] || [];
       const cells = {};
-      DOC_TYPES.forEach((dt) => { cells[dt] = componentsByGoal[goal.id]?.filter((c) => c.docType === dt) || []; });
+      DOC_TYPES.forEach((dt) => { cells[dt] = mapped.filter((c) => c.docType === dt); });
       const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
+      const parentIdx = goal.parentGoalId != null ? indexById.get(goal.parentGoalId) : null;
       return {
         goalId: goal.id,
-        code: `G${gi + 1}`,
+        code: `G-${String(gi + 1).padStart(2, '0')}`,
         description: goal.description,
+        goalKind: goal.goalKind || 'SPECIFIC',
+        parentGoalId: goal.parentGoalId || null,
+        parentCode: parentIdx != null ? `G-${String(parentIdx + 1).padStart(2, '0')}` : null,
+        teamCode: goal.teamCode || '',
         cells,
         coveredTypes,
         aligned: coveredTypes === DOC_TYPES.length,
+        createdAt: goal.createdAt,
+        nested: goal.goalKind !== 'GENERAL' && Boolean(goal.parentGoalId),
       };
     });
   }, [goals, componentsByGoal]);
@@ -83,8 +93,8 @@ function TraceabilityResultsPage() {
       <ToastMessage toast={toast} onClose={hideToast} />
 
       <PanelHeader
-        title="Traceability Results"
-        subtitle="Traceability coverage across SMART goals and project artifacts"
+        title="Results Matrix"
+        subtitle="Each row is a SMART goal. Missing cells and the issue list tell you what still needs mapping."
         actions={
           <div className="teacher-header-actions">
             <SendButton showToast={showToast} />
@@ -130,6 +140,11 @@ function TraceabilityResultsPage() {
         loading={loading}
         rows={rows}
         onComponentClick={setPreviewComponent}
+        onAddClick={(row, docType) => onNavigate?.('traceability', {
+          focusGoalId: row.goalId,
+          focusStep: 'map',
+          focusDocType: docType,
+        })}
       />
 
       <ComponentDetailModal

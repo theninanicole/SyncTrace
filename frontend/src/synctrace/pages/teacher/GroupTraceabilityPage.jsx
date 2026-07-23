@@ -15,7 +15,7 @@ import { API_BASE_URL } from '../../../api';
 import './TraceabilityMappingPage.css';
 import './GroupTraceabilityPage.css';
 
-function GroupTraceabilityPage({ teamCode, onBack }) {
+function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
   const { toast, showToast, hideToast } = useToast();
   const { loading, section, rows, status, lastTraceability, reload } = useGroupTraceability(teamCode, showToast);
   const [previewComponent, setPreviewComponent] = useState(null);
@@ -173,7 +173,16 @@ function GroupTraceabilityPage({ teamCode, onBack }) {
         </div>
       ) : null}
 
-      <TraceabilityResults loading={loading} rows={rows} onComponentClick={setPreviewComponent} />
+      <TraceabilityResults
+        loading={loading}
+        rows={rows}
+        onComponentClick={setPreviewComponent}
+        onAddClick={(row, docType) => onNavigate?.('traceability', {
+          focusGoalId: row.goalId,
+          focusStep: 'map',
+          focusDocType: docType,
+        })}
+      />
 
       <ComponentDetailModal
         component={previewComponent}

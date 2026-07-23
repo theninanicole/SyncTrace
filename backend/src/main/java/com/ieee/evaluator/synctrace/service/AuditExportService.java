@@ -195,21 +195,25 @@ public class AuditExportService {
     }
 
     private Map<String, Object> goalToMap(SmartGoal goal) {
-        return Map.of(
-            "id", goal.getId(),
-            "description", goal.getDescription(),
-            "createdAt", goal.getCreatedAt()
-        );
+        Map<String, Object> map = new java.util.HashMap<>();
+        map.put("id", goal.getId());
+        map.put("description", goal.getDescription());
+        map.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : "SPECIFIC");
+        map.put("parentGoalId", goal.getParentGoalId());
+        map.put("teamCode", goal.getTeamCode());
+        map.put("createdAt", goal.getCreatedAt());
+        return map;
     }
 
     private Map<String, Object> componentToMap(TraceComponent component) {
-        return Map.of(
-            "id", component.getId(),
-            "docType", component.getDocType(),
-            "name", component.getName(),
-            "aiExtracted", component.getAiExtracted(),
-            "createdAt", component.getCreatedAt()
-        );
+        Map<String, Object> map = new java.util.HashMap<>();
+        map.put("id", component.getId());
+        map.put("docType", component.getDocType());
+        map.put("artifactKind", component.getArtifactKind() != null ? component.getArtifactKind().name() : "UNSPECIFIED");
+        map.put("name", component.getName());
+        map.put("aiExtracted", component.getAiExtracted());
+        map.put("createdAt", component.getCreatedAt());
+        return map;
     }
 
     private Map<String, Object> findingToMap(ContinuityFinding finding) {

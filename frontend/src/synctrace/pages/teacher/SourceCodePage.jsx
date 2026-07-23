@@ -5,7 +5,10 @@ import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
 import { API_BASE_URL } from '../../../api';
 import { getTeamRepositories, ingestRepository, analyzeSourceCodeAlignment } from '../../api';
+import { componentLabel } from '../../constants';
+import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import './SourceCodePage.css';
+import './TraceabilityMappingPage.css';
 
 function generateSessionId() {
   return crypto.randomUUID
@@ -13,7 +16,7 @@ function generateSessionId() {
     : Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function SourceCodePage() {
+function SourceCodePage({ onProgressRefresh }) {
   const { toast, showToast, hideToast } = useToast();
   const [teams, setTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -28,6 +31,7 @@ function SourceCodePage() {
   const [alignmentProgress, setAlignmentProgress] = useState({ step: '', message: '', percent: 0 });
   
   const [githubUrl, setGithubUrl] = useState('');
+  const [previewComponent, setPreviewComponent] = useState(null);
 
   useEffect(() => {
     loadTeams();
@@ -94,6 +98,7 @@ function SourceCodePage() {
       const data = await ingestRepository({ teamCode: selectedTeam.teamCode, githubUrl, sessionId });
       setIngestedComponents(data.components || []);
       showToast(`Ingested ${data.count} files`, 'success');
+      onProgressRefresh?.();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -172,7 +177,7 @@ function SourceCodePage() {
 
       <PanelHeader
         title="Source Code"
-        subtitle="GitHub repository ingestion and SDD-to-implementation alignment analysis"
+        subtitle="Pull team GitHub files into Implementation components you can map to goals"
         actions={
           <div className="teacher-header-actions">
             <button className="btn btn--soft" onClick={loadTeams} disabled={loadingTeams}>
@@ -237,8 +242,16 @@ function SourceCodePage() {
             <h4>Ingested Files ({ingestedComponents.length})</h4>
             <div className="sc-component-list">
               {ingestedComponents.slice(0, 50).map((comp) => (
-                <div key={comp.id} className="sc-component-item">
-                  <div className="sc-component-name">{comp.name}</div>
+                <button
+                  type="button"
+                  key={comp.id}
+                  className="sc-component-item sc-component-item--clickable"
+                  onClick={() => setPreviewComponent(comp)}
+                  title={comp.name || 'View source code'}
+                >
+                  <div className="sc-component-name">
+                    {componentLabel(comp)}
+                  </div>
                   <div className="sc-component-meta">
                     <span className="sc-badge">{comp.docType}</span>
                     {comp.createdAt && (
@@ -247,7 +260,7 @@ function SourceCodePage() {
                       </span>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
               {ingestedComponents.length > 50 && (
                 <div className="sc-component-item sc-component-item--more">
@@ -312,6 +325,18 @@ function SourceCodePage() {
           </div>
         )}
       </div>
+
+      <ComponentDetailModal
+        component={previewComponent}
+        onClose={() => setPreviewComponent(null)}
+        showToast={showToast}
+        onRenamed={(updated) => {
+          setPreviewComponent(updated);
+          setIngestedComponents((prev) =>
+            prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)),
+          );
+        }}
+      />
     </div>
   );
 }

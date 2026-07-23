@@ -84,7 +84,7 @@ function ExtractComponentsModal({ isOpen, onClose, showToast, onExtracted }) {
     if (failed === 0) {
       showToast?.(`Found ${totalFound} component(s) across ${ids.length} document(s) — now available in the library.`, 'success');
     } else {
-      showToast?.(`${ids.length - failed} of ${ids.length} document(s) extracted (${totalFound} component(s) found). ${failed} failed — see details below.`, 'error');
+      showToast?.(`${ids.length - failed} of ${ids.length} document(s) extracted (${totalFound} component(s) found). ${failed} failed — see the error under each document in this list.`, 'error');
     }
   }
 
@@ -139,35 +139,46 @@ function ExtractComponentsModal({ isOpen, onClose, showToast, onExtracted }) {
                       const isProcessing = processingId === doc.id;
                       const result = results.get(doc.id);
                       return (
-                        <label
-                          key={doc.id}
-                          className={`tm-team-doc ${checked ? 'tm-team-doc--checked' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={isExtracting}
-                            onChange={() => toggleSelected(doc.id)}
-                          />
-                          <FileText size={14} />
-                          <span className="tm-badge" data-doctype={doc.meta.documentType}>
-                            {doc.meta.documentType || '—'}
-                          </span>
-                          <span className="tm-team-doc__meta">
-                            v{doc.version} · {formatDateTime(doc.evaluatedAt)}
-                          </span>
-                          {isProcessing && <Loader2 size={14} className="tm-spin" />}
-                          {!isProcessing && result?.status === 'success' && (
-                            <span className="tm-team-doc__result tm-team-doc__result--ok" title={`${result.count} component(s) found`}>
-                              <CircleCheck size={14} />
+                        <div key={doc.id} className="tm-team-doc-block">
+                          <label
+                            className={`tm-team-doc ${checked ? 'tm-team-doc--checked' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={isExtracting}
+                              onChange={() => toggleSelected(doc.id)}
+                            />
+                            <FileText size={14} />
+                            <span className="tm-badge" data-doctype={doc.meta.documentType}>
+                              {doc.meta.documentType || '—'}
                             </span>
+                            <span className="tm-team-doc__meta">
+                              v{doc.version} · {formatDateTime(doc.evaluatedAt)}
+                            </span>
+                            {isProcessing && <Loader2 size={14} className="tm-spin" />}
+                            {!isProcessing && result?.status === 'success' && (
+                              <span className="tm-team-doc__result tm-team-doc__result--ok">
+                                <CircleCheck size={14} />
+                              </span>
+                            )}
+                            {!isProcessing && result?.status === 'error' && (
+                              <span className="tm-team-doc__result tm-team-doc__result--error">
+                                <CircleX size={14} />
+                              </span>
+                            )}
+                          </label>
+                          {!isProcessing && result?.status === 'success' && (
+                            <p className="tm-team-doc__detail tm-team-doc__detail--ok">
+                              Extracted {result.count} component(s) into the library.
+                            </p>
                           )}
                           {!isProcessing && result?.status === 'error' && (
-                            <span className="tm-team-doc__result tm-team-doc__result--error" title={result.message}>
-                              <CircleX size={14} />
-                            </span>
+                            <p className="tm-team-doc__detail tm-team-doc__detail--error">
+                              {result.message || 'Extraction failed for this document.'}
+                            </p>
                           )}
-                        </label>
+                        </div>
                       );
                     })}
                   </div>

@@ -1,8 +1,12 @@
 package com.ieee.evaluator.synctrace.service;
 
+import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding.Severity;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
+import com.ieee.evaluator.synctrace.model.SmartGoal;
+import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
+import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
@@ -37,7 +41,6 @@ public class ContinuityGapDetectionService {
 
     @Transactional
     public List<ContinuityFinding> detectGaps(String teamCode, Long goalId) {
-        // Clear existing findings for this team/goal
         if (goalId != null) {
             findingRepository.findByGoalId(goalId).forEach(f -> {
                 if (teamCode == null || teamCode.equals(f.getTeamCode())) {
@@ -49,27 +52,32 @@ public class ContinuityGapDetectionService {
         }
 
         List<ContinuityFinding> findings = new ArrayList<>();
-
-        // Get all goals or specific goal
         List<Long> goalIds = goalId != null ? List.of(goalId) : getAllGoalIds();
 
         for (Long currentGoalId : goalIds) {
-            // Get all mappings for this goal
+            Optional<SmartGoal> goalOpt = goalRepository.findById(currentGoalId);
+            if (goalOpt.isEmpty()) continue;
+            SmartGoal goal = goalOpt.get();
+
             List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(currentGoalId);
-            
-            // Group by docType
-            Map<DocType, List<GoalComponentMapping>> byDocType = new HashMap<>();
+            Map<DocType, List<TraceComponent>> byDocType = new HashMap<>();
+            List<TraceComponent> mappedComponents = new ArrayList<>();
+
             for (GoalComponentMapping mapping : mappings) {
-                byDocType.computeIfAbsent(getDocTypeForComponent(mapping.getComponentId()), k -> new ArrayList<>())
-                    .add(mapping);
+                componentRepository.findById(mapping.getComponentId()).ifPresent(component -> {
+                    mappedComponents.add(component);
+                    if (component.getDocType() != null) {
+                        byDocType.computeIfAbsent(component.getDocType(), k -> new ArrayList<>()).add(component);
+                    }
+                });
             }
 
-            // Check for gaps in the 5 sequential pairs
             checkMissingSrs(findings, teamCode, currentGoalId, byDocType);
             checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.SDD, byDocType);
             checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.SPMP, byDocType);
             checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.STD, byDocType);
             checkGap(findings, teamCode, currentGoalId, DocType.SDD, DocType.IMPLEMENTATION, byDocType);
+            checkGoalKindAlignment(findings, teamCode, goal, mappedComponents);
         }
 
         return findingRepository.saveAll(findings);
@@ -77,13 +85,13 @@ public class ContinuityGapDetectionService {
 
     private void checkMissingSrs(
             List<ContinuityFinding> findings, String teamCode, Long goalId,
-            Map<DocType, List<GoalComponentMapping>> byDocType) {
+            Map<DocType, List<TraceComponent>> byDocType) {
         boolean hasSrs = byDocType.containsKey(DocType.SRS) && !byDocType.get(DocType.SRS).isEmpty();
         if (!hasSrs) {
             ContinuityFinding finding = new ContinuityFinding();
             finding.setTeamCode(teamCode);
             finding.setGoalId(goalId);
-            finding.setDocTypeFrom(DocType.PROPOSAL); // symbolic label only — never a real component
+            finding.setDocTypeFrom(DocType.PROPOSAL);
             finding.setDocTypeTo(DocType.SRS);
             finding.setSeverity(Severity.HIGH);
             finding.setDescription("Goal has no mapped SRS component. This represents a continuity gap.");
@@ -98,13 +106,12 @@ public class ContinuityGapDetectionService {
             Long goalId,
             DocType fromType,
             DocType toType,
-            Map<DocType, List<GoalComponentMapping>> byDocType) {
-        
+            Map<DocType, List<TraceComponent>> byDocType) {
+
         boolean hasFrom = byDocType.containsKey(fromType) && !byDocType.get(fromType).isEmpty();
         boolean hasTo = byDocType.containsKey(toType) && !byDocType.get(toType).isEmpty();
 
         if (hasFrom && !hasTo) {
-            // Gap: goal has component in 'from' but missing in 'to'
             ContinuityFinding finding = new ContinuityFinding();
             finding.setTeamCode(teamCode);
             finding.setGoalId(goalId);
@@ -119,15 +126,40 @@ public class ContinuityGapDetectionService {
         }
     }
 
-    private DocType getDocTypeForComponent(Long componentId) {
-        return componentRepository.findById(componentId)
-            .map(com.ieee.evaluator.synctrace.model.TraceComponent::getDocType)
-            .orElse(null);
+    private void checkGoalKindAlignment(
+            List<ContinuityFinding> findings,
+            String teamCode,
+            SmartGoal goal,
+            List<TraceComponent> mappedComponents) {
+
+        if (mappedComponents.isEmpty()) return;
+
+        GoalKind kind = goal.getGoalKind() != null ? goal.getGoalKind() : GoalKind.SPECIFIC;
+        boolean hasPreferred = mappedComponents.stream()
+            .map(TraceComponent::getArtifactKind)
+            .filter(Objects::nonNull)
+            .anyMatch(ak -> GoalArtifactAlignment.isPreferred(kind, ak));
+
+        if (hasPreferred) return;
+
+        ContinuityFinding finding = new ContinuityFinding();
+        finding.setTeamCode(teamCode);
+        finding.setGoalId(goal.getId());
+        finding.setDocTypeFrom(DocType.PROPOSAL);
+        finding.setDocTypeTo(DocType.SRS);
+        finding.setSeverity(Severity.MEDIUM);
+        finding.setDescription(kind == GoalKind.GENERAL
+            ? "GENERAL objective is mapped, but none of the linked artifacts look module-level. "
+              + GoalArtifactAlignment.preferredHint(kind)
+            : "SPECIFIC objective is mapped, but none of the linked artifacts look like functions/transactions. "
+              + GoalArtifactAlignment.preferredHint(kind));
+        finding.setDetectedAt(LocalDateTime.now());
+        findings.add(finding);
     }
 
     private List<Long> getAllGoalIds() {
         return goalRepository.findAll().stream()
-            .map(com.ieee.evaluator.synctrace.model.SmartGoal::getId)
+            .map(SmartGoal::getId)
             .toList();
     }
 }

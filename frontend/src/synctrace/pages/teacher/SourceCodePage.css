@@ -111,6 +111,28 @@
   border-bottom: 1px solid #e5e7eb;
 }
 
+.sc-component-item--clickable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.sc-component-item--clickable:hover {
+  background: #f8fafc;
+}
+
+.sc-component-item--clickable:hover .sc-component-name {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
 .sc-component-item:last-child {
   border-bottom: none;
 }

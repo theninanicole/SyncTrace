@@ -2,8 +2,10 @@ package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
+import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
+import com.ieee.evaluator.synctrace.service.ComponentCodeHelper;
 import com.ieee.evaluator.synctrace.service.TraceComponentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +14,7 @@ import java.util.Optional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -72,9 +75,20 @@ public class TraceComponentController {
             }
 
             DocType docType = DocType.valueOf(docTypeStr.toUpperCase());
-            return ResponseEntity.ok(componentService.createComponent(docType, name, content));
+            if (payload.get("artifactKind") == null || String.valueOf(payload.get("artifactKind")).isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "artifactKind is required — pick the exact component type (use case, sequence diagram, test case, ...)"));
+            }
+            ArtifactKind artifactKind =
+                ArtifactKind.valueOf(String.valueOf(payload.get("artifactKind")).trim().toUpperCase());
+            if (artifactKind == ArtifactKind.UNSPECIFIED) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "artifactKind must be a concrete component type, not UNSPECIFIED"));
+            }
+            String codeName = payload.get("codeName") != null ? String.valueOf(payload.get("codeName")) : null;
+            return ResponseEntity.ok(componentService.createComponent(docType, artifactKind, name, content, codeName));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid docType: " + e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid docType/artifactKind: " + e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to create component: " + e.getMessage()));
@@ -85,10 +99,18 @@ public class TraceComponentController {
     public ResponseEntity<?> renameTraceComponent(@PathVariable Long componentId, @RequestBody Map<String, String> payload) {
         try {
             String name = payload.get("name");
-            if (name == null || name.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "name is required"));
+            String codeName = payload.get("codeName");
+            if ((name == null || name.isBlank()) && (codeName == null || codeName.isBlank())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "name or codeName is required"));
             }
-            return ResponseEntity.ok(componentService.renameComponent(componentId, name));
+            TraceComponent updated = null;
+            if (name != null && !name.isBlank()) {
+                updated = componentService.renameComponent(componentId, name);
+            }
+            if (codeName != null && !codeName.isBlank()) {
+                updated = componentService.updateCodeName(componentId, codeName);
+            }
+            return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             if (e.getMessage().contains("already has that name")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
@@ -131,9 +153,11 @@ public class TraceComponentController {
             List<TraceComponent> extractedComponents = extractComponentsFromEvaluation(
                 evaluationResult, historyId, history.getExtractedImages());
 
+            List<TraceComponent> savedComponents = componentService.persistExtractedComponents(extractedComponents);
+
             return ResponseEntity.ok(Map.of(
-                "components", extractedComponents,
-                "count", extractedComponents.size()
+                "components", savedComponents,
+                "count", savedComponents.size()
             ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -145,6 +169,7 @@ public class TraceComponentController {
             String evaluationResult, Long historyId, List<String> extractedImages) {
         
         List<TraceComponent> components = new ArrayList<>();
+        Map<String, Integer> codeCounters = new HashMap<>();
         
         // Look for "Diagram Analysis" section
         int diagramSectionStart = findSectionStart(evaluationResult, "Diagram Analysis");
@@ -164,95 +189,144 @@ public class TraceComponentController {
         
         for (String line : lines) {
             line = line.trim();
-            
-            // Check for image reference like [IMG-1]
-            if (line.matches("\\[IMG-\\d+\\].*")) {
+            if (line.isBlank() || line.equalsIgnoreCase("None detected.")
+                || line.toLowerCase().startsWith("diagram analysis")) {
+                continue;
+            }
+
+            boolean startsWithImage = line.matches(".*\\[IMG-\\d+\\].*");
+            boolean nestedField = line.matches(
+                "(?i)^[-*]\\s*(notation observed|correctness|issues|alignment|elements)\\s*:.*");
+
+            if (startsWithImage && !nestedField) {
                 if (currentFinding.length() > 0) {
-                    TraceComponent component = createComponentFromFinding(
-                        currentFinding.toString(), historyId, currentImageRef, extractedImages);
-                    if (component != null) {
-                        components.add(component);
-                    }
+                    components.addAll(createComponentsFromFinding(
+                        currentFinding.toString(), historyId, currentImageRef, extractedImages, codeCounters));
                 }
                 currentImageRef = extractImageRef(line);
                 currentFinding = new StringBuilder(line);
-            } else if (line.startsWith("*") || line.startsWith("-")) {
-                // New finding starting
-                if (currentFinding.length() > 0) {
-                    TraceComponent component = createComponentFromFinding(
-                        currentFinding.toString(), historyId, currentImageRef, extractedImages);
-                    if (component != null) {
-                        components.add(component);
-                    }
-                }
-                currentFinding = new StringBuilder(line);
-                currentImageRef = null;
             } else {
-                currentFinding.append("\n").append(line);
+                if (currentFinding.length() == 0 && (line.startsWith("*") || line.startsWith("-"))) {
+                    // Fallback: diagram finding without explicit [IMG-n] prefix
+                    currentFinding = new StringBuilder(line);
+                    currentImageRef = extractImageRef(line);
+                } else if (currentFinding.length() > 0) {
+                    currentFinding.append("\n").append(line);
+                }
             }
         }
 
         // Don't forget the last finding
         if (currentFinding.length() > 0) {
-            TraceComponent component = createComponentFromFinding(
-                currentFinding.toString(), historyId, currentImageRef, extractedImages);
-            if (component != null) {
-                components.add(component);
-            }
+            components.addAll(createComponentsFromFinding(
+                currentFinding.toString(), historyId, currentImageRef, extractedImages, codeCounters));
         }
 
         return components;
     }
 
-    private TraceComponent createComponentFromFinding(String findingText, Long historyId, String imageRef, List<String> extractedImages) {
-        // Determine docType based on content
-        DocType docType = determineDocTypeFromFinding(findingText);
-        
+    private List<TraceComponent> createComponentsFromFinding(
+            String findingText,
+            Long historyId,
+            String imageRef,
+            List<String> extractedImages,
+            Map<String, Integer> codeCounters) {
+
+        ArtifactKind artifactKind = determineArtifactKindFromFinding(findingText);
+        DocType docType = artifactKind.toDocType() != null
+            ? artifactKind.toDocType()
+            : DocType.SDD;
+
         String imageData = null;
         if (imageRef != null && imageRef.matches("\\[IMG-(\\d+)\\]")) {
             int imageIndex = Integer.parseInt(imageRef.replaceAll("[^0-9]", "")) - 1;
-            // Resolve the actual base64 image data from extractedImages with bounds checking
             if (extractedImages != null && imageIndex >= 0 && imageIndex < extractedImages.size()) {
                 imageData = extractedImages.get(imageIndex);
             }
         }
 
+        List<ComponentCodeHelper.CodedElement> elements =
+            ComponentCodeHelper.extractElements(findingText, artifactKind);
+
+        List<TraceComponent> created = new ArrayList<>();
+        if (!elements.isEmpty()) {
+            for (ComponentCodeHelper.CodedElement element : elements) {
+                TraceComponent component = new TraceComponent();
+                component.setDocType(docType);
+                component.setArtifactKind(artifactKind);
+                component.setCodeName(element.codeName());
+                component.setName(truncateName(element.label()));
+                component.setContent(findingText);
+                component.setSourceHistoryId(historyId);
+                component.setImageData(imageData);
+                component.setAiExtracted(true);
+                component.setCreatedAt(LocalDateTime.now());
+                created.add(component);
+            }
+            return created;
+        }
+
+        String fallbackCode = ComponentCodeHelper.nextDiagramCode(artifactKind, codeCounters);
+        String descriptiveName = extractComponentName(findingText);
         TraceComponent component = new TraceComponent();
         component.setDocType(docType);
-        component.setName(extractComponentName(findingText));
+        component.setArtifactKind(artifactKind);
+        component.setCodeName(fallbackCode);
+        component.setName(descriptiveName.startsWith(fallbackCode)
+            ? descriptiveName
+            : truncateName(fallbackCode + " — " + descriptiveName));
         component.setContent(findingText);
         component.setSourceHistoryId(historyId);
         component.setImageData(imageData);
         component.setAiExtracted(true);
         component.setCreatedAt(LocalDateTime.now());
-        
-        return component;
+        created.add(component);
+        return created;
     }
 
-    private DocType determineDocTypeFromFinding(String findingText) {
+    private String truncateName(String value) {
+        if (value == null || value.isBlank()) return "Extracted Component";
+        String cleaned = value.trim();
+        if (cleaned.length() > 250) {
+            return cleaned.substring(0, 249).trim() + "…";
+        }
+        return cleaned;
+    }
+
+    private ArtifactKind determineArtifactKindFromFinding(String findingText) {
         String lower = findingText.toLowerCase();
-        
-        // Check for implementation-related keywords
-        if (lower.contains("source code") || lower.contains("repository") || 
+
+        if (lower.contains("source code") || lower.contains("repository") ||
             lower.contains("implementation evidence") || lower.contains("implemented in") ||
-            lower.contains("codebase") || lower.contains("method implementation") || 
+            lower.contains("codebase") || lower.contains("method implementation") ||
             lower.contains("class implementation")) {
-            return DocType.IMPLEMENTATION;
+            return lower.contains("class") || lower.contains("method") || lower.contains("object")
+                ? ArtifactKind.IMPL_OO
+                : ArtifactKind.IMPL_NON_OO;
         }
-        
-        // Check for SDD diagram types
-        if (lower.contains("class diagram") || lower.contains("entity-relationship") || lower.contains("erd")) {
-            return DocType.SDD;
+
+        if (lower.contains("use case")) return ArtifactKind.USE_CASE;
+        if (lower.contains("activity")) return ArtifactKind.ACTIVITY;
+        if (lower.contains("wireframe") || lower.contains("mockup")) return ArtifactKind.WIREFRAME;
+        if (lower.contains("context diagram")) return ArtifactKind.CONTEXT_DIAGRAM;
+        if (lower.contains("data flow") || lower.contains("dfd")) return ArtifactKind.DATA_FLOW;
+
+        if (lower.contains("class diagram")) return ArtifactKind.CLASS;
+        if (lower.contains("sequence")) return ArtifactKind.SEQUENCE;
+        if (lower.contains("entity-relationship") || lower.contains("erd") || lower.contains("data model")) {
+            return ArtifactKind.DATA_MODEL;
         }
-        if (lower.contains("use case") || lower.contains("context diagram")) {
-            return DocType.SDD;
-        }
-        if (lower.contains("data flow") || lower.contains("dfd")) {
-            return DocType.SDD;
-        }
-        
-        // Default to SDD for diagram findings
-        return DocType.SDD;
+        if (lower.contains("user interface") || lower.contains(" ui ")) return ArtifactKind.UI;
+
+        if (lower.contains("milestone")) return ArtifactKind.MILESTONE;
+        if (lower.contains("deliverable")) return ArtifactKind.DELIVERABLE;
+        if (lower.contains("task") || lower.contains("work breakdown")) return ArtifactKind.TASK;
+
+        if (lower.contains("test case")) return ArtifactKind.TEST_CASE;
+        if (lower.contains("test log")) return ArtifactKind.TEST_LOG;
+        if (lower.contains("test design") || lower.contains("test plan")) return ArtifactKind.TEST_DESIGN;
+
+        return ArtifactKind.OTHER_SDD;
     }
 
     private String extractComponentName(String findingText) {
@@ -260,9 +334,13 @@ public class TraceComponentController {
         if (lines.length > 0) {
             String firstLine = lines[0].trim();
             // Remove bullet points and image refs
-            return firstLine.replaceAll("^[*\\-]\\s*", "")
+            String cleaned = firstLine.replaceAll("^[*\\-]\\s*", "")
                            .replaceAll("\\[IMG-\\d+\\]\\s*", "")
                            .trim();
+            if (cleaned.length() > 250) {
+                cleaned = cleaned.substring(0, 249).trim() + "…";
+            }
+            return cleaned.isBlank() ? "Extracted Component" : cleaned;
         }
         return "Extracted Component";
     }

@@ -14,6 +14,10 @@
   padding: 1.1rem;
   box-shadow: 0 8px 20px var(--shadow);
   animation: iap-slide-in 0.3s ease;
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .iap-issues-header {
@@ -81,6 +85,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  flex: 1;
 }
 
 .iap-issue-card {
@@ -158,6 +166,8 @@
   color: var(--text-main);
   box-shadow: 0 8px 20px var(--shadow);
   animation: iap-fade-in 0.25s ease;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
 }
 
 .iap-detail__meta {

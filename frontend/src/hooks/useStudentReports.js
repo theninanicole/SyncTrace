@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { fetchClassRoster, fetchStudentReports } from '../services/dashboardService';
-import { extractSubmissionMeta } from '../utils/dashboardUtils';
+import { DOC_TYPES, extractSubmissionMeta } from '../utils/dashboardUtils';
 import { getViewedReportIds, markReportAsViewed } from '../api';
-
-const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD'];
 
 export function useStudentReports(groupCode) {
   const [reports, setReports] = useState([]);

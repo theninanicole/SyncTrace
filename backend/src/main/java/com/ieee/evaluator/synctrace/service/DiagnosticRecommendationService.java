@@ -148,7 +148,7 @@ public class DiagnosticRecommendationService {
         emit(sessionId, "ANALYZING", "Generating recommendations using AI", 50);
 
         String prompt = buildDiagnosticPrompt(findings);
-        String response = provider.analyze(prompt);
+        String response = provider.complete(prompt);
 
         emit(sessionId, "PROCESSING", "Parsing AI response and creating recommendations", 80);
 

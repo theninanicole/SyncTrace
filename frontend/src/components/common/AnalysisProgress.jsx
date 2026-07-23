@@ -5,7 +5,7 @@ const STEPS = [
   { key: 'RECEIVED',        label: 'Request Accepted',        icon: '01', description: 'Queued for processing' },
   { key: 'EXTRACTING',      label: 'Extracting Document',     icon: '02', description: 'Downloading and reading text from Google Drive' },
   { key: 'RENDERING',       label: 'Rendering Pages',         icon: '03', description: 'Converting pages to images for diagram analysis' },
-  { key: 'DETECTING',       label: 'Detecting Document Type', icon: '04', description: 'Identifying SRS / SDD / SPMP / STD' },
+  { key: 'DETECTING',       label: 'Detecting Document Type', icon: '04', description: 'Identifying SRS / SDD / SPMP / STD / PROPOSAL' },
   { key: 'BUILDING_PROMPT', label: 'Building Prompt',         icon: '05', description: 'Assembling rubric, class context, and step instructions' },
   { key: 'SENDING_TO_AI',   label: 'Sending to AI',           icon: '06', description: 'Dispatching text and images to the model' },
   { key: 'PROCESSING',      label: 'AI Responding',           icon: '07', description: 'Waiting for the model to complete evaluation' },

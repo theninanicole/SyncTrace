@@ -58,10 +58,14 @@ public class SddPromptService {
                Use this format for each diagram found:
 
                * [IMG-X] - <Diagram Type>:
+                 - Elements: <exact IDs/labels from the document, comma-separated — e.g. CL-01 User, SQ-02 Checkout>
                  - Notation observed: <specific symbols, relationship types, and labels found>
                  - Correctness: <assessment of whether notation is used properly>
                  - Issues: <specific errors, missing elements, or inconsistencies>
                  - Alignment: <whether the diagram matches the written design sections>
+
+               IMPORTANT: Preserve the exact element codes/IDs written in the document
+               (CL-01, SQ-02, class names with IDs, etc.). Do not invent codes when the document already has them.
 
             If no diagrams or figures are detected in the images, output exactly "None detected."
             """;

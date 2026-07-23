@@ -185,7 +185,7 @@ public class SourceCodeAlignmentService {
         emit(sessionId, "ANALYZING", "Comparing SDD with IMPLEMENTATION using AI", 50);
 
         String prompt = buildAlignmentPrompt(sddComponents, implComponents);
-        String response = provider.analyze(prompt);
+        String response = provider.complete(prompt);
 
         emit(sessionId, "PROCESSING", "Parsing AI response and creating findings", 80);
 

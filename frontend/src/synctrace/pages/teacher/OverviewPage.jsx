@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CircleAlert, CircleCheck, ChevronRight, ListChecks, Search, TriangleAlert } from 'lucide-react';
+import { ChevronRight, CircleAlert, CircleCheck, ListChecks, Search, TriangleAlert } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
@@ -41,7 +41,7 @@ function OverviewPage({ onOpenGroup }) {
 
       <PanelHeader
         title="Overview"
-        subtitle="Monitor traceability integrity and project readiness across all groups"
+        subtitle="See class readiness at a glance"
       />
 
       <div className="ov-stats">
@@ -95,12 +95,15 @@ function OverviewPage({ onOpenGroup }) {
       {loading ? (
         <p className="tm-muted">Loading groups...</p>
       ) : filteredGroups.length === 0 ? (
-        <div className="empty-state">
-          <p>
-            {groups.length === 0
-              ? 'No groups found yet. Groups appear here once submissions with a recognizable team code are mapped to a SMART goal.'
-              : 'No groups match your search or filter.'}
+        <div className="empty-state ov-empty-help">
+          <p className="ov-empty-help__title">
+            {groups.length === 0 ? 'No group cards yet — that is normal at the start.' : 'No groups match your search or filter.'}
           </p>
+          {groups.length === 0 && (
+            <p>
+              Groups show up after you extract proposal goals, map document/code components, and teams have recognizable codes.
+            </p>
+          )}
         </div>
       ) : (
         <div className="ov-list">
@@ -123,6 +126,7 @@ function OverviewPage({ onOpenGroup }) {
                       <span className="ov-goal-card__date">Traceability updated at {formatDate(g.lastTraceability)}</span>
                     )}
                   </div>
+                  <p className="ov-goal-card__next">Click to open this team’s matrix and gaps</p>
                 </div>
 
                 <ChevronRight size={18} className="ov-goal-card__chevron" />
