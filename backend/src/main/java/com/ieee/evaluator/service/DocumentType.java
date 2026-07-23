@@ -5,5 +5,6 @@ public enum DocumentType {
     SDD,
     SPMP,
     STD,
+    PROPOSAL,
     OUT_OF_SCOPE
 }

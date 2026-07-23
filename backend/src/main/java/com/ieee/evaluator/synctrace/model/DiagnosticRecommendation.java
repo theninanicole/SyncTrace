@@ -6,15 +6,23 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "smart_goals")
-public class SmartGoal {
+@Table(name = "diagnostic_recommendations")
+public class DiagnosticRecommendation {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "findingId")
+    private Long findingId;
+
     @Column(columnDefinition = "TEXT")
-    private String description;
+    private String rootCause;
+
+    @Column(columnDefinition = "TEXT")
+    private String recommendation;
+
+    private String priority;
 
     private LocalDateTime createdAt;
 }

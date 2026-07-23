@@ -11,16 +11,11 @@ import java.util.Optional;
 
 @Repository
 public interface GoalComponentMappingRepository extends JpaRepository<GoalComponentMapping, Long> {
-
-    @Query("select m from GoalComponentMapping m join fetch m.component where m.goal.id = :goalId order by m.id asc")
-    List<GoalComponentMapping> findByGoalIdWithComponents(@Param("goalId") Long goalId);
-
-    @Query("select m from GoalComponentMapping m join fetch m.component where m.goal.id in :goalIds order by m.goal.id asc, m.id asc")
-    List<GoalComponentMapping> findByGoalIdsWithComponents(@Param("goalIds") List<Long> goalIds);
-
+    List<GoalComponentMapping> findByGoalId(Long goalId);
     Optional<GoalComponentMapping> findByGoalIdAndComponentId(Long goalId, Long componentId);
-
-    void deleteByGoalId(Long goalId);
-
     void deleteByComponentId(Long componentId);
+    void deleteByGoalId(Long goalId);
+    
+    @Query("SELECT m.goalId, c.docType FROM GoalComponentMapping m JOIN TraceComponent c ON m.componentId = c.id WHERE m.goalId IN :goalIds")
+    List<Object[]> findDocTypesByGoalIds(@Param("goalIds") List<Long> goalIds);
 }
