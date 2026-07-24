@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getSmartGoals, getAllGoalComponents } from '../api';
+import { getSmartGoals, getAllGoalComponents, getContinuitySummary } from '../api';
 import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
@@ -15,7 +15,39 @@ const EMPTY_STATE = {
   coveredCount: 0,
   totalCells: 0,
   lastTraceability: null,
+  readinessScore: 0,
+  readinessStatus: null,
+  findingCount: 0,
 };
+
+function resolveComponentTeamCode(component, historyTeamMap) {
+  if (component.sourceHistoryId != null) {
+    return historyTeamMap.get(component.sourceHistoryId) || null;
+  }
+
+  if (component.docType === 'IMPLEMENTATION' && typeof component.name === 'string') {
+    const separatorIndex = component.name.indexOf(' - ');
+    if (separatorIndex > 0) {
+      return component.name.slice(0, separatorIndex).trim() || null;
+    }
+  }
+
+  return null;
+}
+
+function mapBackendStatus(status) {
+  switch (status) {
+    case 'READY':
+      return 'ready';
+    case 'ON_TRACK':
+      return 'revision';
+    case 'AT_RISK':
+    case 'BLOCKED':
+      return 'critical';
+    default:
+      return 'critical';
+  }
+}
 
 export function useGroupTraceability(teamCode, showToast) {
   const [state, setGroupState] = useState(EMPTY_STATE);
@@ -24,11 +56,12 @@ export function useGroupTraceability(teamCode, showToast) {
     if (!teamCode) return;
     setGroupState((s) => ({ ...s, loading: true }));
     try {
-      const [goalList, roster, history, componentsByGoal] = await Promise.all([
+      const [goalList, roster, history, componentsByGoal, summary] = await Promise.all([
         getSmartGoals(),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
         getAllGoalComponents().catch(() => ({})),
+        getContinuitySummary(teamCode).catch(() => null),
       ]);
 
       const historyTeamMap = new Map();
@@ -53,10 +86,8 @@ export function useGroupTraceability(teamCode, showToast) {
         DOC_TYPES.forEach((dt) => { cells[dt] = []; });
 
         (perGoalComponents[gi] || []).forEach((c) => {
-          const componentTeam = c.sourceHistoryId != null ? historyTeamMap.get(c.sourceHistoryId) : null;
-          const goalTeam = (goal.teamCode || '').toUpperCase();
-          if (componentTeam && componentTeam.toUpperCase() !== teamCode.toUpperCase()) return;
-          if (!componentTeam && goalTeam && goalTeam !== teamCode.toUpperCase()) return;
+          const componentTeam = resolveComponentTeamCode(c, historyTeamMap);
+          if (componentTeam?.toUpperCase() !== teamCode.toUpperCase()) return;
           cells[c.docType].push(c);
           if (c.createdAt && (!lastTraceability || new Date(c.createdAt) > new Date(lastTraceability))) {
             lastTraceability = c.createdAt;
@@ -82,18 +113,24 @@ export function useGroupTraceability(teamCode, showToast) {
         };
       });
 
-      const totalCells = orderedGoals.length * DOC_TYPES.length;
-      const percent = totalCells > 0 ? Math.round((coveredCount / totalCells) * 100) : 0;
+      const summaryCoveredCount = summary
+        ? summary.goalSummaries.reduce((sum, goalSummary) => sum + goalSummary.coveredDocTypes.length, 0)
+        : coveredCount;
+      const totalCells = summary ? summary.totalGoals * DOC_TYPES.length : goalList.length * DOC_TYPES.length;
+      const percent = totalCells > 0 ? Math.round((summaryCoveredCount / totalCells) * 100) : 0;
 
       setGroupState((s) => ({
         ...s,
         section,
         rows,
         percent,
-        status: groupStatus(coveredCount, totalCells),
-        coveredCount,
+        status: summary ? mapBackendStatus(summary.status) : groupStatus(coveredCount, totalCells),
+        coveredCount: summaryCoveredCount,
         totalCells,
         lastTraceability,
+        readinessScore: summary?.readinessScore ?? percent,
+        readinessStatus: summary?.status ?? null,
+        findingCount: summary?.totalFindings ?? 0,
       }));
     } catch (err) {
       showToast?.(err.message, 'error');

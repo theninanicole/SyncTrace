@@ -3,8 +3,6 @@ package com.ieee.evaluator.synctrace.repository;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;

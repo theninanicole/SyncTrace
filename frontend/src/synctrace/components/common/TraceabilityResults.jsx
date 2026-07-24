@@ -5,7 +5,7 @@ import { buildGapIssues, buildRowDiagnosis } from '../../utils/gapIssues';
 import '../../pages/teacher/TraceabilityMappingPage.css';
 import './TraceabilityResults.css';
 
-function TraceabilityResults({ loading, rows, onComponentClick, onAddClick }) {
+function TraceabilityResults({ loading, rows, onComponentClick, onAddClick, issues: externalIssues }) {
   const enrichedRows = useMemo(
     () => rows.map((row) => ({
       ...row,
@@ -14,7 +14,7 @@ function TraceabilityResults({ loading, rows, onComponentClick, onAddClick }) {
     [rows],
   );
 
-  const issues = useMemo(() => buildGapIssues(enrichedRows), [enrichedRows]);
+  const issues = useMemo(() => externalIssues ?? buildGapIssues(enrichedRows), [externalIssues, enrichedRows]);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
   const selectedIssue = issues.find((issue) => issue.id === selectedIssueId) ?? issues[0] ?? null;
 

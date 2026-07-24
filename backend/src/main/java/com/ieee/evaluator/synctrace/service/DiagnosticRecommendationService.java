@@ -80,6 +80,26 @@ public class DiagnosticRecommendationService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public List<DiagnosticRecommendation> getRecommendationsForTeam(String teamCode) {
+        if (teamCode == null || teamCode.isBlank()) {
+            return List.of();
+        }
+
+        List<Long> findingIds = findingRepository.findByTeamCodeOrderByDetectedAtDesc(teamCode).stream()
+            .map(ContinuityFinding::getId)
+            .filter(Objects::nonNull)
+            .toList();
+
+        if (findingIds.isEmpty()) {
+            return List.of();
+        }
+
+        return recommendationRepository.findByFindingIdIn(findingIds).stream()
+            .sorted(Comparator.comparing(DiagnosticRecommendation::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+    }
+
     private List<DiagnosticRecommendation> generateWithRetry(
             String teamCode, AiProvider provider, String sessionId) throws Exception {
 
@@ -143,6 +163,12 @@ public class DiagnosticRecommendationService {
         if (findings.isEmpty()) {
             emit(sessionId, "COMPLETE", "No findings to analyze", 100);
             return List.of();
+        }
+
+        for (ContinuityFinding finding : findings) {
+            if (finding.getId() != null) {
+                recommendationRepository.deleteByFindingId(finding.getId());
+            }
         }
 
         emit(sessionId, "ANALYZING", "Generating recommendations using AI", 50);
