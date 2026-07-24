@@ -3,7 +3,6 @@ package com.ieee.evaluator.synctrace.service;
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
-import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import org.springframework.stereotype.Service;
 
@@ -29,13 +28,7 @@ public class TeamComponentResolverService {
 
     /**
      * Determines if a component belongs to the specified team.
-     * 
-     * Team resolution logic:
-     * - IMPLEMENTATION: name-based match (component.getName().contains(teamCode))
-     * - SDD: resolve via sourceHistoryId → EvaluationHistory → filename → TeamCodeResolver
-     * - Other doc types (SRS, SPMP, STD, PROPOSAL): no established team-resolution pattern,
-     *   returns false (not team-scoped)
-     * 
+     *
      * @param component The component to check
      * @param teamCode The team code to match against
      * @return true if the component belongs to the team, false otherwise
@@ -45,32 +38,43 @@ public class TeamComponentResolverService {
             return false;
         }
 
-        DocType docType = component.getDocType();
+        return resolveTeamCode(component)
+            .map(resolvedTeamCode -> resolvedTeamCode.equalsIgnoreCase(teamCode))
+            .orElse(false);
+    }
 
-        // IMPLEMENTATION components: name-based matching
-        // GitHub ingestion embeds teamCode in the name: "{teamCode} - {path}"
-        if (docType == DocType.IMPLEMENTATION) {
-            return component.getName() != null && component.getName().contains(teamCode);
+    /**
+     * Resolves the team code for a component when possible.
+     *
+     * Resolution order:
+     * - Any component sourced from EvaluationHistory uses the submission filename team code.
+     * - IMPLEMENTATION components use the GitHub ingestion naming convention: "{teamCode} - {path}".
+     * - Components without either source cannot be safely team-scoped.
+     */
+    public Optional<String> resolveTeamCode(TraceComponent component) {
+        if (component == null) {
+            return Optional.empty();
         }
 
-        // SDD components: resolve via sourceHistoryId → EvaluationHistory → filename
-        if (docType == DocType.SDD) {
-            // Skip manually-added components (no sourceHistoryId)
-            if (component.getSourceHistoryId() == null) {
-                return false;
-            }
-
-            Optional<EvaluationHistory> historyOpt = historyRepository.findById(component.getSourceHistoryId());
-            if (historyOpt.isPresent()) {
-                String componentTeamCode = TeamCodeResolver.extractTeamCode(historyOpt.get().getFileName());
-                return componentTeamCode.equalsIgnoreCase(teamCode);
-            }
-            return false;
+        if (component.getSourceHistoryId() != null) {
+            return historyRepository.findById(component.getSourceHistoryId())
+                .map(EvaluationHistory::getFileName)
+                .map(TeamCodeResolver::extractTeamCode)
+                .filter(teamCode -> !teamCode.isBlank());
         }
 
-        // Other doc types (SRS, SPMP, STD, PROPOSAL): no established team-resolution pattern
-        // These are not team-scoped in the current system
-        return false;
+        if (component.getDocType() == TraceComponent.DocType.IMPLEMENTATION && component.getName() != null) {
+            String name = component.getName().trim();
+            int separatorIndex = name.indexOf(" - ");
+            if (separatorIndex > 0) {
+                String teamCode = name.substring(0, separatorIndex).trim();
+                if (!teamCode.isBlank()) {
+                    return Optional.of(teamCode);
+                }
+            }
+        }
+
+        return Optional.empty();
     }
 
     /**
