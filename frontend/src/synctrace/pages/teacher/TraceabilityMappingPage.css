@@ -194,9 +194,15 @@
 
 .tm-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 400px 1fr;
+  grid-template-rows: auto 1fr;
   gap: 1.25rem;
   align-items: start;
+}
+
+.tm-hint-container {
+  grid-column: 1 / -1;
+  grid-row: 1;
 }
 
 .tm-sidebar {
@@ -210,6 +216,7 @@
   box-shadow: 0 8px 20px var(--shadow);
   position: sticky;
   top: 0;
+  max-height: calc(100vh - 120px);
 }
 
 .tm-sidebar__header {
@@ -228,10 +235,29 @@
   min-height: 0.5rem;
 }
 
+.tm-sidebar-hint {
+  padding: 1rem 1.1rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  margin-bottom: 0;
+}
+
+.tm-sidebar-hint p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
 .tm-goal-list {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
+  overflow-y: auto;
+  max-height: 350px;
+  padding-right: 0.25rem;
 }
 
 .tm-goal-item {

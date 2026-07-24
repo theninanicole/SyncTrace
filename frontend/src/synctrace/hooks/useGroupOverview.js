@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getSmartGoals, getAllGoalComponents, getContinuitySummary } from '../api';
-import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
+import { fetchClassRoster, fetchTeacherHistory, fetchTeacherSubmissions } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
 
@@ -53,11 +53,12 @@ export function useGroupOverview(showToast) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [goalList, roster, history, componentsByGoal] = await Promise.all([
+      const [goalList, roster, history, componentsByGoal, submissions] = await Promise.all([
         getSmartGoals(),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
         getAllGoalComponents().catch(() => ({})),
+        fetchTeacherSubmissions().catch(() => []),
       ]);
       setGoals(goalList);
 
@@ -70,12 +71,25 @@ export function useGroupOverview(showToast) {
       const teamSectionMap = new Map();
       const displayCodeByKey = new Map();
       const teamKeys = new Set();
+      
+      // First, add teams from roster if available
       roster.forEach((s) => {
         if (!s.groupCode) return;
         const key = s.groupCode.toUpperCase();
         teamKeys.add(key);
         if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, s.groupCode);
         if (s.section && !teamSectionMap.has(key)) teamSectionMap.set(key, s.section);
+      });
+      
+      // Add teams from submissions as well
+      submissions.forEach((s) => {
+        const meta = extractSubmissionMeta(s.name);
+        if (meta.teamCode) {
+          const key = meta.teamCode.toUpperCase();
+          teamKeys.add(key);
+          if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, meta.teamCode);
+          if (meta.section && !teamSectionMap.has(key)) teamSectionMap.set(key, meta.section);
+        }
       });
 
       const perGoalComponents = goalList.map((g) => componentsByGoal[g.id] || []);
@@ -87,7 +101,7 @@ export function useGroupOverview(showToast) {
           const teamCode = resolveComponentTeamCode(c, historyTeamMap);
           if (!teamCode) return;
           const key = teamCode.toUpperCase();
-          teamKeys.add(key);
+          teamKeys.add(key); // Add team from components as well
           if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, teamCode);
           if (!coverageByTeam.has(key)) coverageByTeam.set(key, new Set());
           coverageByTeam.get(key).add(`${goal.id}:${c.docType}`);

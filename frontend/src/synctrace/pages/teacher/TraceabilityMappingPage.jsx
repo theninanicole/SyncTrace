@@ -94,6 +94,13 @@ function TraceabilityMappingPage({
       />
 
       <div className="tm-layout">
+        {/* ── Goal hint ─────────────────────────────────────────────────────── */}
+        <div className="tm-hint-container">
+          <div className="tm-sidebar-hint">
+            <p className="tm-muted"><strong>Select a goal</strong> to map its SRS, SDD, SPMP, STD, and Implementation components. <strong>Select a goal to view its traceability matrix.</strong></p>
+          </div>
+        </div>
+
         {/* ── Goal sidebar ─────────────────────────────────────────────────── */}
         <aside className="tm-sidebar">
           <div className="tm-sidebar__header">
@@ -198,16 +205,7 @@ function TraceabilityMappingPage({
                 </div>
               )}
             </>
-          ) : (
-            <div className="empty-state">
-              <p><strong>Select a goal on the left</strong> to map its SRS, SDD, SPMP, STD, and Implementation components.</p>
-              {orderedGoals.length === 0 && (
-                <button type="button" className="btn btn--primary" onClick={() => setIsExtractGoalsModalOpen(true)}>
-                  Start: Extract goals from proposal
-                </button>
-              )}
-            </div>
-          )}
+          ) : null}
         </main>
       </div>
 
