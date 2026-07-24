@@ -110,6 +110,21 @@ public class ContinuityController {
         }
     }
 
+    @GetMapping("/recommendations/{teamCode}")
+    public ResponseEntity<?> getRecommendations(@PathVariable String teamCode) {
+        try {
+            if (teamCode == null || teamCode.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
+            }
+
+            List<DiagnosticRecommendation> recommendations = recommendationService.getRecommendationsForTeam(teamCode);
+            return ResponseEntity.ok(Map.of("recommendations", recommendations, "count", recommendations.size()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch recommendations: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/summary/{teamCode}")
     public ResponseEntity<?> getReadinessSummary(@PathVariable String teamCode) {
         try {

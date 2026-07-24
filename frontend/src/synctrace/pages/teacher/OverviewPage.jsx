@@ -119,6 +119,10 @@ function OverviewPage({ onOpenGroup }) {
                   </div>
                   <div className="ov-goal-card__meta">
                     <span className={`status-chip ${meta.chip}`}>{meta.label}</span>
+                    <span className="ov-goal-card__date">Readiness {g.readinessScore ?? g.percent}%</span>
+                    {typeof g.findingCount === 'number' && (
+                      <span className="ov-goal-card__date">{g.findingCount} finding{g.findingCount === 1 ? '' : 's'}</span>
+                    )}
                     {g.lastTraceability && (
                       <span className="ov-goal-card__date">Traceability updated at {formatDate(g.lastTraceability)}</span>
                     )}

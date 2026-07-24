@@ -160,6 +160,13 @@ export const detectContinuityGaps = async (teamCode, goalId) => {
     return data;
 };
 
+export const getContinuityFindings = async (teamCode) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/findings/${encodeURIComponent(teamCode)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load continuity findings.');
+    return data;
+};
+
 export const generateDiagnosticRecommendations = async (teamCode, model, sessionId) => {
     const response = await fetch(`${API_BASE_URL}/synctrace/continuity/recommendations`, {
         method: 'POST',
@@ -168,6 +175,20 @@ export const generateDiagnosticRecommendations = async (teamCode, model, session
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to generate recommendations.');
+    return data;
+};
+
+export const getDiagnosticRecommendations = async (teamCode) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/recommendations/${encodeURIComponent(teamCode)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load diagnostic recommendations.');
+    return data;
+};
+
+export const getContinuitySummary = async (teamCode) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/summary/${encodeURIComponent(teamCode)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load continuity summary.');
     return data;
 };
 

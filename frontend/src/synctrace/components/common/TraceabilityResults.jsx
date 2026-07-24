@@ -5,8 +5,8 @@ import { buildGapIssues } from '../../utils/gapIssues';
 import '../../pages/teacher/TraceabilityMappingPage.css';
 import './TraceabilityResults.css';
 
-function TraceabilityResults({ loading, rows, onComponentClick }) {
-  const issues = useMemo(() => buildGapIssues(rows), [rows]);
+function TraceabilityResults({ loading, rows, onComponentClick, issues: externalIssues }) {
+  const issues = useMemo(() => externalIssues ?? buildGapIssues(rows), [externalIssues, rows]);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
 
   const selectedIssue = issues.find((issue) => issue.id === selectedIssueId) ?? issues[0] ?? null;
