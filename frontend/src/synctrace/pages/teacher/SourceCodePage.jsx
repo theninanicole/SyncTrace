@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, RefreshCcw, Loader2 } from 'lucide-react';
+import { Users } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
@@ -7,6 +7,7 @@ import { API_BASE_URL } from '../../../api';
 import { getTeamRepositories, ingestRepository, analyzeSourceCodeAlignment } from '../../api';
 import { componentLabel } from '../../constants';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
+import '../../components/common/TeamSelect.css';
 import './SourceCodePage.css';
 import './TraceabilityMappingPage.css';
 
@@ -181,28 +182,31 @@ function SourceCodePage({ onProgressRefresh }) {
         actions={
           <div className="teacher-header-actions">
             <button className="btn btn--soft" onClick={loadTeams} disabled={loadingTeams}>
-              <RefreshCcw size={14} /> Refresh Teams
+              Refresh Teams
             </button>
           </div>
         }
       />
 
-      <div className="sc-team-selector">
-        <label>Select Team:</label>
-        <select
-          value={selectedTeam?.teamCode || ''}
-          onChange={(e) => {
-            const team = teams.find(t => t.teamCode === e.target.value);
-            setSelectedTeam(team || null);
-          }}
-          disabled={loadingTeams || ingesting || analyzing}
-        >
-          {teams.map((team) => (
-            <option key={team.teamCode} value={team.teamCode}>
-              {team.teamCode} {team.section && `(${team.section})`}
-            </option>
-          ))}
-        </select>
+      <div className="tm-team-filter-row">
+        <label className="team-select">
+          <Users size={14} aria-hidden="true" />
+          <select
+            value={selectedTeam?.teamCode || ''}
+            onChange={(e) => {
+              const team = teams.find(t => t.teamCode === e.target.value);
+              setSelectedTeam(team || null);
+            }}
+            disabled={loadingTeams || ingesting || analyzing}
+            aria-label="Select team"
+          >
+            {teams.map((team) => (
+              <option key={team.teamCode} value={team.teamCode}>
+                {team.teamCode} {team.section && `(${team.section})`}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="sc-section">
@@ -221,7 +225,6 @@ function SourceCodePage({ onProgressRefresh }) {
             onClick={handleIngest}
             disabled={ingesting || !githubUrl}
           >
-            {ingesting ? <Loader2 size={14} className="sc-spin" /> : <RefreshCcw size={14} />}
             {ingesting ? 'Ingesting...' : 'Ingest Repository'}
           </button>
         </div>
@@ -273,15 +276,16 @@ function SourceCodePage({ onProgressRefresh }) {
       </div>
 
       <div className="sc-section">
-        <h3>Alignment Analysis</h3>
-        <button
-          className="btn btn--primary"
-          onClick={handleAlignment}
-          disabled={analyzing || ingestedComponents.length === 0}
-        >
-          {analyzing ? <Loader2 size={14} className="sc-spin" /> : <RefreshCcw size={14} />}
-          {analyzing ? 'Analyzing...' : 'Run Alignment Analysis'}
-        </button>
+        <div className="sc-section__header">
+          <h3>Alignment Analysis</h3>
+          <button
+            className="btn btn--primary"
+            onClick={handleAlignment}
+            disabled={analyzing || ingestedComponents.length === 0}
+          >
+            {analyzing ? 'Analyzing...' : 'Run Alignment Analysis'}
+          </button>
+        </div>
 
         {analyzing && (
           <div className="sc-progress">

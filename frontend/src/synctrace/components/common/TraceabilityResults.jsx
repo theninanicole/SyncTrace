@@ -1,11 +1,18 @@
 import { useMemo, useState } from 'react';
 import TraceabilityMatrixTable from './TraceabilityMatrix';
 import IssueAnalysisPanel from './IssueAnalysisPanel';
-import { buildGapIssues, buildRowDiagnosis } from '../../utils/gapIssues';
+import { buildRowDiagnosis, LEVEL_WEIGHT } from '../../utils/gapIssues';
 import '../../pages/teacher/TraceabilityMappingPage.css';
 import './TraceabilityResults.css';
 
-function TraceabilityResults({ loading, rows, onComponentClick, onAddClick }) {
+function TraceabilityResults({
+  loading,
+  rows,
+  onComponentClick,
+  onAddClick,
+  aiIssues = [],
+  issuesEmptyMessage = 'Run AI Analysis to detect continuity gaps.',
+}) {
   const enrichedRows = useMemo(
     () => rows.map((row) => ({
       ...row,
@@ -14,7 +21,13 @@ function TraceabilityResults({ loading, rows, onComponentClick, onAddClick }) {
     [rows],
   );
 
-  const issues = useMemo(() => buildGapIssues(enrichedRows), [enrichedRows]);
+  // The Issues panel only ever reflects AI Analysis output — it stays empty until
+  // the teacher runs it, rather than eagerly flagging missing cells on its own.
+  const issues = useMemo(() => (
+    [...aiIssues].sort(
+      (a, b) => LEVEL_WEIGHT[a.level] - LEVEL_WEIGHT[b.level] || a.title.localeCompare(b.title),
+    )
+  ), [aiIssues]);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
   const selectedIssue = issues.find((issue) => issue.id === selectedIssueId) ?? issues[0] ?? null;
 
@@ -36,7 +49,7 @@ function TraceabilityResults({ loading, rows, onComponentClick, onAddClick }) {
               issues={issues}
               selectedIssue={selectedIssue}
               onSelectIssue={(issue) => setSelectedIssueId(issue.id)}
-              issuesEmptyMessage="No traceability gaps detected."
+              issuesEmptyMessage={issuesEmptyMessage}
             />
           )}
         </>

@@ -69,11 +69,11 @@ export function useGroupTraceability(teamCode, showToast) {
 
         return {
           goalId: goal.id,
-          code: `G-${String(gi + 1).padStart(2, '0')}`,
+          code: `G${gi + 1}`,
           description: goal.description,
           goalKind: goal.goalKind || 'SPECIFIC',
           parentGoalId: goal.parentGoalId || null,
-          parentCode: parentIdx != null ? `G-${String(parentIdx + 1).padStart(2, '0')}` : null,
+          parentCode: parentIdx != null ? `G${parentIdx + 1}` : null,
           teamCode: goal.teamCode || '',
           cells,
           aligned: coveredTypes === DOC_TYPES.length,

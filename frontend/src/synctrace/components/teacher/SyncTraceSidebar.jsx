@@ -4,9 +4,9 @@ import appLogo from '../../../assets/logo.png';
 
 const NAV_ITEMS = [
   { key: 'overview', label: 'Overview', hint: 'Class readiness', Icon: LayoutDashboard },
-  { key: 'traceability', label: 'Goals & Mapping', hint: 'Link goals to artifacts', Icon: ClipboardList },
-  { key: 'traceability-results', label: 'Results Matrix', hint: 'Coverage gaps', Icon: Table2 },
   { key: 'source', label: 'Source Code', hint: 'GitHub ingest', Icon: FolderGit2 },
+  { key: 'traceability', label: 'Traceability Mapping', hint: 'Link goals to artifacts', Icon: ClipboardList },
+  { key: 'traceability-results', label: 'Traceability Results', hint: 'Coverage gaps', Icon: Table2 },
 ];
 
 function SyncTraceSidebar({ currentView, onNavigate, onBack }) {
@@ -16,7 +16,7 @@ function SyncTraceSidebar({ currentView, onNavigate, onBack }) {
         <img src={appLogo} alt="SyncTrace logo" className="teacher-sidebar__brand-logo" />
         <span>SyncTrace</span>
       </div>
-      <p className="teacher-sidebar__caption">Goal → docs → code continuity</p>
+      <p className="teacher-sidebar__caption">Teacher Workspace</p>
 
       <button className="btn btn--ghost teacher-sidebar__back" onClick={onBack}>
         <ArrowLeft size={14} /> Back to IEEE Docs Evaluator

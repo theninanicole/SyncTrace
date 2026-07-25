@@ -1,0 +1,26 @@
+.tm-team-filter-row {
+  display: flex;
+  margin-bottom: 1rem;
+}
+
+.team-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.team-select select {
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+}

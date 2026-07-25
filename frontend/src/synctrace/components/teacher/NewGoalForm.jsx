@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { GOAL_KINDS } from '../../constants';
 
-function NewGoalForm({ onCreate, onCancel, generalGoals = [] }) {
+function NewGoalForm({ onCreate, onCancel, generalGoals = [], defaultTeamCode = '' }) {
   const [description, setDescription] = useState('');
   const [goalKind, setGoalKind] = useState('SPECIFIC');
   const [parentGoalId, setParentGoalId] = useState('');
-  const [teamCode, setTeamCode] = useState('');
+  const [teamCode, setTeamCode] = useState(defaultTeamCode);
 
   function handleSubmit() {
     if (!description.trim()) return;

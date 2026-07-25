@@ -106,6 +106,14 @@
   color: var(--brand);
 }
 
+.tm-team-group__header--static {
+  cursor: default;
+}
+
+.tm-team-group__header--static:hover {
+  color: var(--text-main);
+}
+
 .tm-team-group__header svg:first-child {
   color: var(--text-muted);
   flex-shrink: 0;
@@ -377,26 +385,8 @@
   letter-spacing: 0.02em;
 }
 
-.tm-code-link {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  font-weight: 800;
-  color: var(--accent, #2563eb);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.tm-code-link:hover {
-  opacity: 0.85;
-}
-
 .tm-component-row__fullname,
-.tm-suggest-item__fullname,
-.tm-detail__fullname {
+.tm-suggest-item__fullname {
   display: block;
   font-size: 0.78rem;
   font-weight: 500;
@@ -505,15 +495,6 @@
   justify-content: center;
   background: var(--brand-soft);
   color: var(--brand);
-}
-
-.tm-card__empty-hint {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  text-align: center;
-  max-width: 16rem;
-  line-height: 1.35;
-  font-weight: 500;
 }
 
 .tm-mapping-hint {

@@ -8,55 +8,12 @@ export const DOC_TYPE_SEVERITY = {
   IMPLEMENTATION: { level: 'LOW', label: 'Implementation', confidence: 68 },
 };
 
-const LEVEL_WEIGHT = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+export const LEVEL_WEIGHT = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
-/**
- * Derives gap-analysis issues (missing doc types + goal-kind alignment warnings)
- * from matrix rows shaped like { goalId, code, description, goalKind, cells, createdAt? }.
- */
-export function buildGapIssues(rows) {
-  const issues = rows.flatMap((row) => {
-    const goalNumber = String(row.code || '').replace(/^G-?/i, '') || '?';
-    const goalKind = row.goalKind || 'SPECIFIC';
-    const missing = DOC_TYPES.filter((docType) => (row.cells[docType] || []).length === 0).map((docType) => {
-      const severity = DOC_TYPE_SEVERITY[docType];
-      return {
-        id: `${row.goalId}-${docType}`,
-        level: severity.level,
-        confidence: severity.confidence,
-        title: `Missing ${severity.label} coverage for goal ${goalNumber}`,
-        summary: `The goal is not linked to any ${severity.label} artifacts yet. This weakens the evidence chain for evaluation and may cause traceability gaps during review.`,
-        fix: `Directly translate Goal ${goalNumber} into the matching ${severity.label} components (use cases, classes, tasks, tests, or implementation units).`,
-        tags: [severity.label, `Goal ${goalNumber}`, goalKind],
-        reported: row.createdAt ? new Date(row.createdAt).toLocaleDateString() : undefined,
-      };
-    });
+const AI_SEVERITY_CONFIDENCE = { CRITICAL: 97, HIGH: 90, MEDIUM: 75, LOW: 60 };
 
-    const mapped = DOC_TYPES.flatMap((dt) => row.cells[dt] || []);
-    if (mapped.length === 0) return missing;
-
-    const hasPreferred = mapped.some((c) => isPreferredArtifactKind(goalKind, c.artifactKind));
-    if (hasPreferred) return missing;
-
-    missing.push({
-      id: `${row.goalId}-kind-align`,
-      level: 'MEDIUM',
-      confidence: 70,
-      title: goalKind === 'GENERAL'
-        ? `Goal ${goalNumber} lacks module-level artifact kinds`
-        : `Goal ${goalNumber} lacks function/transaction artifact kinds`,
-      summary: preferredArtifactHint(goalKind),
-      fix: goalKind === 'GENERAL'
-        ? `Map Goal ${goalNumber} to module-oriented components (context/data modules, classes, milestones, deliverables).`
-        : `Map Goal ${goalNumber} to function/transaction components (use cases, activities, sequences, UI, test cases).`,
-      tags: [`Goal ${goalNumber}`, goalKind, 'Kind alignment'],
-      reported: row.createdAt ? new Date(row.createdAt).toLocaleDateString() : undefined,
-    });
-
-    return missing;
-  });
-
-  return issues.sort((a, b) => LEVEL_WEIGHT[a.level] - LEVEL_WEIGHT[b.level] || a.title.localeCompare(b.title));
+function docTypeLabel(docType) {
+  return DOC_TYPE_SEVERITY[docType]?.label || (docType === 'PROPOSAL' ? 'Proposal' : docType);
 }
 
 /** Short inline diagnosis for a matrix row (shown under the goal). */
@@ -86,4 +43,37 @@ export function buildRowDiagnosis(row) {
   }
 
   return null;
+}
+
+/**
+ * Converts backend ContinuityFinding + DiagnosticRecommendation records (from
+ * /synctrace/continuity/detect-gaps and /synctrace/continuity/recommendations) into
+ * the issue shape the Issues panel expects.
+ */
+export function buildAiIssues(findings, recommendations, goalCodeById = new Map()) {
+  const recsByFindingId = new Map();
+  recommendations.forEach((rec) => {
+    if (!recsByFindingId.has(rec.findingId)) recsByFindingId.set(rec.findingId, []);
+    recsByFindingId.get(rec.findingId).push(rec);
+  });
+
+  return findings.map((finding) => {
+    const rawLevel = ['HIGH', 'MEDIUM', 'LOW'].includes(finding.severity) ? finding.severity : 'HIGH';
+    const goalCode = goalCodeById.get(finding.goalId) || null;
+    const fromLabel = docTypeLabel(finding.docTypeFrom);
+    const toLabel = docTypeLabel(finding.docTypeTo);
+    const matchedRecs = recsByFindingId.get(finding.id) || [];
+    const fix = matchedRecs.map((r) => r.recommendation).filter(Boolean).join(' ') || undefined;
+
+    return {
+      id: `ai-${finding.id}`,
+      level: rawLevel,
+      confidence: AI_SEVERITY_CONFIDENCE[finding.severity] ?? AI_SEVERITY_CONFIDENCE[rawLevel],
+      title: `Continuity gap: ${fromLabel} → ${toLabel}${goalCode ? ` (${goalCode})` : ''}`,
+      summary: finding.description || 'The AI continuity check found a broken link between these artifacts.',
+      fix,
+      tags: ['AI Verified', goalCode, finding.teamCode].filter(Boolean),
+      reported: finding.detectedAt ? new Date(finding.detectedAt).toLocaleDateString() : undefined,
+    };
+  });
 }

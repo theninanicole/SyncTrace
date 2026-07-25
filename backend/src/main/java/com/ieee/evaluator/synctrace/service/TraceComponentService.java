@@ -120,7 +120,12 @@ public class TraceComponentService {
     public TraceComponent updateCodeName(Long componentId, String codeName) {
         TraceComponent component = componentRepository.findById(componentId)
             .orElseThrow(() -> new RuntimeException("Component not found"));
-        String normalized = ComponentCodeHelper.normalizeCode(codeName);
+        // Document artifact codes (UC-01, TC-14, ...) are conventionally uppercase, but
+        // implementation components are file names, which are case-sensitive and must
+        // not be forced through the same uppercasing normalization.
+        String normalized = component.getDocType() == DocType.IMPLEMENTATION
+            ? codeName.trim()
+            : ComponentCodeHelper.normalizeCode(codeName);
         component.setCodeName(normalized);
         return componentRepository.save(component);
     }

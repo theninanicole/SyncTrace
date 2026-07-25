@@ -1,5 +1,10 @@
 .tp-root { display:flex; flex-direction:column; gap:1.25rem; min-width:0; }
 
+.tp-root .tm-team-filter-row {
+  margin-top: -1.25rem;
+  margin-bottom: 0rem;
+}
+
 .tp-kpi-row {
   display:grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
