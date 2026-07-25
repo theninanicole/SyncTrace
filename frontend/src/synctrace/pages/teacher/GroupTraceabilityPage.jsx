@@ -22,7 +22,7 @@ const SEVERITY_CONFIDENCE = {
 
 function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
   const { toast, showToast, hideToast } = useToast();
-  const { loading, section, rows, status, lastTraceability, readinessScore, readinessStatus, findingCount, reload } = useGroupTraceability(teamCode, showToast);
+  const { loading, section, rows, status, lastTraceability, readinessScore, readinessStatus, findingCount, aiIssues, reload } = useGroupTraceability(teamCode, showToast);
   const [previewComponent, setPreviewComponent] = useState(null);
   //eslint-disable-next-line no-unused-vars
   const meta = STATUS_META[status];
@@ -63,6 +63,7 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
           focusStep: 'map',
           focusDocType: docType,
         })}
+        aiIssues={aiIssues}
         issuesEmptyMessage="Run AI Analysis from Traceability Results to detect continuity gaps for this team."
       />
 
