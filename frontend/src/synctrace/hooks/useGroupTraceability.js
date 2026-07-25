@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getSmartGoals, getAllGoalComponents, getContinuitySummary } from '../api';
+import { getSmartGoals, getAllGoalComponents, getContinuitySummary, getContinuityFindings, getDiagnosticRecommendations } from '../api';
 import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
 import { orderGoalsHierarchically } from '../constants';
 import { groupStatus } from './useGroupOverview';
+import { buildAiIssues } from '../utils/gapIssues';
 
 const EMPTY_STATE = {
   loading: true,
@@ -18,6 +19,7 @@ const EMPTY_STATE = {
   readinessScore: 0,
   readinessStatus: null,
   findingCount: 0,
+  aiIssues: [],
 };
 
 function resolveComponentTeamCode(component, historyTeamMap) {
@@ -56,12 +58,14 @@ export function useGroupTraceability(teamCode, showToast) {
     if (!teamCode) return;
     setGroupState((s) => ({ ...s, loading: true }));
     try {
-      const [goalList, roster, history, componentsByGoal, summary] = await Promise.all([
+      const [goalList, roster, history, componentsByGoal, summary, findingsData, recommendationsData] = await Promise.all([
         getSmartGoals(),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
         getAllGoalComponents().catch(() => ({})),
         getContinuitySummary(teamCode).catch(() => null),
+        getContinuityFindings(teamCode).catch(() => ({ findings: [] })),
+        getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })),
       ]);
 
       const historyTeamMap = new Map();
@@ -119,6 +123,13 @@ export function useGroupTraceability(teamCode, showToast) {
       const totalCells = summary ? summary.totalGoals * DOC_TYPES.length : goalList.length * DOC_TYPES.length;
       const percent = totalCells > 0 ? Math.round((summaryCoveredCount / totalCells) * 100) : 0;
 
+      const goalCodeById = new Map(rows.map((r) => [r.goalId, r.code]));
+      const aiIssues = buildAiIssues(
+        findingsData.findings || [],
+        recommendationsData.recommendations || [],
+        goalCodeById,
+      );
+
       setGroupState((s) => ({
         ...s,
         section,
@@ -131,6 +142,7 @@ export function useGroupTraceability(teamCode, showToast) {
         readinessScore: summary?.readinessScore ?? percent,
         readinessStatus: summary?.status ?? null,
         findingCount: summary?.totalFindings ?? 0,
+        aiIssues,
       }));
     } catch (err) {
       showToast?.(err.message, 'error');
