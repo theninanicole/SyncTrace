@@ -41,7 +41,7 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
         actions={
           <div className="teacher-header-actions">
             <SendButton showToast={showToast} />
-            <ExportReportButton showToast={showToast} />
+            <ExportReportButton showToast={showToast} teamCode={teamCode} />
           </div>
         }
       />
