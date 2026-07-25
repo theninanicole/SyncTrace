@@ -35,9 +35,6 @@ public class SecurityConfig {
                 .requestMatchers("/api/ai/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 
-                // SyncTrace endpoints - require authentication for all
-                .requestMatchers("/api/synctrace/**").authenticated()
-                
                 // SyncTrace write/mutating endpoints - teacher role only
                 // Goals: POST (create), PUT (update), DELETE
                 .requestMatchers(HttpMethod.POST, "/api/synctrace/goals").hasRole("TEACHER")
@@ -60,6 +57,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/synctrace/proposals/extract-goals").hasRole("TEACHER")
                 // Audit export: GET (but it's a mutating operation from business perspective)
                 .requestMatchers(HttpMethod.GET, "/api/synctrace/audit/*/export").hasRole("TEACHER")
+                
+                // SyncTrace endpoints - require authentication for all (read-only operations)
+                .requestMatchers("/api/synctrace/**").authenticated()
                 
                 // All other endpoints - permit for now (non-SyncTrace controllers untouched per requirements)
                 .anyRequest().permitAll()

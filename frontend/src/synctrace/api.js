@@ -248,6 +248,16 @@ export const exportAuditReport = async (teamCode, format = 'json') => {
         return { success: true };
     }
     
-    // JSON response
-    return response.json();
+    // JSON response - also trigger download
+    const data = await response.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-report-${teamCode}.json`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    return { success: true };
 };
