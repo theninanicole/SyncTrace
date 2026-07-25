@@ -307,14 +307,8 @@ export function useTeacherDashboard(showToast) {
   // ── Filter options ────────────────────────────────────────────────────────
 
   const filterOptions = useMemo(() => {
-    const base = buildFilterOptions(files);
-    if (roster.length > 0) {
-      const rosterSections  = [...new Set(roster.map((s) => s.section).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-      const rosterTeamCodes = [...new Set(roster.map((s) => s.groupCode).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-      return { ...base, sections: rosterSections, teamCodes: rosterTeamCodes };
-    }
-    return base;
-  }, [files, roster]);
+    return buildFilterOptions(files);
+  }, [files]);
 
   const filteredFiles = useMemo(
     () => filterSubmissions(

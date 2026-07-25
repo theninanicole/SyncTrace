@@ -33,6 +33,7 @@ function TraceabilityMappingPage({
   const [previewComponent, setPreviewComponent] = useState(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (focusStep === 'goals') setIsExtractGoalsModalOpen(true);
     if (focusStep === 'library') setIsExtractModalOpen(true);
     if (focusStep === 'map' && focusDocType) {
@@ -83,7 +84,7 @@ function TraceabilityMappingPage({
 
       <PanelHeader
         title="Goals & Mapping"
-        subtitle="Extract SMART goals and link them to document and code components"
+        subtitle="Extract SMART goals and map them to document and implementation components"
         actions={
           <div className="teacher-header-actions">
             <button className="btn btn--soft tm-link-btn" onClick={() => setIsExtractGoalsModalOpen(true)}>
@@ -124,9 +125,6 @@ function TraceabilityMappingPage({
           ) : orderedGoals.length === 0 ? (
             <div className="tm-sidebar-empty">
               <p className="tm-muted">{selectedTeam ? `No goals yet for ${selectedTeam}.` : 'No goals yet.'}</p>
-              <button type="button" className="btn btn--primary" style={{ width: '100%' }} onClick={() => setIsExtractGoalsModalOpen(true)}>
-                Extract from proposal
-              </button>
             </div>
           ) : (
             <div className="tm-goal-list">
@@ -157,9 +155,11 @@ function TraceabilityMappingPage({
           )}
 
           <div className="tm-sidebar__spacer" />
-          <button className="pw-btn pw-btn--primary" style={{ width: '100%' }} onClick={() => showToast('Mapping saved.', 'success')}>
-            Save Mapping
-          </button>
+          {orderedGoals.length > 0 && (
+            <button className="pw-btn pw-btn--primary" style={{ width: '100%' }} onClick={() => showToast('Mapping saved.', 'success')}>
+              Save Mapping
+            </button>
+          )}
         </aside>
 
         {/* ── Main content ────────────────────────────────────────────────── */}
@@ -205,16 +205,7 @@ function TraceabilityMappingPage({
                 </div>
               )}
             </>
-          ) : (
-            <div className="empty-state">
-              <p><strong>Select a goal on the left</strong> to map its SRS, SDD, SPMP, STD, and Implementation components.</p>
-              {orderedGoals.length === 0 && (
-                <button type="button" className="btn btn--primary" onClick={() => setIsExtractGoalsModalOpen(true)}>
-                  Start: Extract goals from proposal
-                </button>
-              )}
-            </div>
-          )}
+          ) : null}
         </main>
       </div>
 

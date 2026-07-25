@@ -1,6 +1,5 @@
 package com.ieee.evaluator.synctrace.service;
 
-import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding.Severity;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
@@ -27,16 +26,19 @@ public class ContinuityGapDetectionService {
     private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
     private final SmartGoalRepository goalRepository;
+    private final TeamComponentResolverService teamComponentResolver;
 
     public ContinuityGapDetectionService(
             GoalComponentMappingRepository mappingRepository,
             TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
-            SmartGoalRepository goalRepository) {
+            SmartGoalRepository goalRepository,
+            TeamComponentResolverService teamComponentResolver) {
         this.mappingRepository = mappingRepository;
         this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
         this.goalRepository = goalRepository;
+        this.teamComponentResolver = teamComponentResolver;
     }
 
     @Transactional
@@ -60,17 +62,19 @@ public class ContinuityGapDetectionService {
             SmartGoal goal = goalOpt.get();
 
             List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(currentGoalId);
-            Map<DocType, List<TraceComponent>> byDocType = new HashMap<>();
-            List<TraceComponent> mappedComponents = new ArrayList<>();
+            Map<DocType, List<GoalComponentMapping>> byDocType = mapTeamScopedComponentsByDocType(mappings, teamCode);
 
-            for (GoalComponentMapping mapping : mappings) {
-                componentRepository.findById(mapping.getComponentId()).ifPresent(component -> {
-                    mappedComponents.add(component);
-                    if (component.getDocType() != null) {
-                        byDocType.computeIfAbsent(component.getDocType(), k -> new ArrayList<>()).add(component);
-                    }
-                });
+            if (teamCode != null && !teamCode.isBlank() && byDocType.isEmpty()) {
+                continue;
             }
+
+            // Build list of actual TraceComponent objects for goal kind alignment check
+            List<TraceComponent> mappedComponents = new ArrayList<>();
+            byDocType.values().forEach(mappingList -> {
+                mappingList.forEach(mapping -> {
+                    componentRepository.findById(mapping.getComponentId()).ifPresent(mappedComponents::add);
+                });
+            });
 
             checkMissingSrs(findings, teamCode, currentGoalId, byDocType);
             checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.SDD, byDocType);
@@ -85,7 +89,7 @@ public class ContinuityGapDetectionService {
 
     private void checkMissingSrs(
             List<ContinuityFinding> findings, String teamCode, Long goalId,
-            Map<DocType, List<TraceComponent>> byDocType) {
+            Map<DocType, List<GoalComponentMapping>> byDocType) {
         boolean hasSrs = byDocType.containsKey(DocType.SRS) && !byDocType.get(DocType.SRS).isEmpty();
         if (!hasSrs) {
             ContinuityFinding finding = new ContinuityFinding();
@@ -106,7 +110,7 @@ public class ContinuityGapDetectionService {
             Long goalId,
             DocType fromType,
             DocType toType,
-            Map<DocType, List<TraceComponent>> byDocType) {
+            Map<DocType, List<GoalComponentMapping>> byDocType) {
 
         boolean hasFrom = byDocType.containsKey(fromType) && !byDocType.get(fromType).isEmpty();
         boolean hasTo = byDocType.containsKey(toType) && !byDocType.get(toType).isEmpty();
@@ -157,9 +161,43 @@ public class ContinuityGapDetectionService {
         findings.add(finding);
     }
 
-    private List<Long> getAllGoalIds() {
-        return goalRepository.findAll().stream()
-            .map(SmartGoal::getId)
+    private Map<DocType, List<GoalComponentMapping>> mapTeamScopedComponentsByDocType(
+            List<GoalComponentMapping> mappings,
+            String teamCode) {
+        Map<DocType, List<GoalComponentMapping>> byDocType = new HashMap<>();
+
+        if (mappings.isEmpty()) {
+            return byDocType;
+        }
+
+        List<Long> componentIds = mappings.stream()
+            .map(GoalComponentMapping::getComponentId)
+            .filter(Objects::nonNull)
             .toList();
+
+        Map<Long, com.ieee.evaluator.synctrace.model.TraceComponent> componentsById = componentRepository.findAllById(componentIds)
+            .stream()
+            .collect(HashMap::new, (acc, component) -> acc.put(component.getId(), component), HashMap::putAll);
+
+        for (GoalComponentMapping mapping : mappings) {
+            com.ieee.evaluator.synctrace.model.TraceComponent component = componentsById.get(mapping.getComponentId());
+            if (component == null) {
+                continue;
+            }
+            if (teamCode != null && !teamCode.isBlank() && !teamComponentResolver.belongsToTeam(component, teamCode)) {
+                continue;
+            }
+
+            byDocType.computeIfAbsent(component.getDocType(), ignored -> new ArrayList<>())
+                .add(mapping);
+        }
+
+        return byDocType;
+    }
+
+    private List<Long> getAllGoalIds() {
+        List<Long> goalIds = new ArrayList<>();
+        goalRepository.findAll().forEach(goal -> goalIds.add(goal.getId()));
+        return goalIds;
     }
 }

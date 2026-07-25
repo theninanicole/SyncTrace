@@ -153,14 +153,26 @@ public class TraceComponentService {
                 candidate.getCodeName(), candidate.getName(), candidate.getContent());
             candidate.setCodeName(code);
 
+            // Auto-generated fallback codes (UC-01, AD-01, ...) restart from 1 on every
+            // extraction, so they can coincidentally match a code already used by a
+            // different evaluation's diagrams — multiple components can legitimately
+            // share a (docType, codeName) pair as long as they come from different
+            // evaluations. Only treat it as the same component when it's unowned
+            // (manually created) or belongs to this same evaluation history — otherwise
+            // this diagram would get silently merged into an unrelated document's
+            // component instead of being extracted for this one.
             Optional<TraceComponent> existing = Optional.empty();
             if (code != null) {
-                existing = componentRepository.findByDocTypeAndCodeNameIgnoreCase(
-                    candidate.getDocType(), code);
+                existing = componentRepository
+                    .findAllByDocTypeAndCodeNameIgnoreCase(candidate.getDocType(), code)
+                    .stream()
+                    .filter(c -> belongsToSameSource(c, candidate))
+                    .findFirst();
             }
             if (existing.isEmpty()) {
                 existing = componentRepository.findByDocTypeAndNameIgnoreCase(
-                    candidate.getDocType(), safeName);
+                    candidate.getDocType(), safeName)
+                    .filter(c -> belongsToSameSource(c, candidate));
             }
             if (existing.isPresent()) {
                 TraceComponent found = existing.get();
@@ -204,6 +216,11 @@ public class TraceComponentService {
             c.getSourceHistoryId(),
             c.getCreatedAt()
         );
+    }
+
+    private static boolean belongsToSameSource(TraceComponent existing, TraceComponent candidate) {
+        return existing.getSourceHistoryId() == null
+            || existing.getSourceHistoryId().equals(candidate.getSourceHistoryId());
     }
 
     private static String truncate(String value, int maxLen) {

@@ -13,9 +13,16 @@ import ExportReportButton from '../../components/common/ExportReportButton';
 import './TraceabilityMappingPage.css';
 import './GroupTraceabilityPage.css';
 
+const SEVERITY_CONFIDENCE = {
+  CRITICAL: 98,
+  HIGH: 90,
+  MEDIUM: 75,
+  LOW: 60,
+};
+
 function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
   const { toast, showToast, hideToast } = useToast();
-  const { loading, section, rows, status, lastTraceability, reload } = useGroupTraceability(teamCode, showToast);
+  const { loading, section, rows, status, lastTraceability, readinessScore, readinessStatus, findingCount, reload } = useGroupTraceability(teamCode, showToast);
   const [previewComponent, setPreviewComponent] = useState(null);
   //eslint-disable-next-line no-unused-vars
   const meta = STATUS_META[status];
@@ -41,6 +48,9 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
 
       <p className="tm-muted gtp-alignment">
         Overall alignment: <strong>{status === 'ready' ? 'No Gaps Detected' : 'Gap Detected'}</strong>
+        {typeof readinessScore === 'number' && <> · Readiness <strong>{readinessScore}%</strong></>}
+        {readinessStatus && <> · Backend status <strong>{readinessStatus}</strong></>}
+        {typeof findingCount === 'number' && <> · Findings <strong>{findingCount}</strong></>}
         {lastTraceability && <> · Last reviewed {formatDate(lastTraceability)}</>}
       </p>
 

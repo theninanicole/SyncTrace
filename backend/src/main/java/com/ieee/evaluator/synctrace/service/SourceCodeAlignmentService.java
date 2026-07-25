@@ -2,8 +2,6 @@ package com.ieee.evaluator.synctrace.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ieee.evaluator.model.EvaluationHistory;
-import com.ieee.evaluator.repository.EvaluationHistoryRepository;
 import com.ieee.evaluator.service.AiProvider;
 import com.ieee.evaluator.service.ProgressEmitter;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
@@ -34,8 +32,8 @@ public class SourceCodeAlignmentService {
 
     private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
-    private final EvaluationHistoryRepository historyRepository;
     private final ProgressEmitter progressEmitter;
+    private final TeamComponentResolverService teamComponentResolver;
     private final Map<String, AiProvider> providers;
     private final Set<String> inFlightAnalyses = ConcurrentHashMap.newKeySet();
     private final ObjectMapper objectMapper;
@@ -43,13 +41,13 @@ public class SourceCodeAlignmentService {
     public SourceCodeAlignmentService(
             TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
-            EvaluationHistoryRepository historyRepository,
             ProgressEmitter progressEmitter,
+            TeamComponentResolverService teamComponentResolver,
             List<AiProvider> providerList) {
         this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
-        this.historyRepository = historyRepository;
         this.progressEmitter = progressEmitter;
+        this.teamComponentResolver = teamComponentResolver;
         this.providers = providerList.stream()
                 .collect(Collectors.toMap(
                     p -> p.getProviderName().toLowerCase(),
@@ -145,33 +143,17 @@ public class SourceCodeAlignmentService {
 
         emit(sessionId, "LOADING", "Loading SDD and IMPLEMENTATION components", 15);
 
-        // Get SDD components for the team - resolve team code from EvaluationHistory filename
-        List<TraceComponent> allSddComponents = componentRepository.findAll().stream()
+        // Get all components and filter by team using shared resolution logic
+        List<TraceComponent> allComponents = componentRepository.findAll();
+        List<TraceComponent> teamComponents = teamComponentResolver.filterByTeam(allComponents, teamCode);
+        
+        // Separate into SDD and IMPLEMENTATION components
+        List<TraceComponent> sddComponents = teamComponents.stream()
             .filter(c -> c.getDocType() == DocType.SDD)
             .toList();
         
-        List<TraceComponent> sddComponents = new ArrayList<>();
-        for (TraceComponent comp : allSddComponents) {
-            // Skip manually-added SDD components (no sourceHistoryId)
-            if (comp.getSourceHistoryId() == null) {
-                continue;
-            }
-            
-            // Resolve team code from EvaluationHistory filename
-            Optional<EvaluationHistory> historyOpt = historyRepository.findById(comp.getSourceHistoryId());
-            if (historyOpt.isPresent()) {
-                String componentTeamCode = TeamCodeResolver.extractTeamCode(historyOpt.get().getFileName());
-                if (componentTeamCode.equalsIgnoreCase(teamCode)) {
-                    sddComponents.add(comp);
-                }
-            }
-        }
-
-        // Get IMPLEMENTATION components for the team - use name-based matching
-        // (GitHubIngestionService embeds teamCode in the name: "{teamCode} - {path}")
-        List<TraceComponent> implComponents = componentRepository.findAll().stream()
-            .filter(c -> c.getDocType() == DocType.IMPLEMENTATION && 
-                       c.getName() != null && c.getName().contains(teamCode))
+        List<TraceComponent> implComponents = teamComponents.stream()
+            .filter(c -> c.getDocType() == DocType.IMPLEMENTATION)
             .toList();
 
         if (sddComponents.isEmpty() || implComponents.isEmpty()) {

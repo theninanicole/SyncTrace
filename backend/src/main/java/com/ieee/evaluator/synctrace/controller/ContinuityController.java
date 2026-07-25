@@ -4,6 +4,7 @@ import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.service.ContinuityGapDetectionService;
+import com.ieee.evaluator.synctrace.service.ContinuityReadinessService;
 import com.ieee.evaluator.synctrace.service.DiagnosticRecommendationService;
 import com.ieee.evaluator.synctrace.service.SourceCodeAlignmentService;
 import org.springframework.http.HttpStatus;
@@ -19,16 +20,19 @@ public class ContinuityController {
 
     private final SourceCodeAlignmentService alignmentService;
     private final ContinuityGapDetectionService gapDetectionService;
+    private final ContinuityReadinessService readinessService;
     private final DiagnosticRecommendationService recommendationService;
     private final ContinuityFindingRepository findingRepository;
 
     public ContinuityController(
             SourceCodeAlignmentService alignmentService,
             ContinuityGapDetectionService gapDetectionService,
+            ContinuityReadinessService readinessService,
             DiagnosticRecommendationService recommendationService,
             ContinuityFindingRepository findingRepository) {
         this.alignmentService = alignmentService;
         this.gapDetectionService = gapDetectionService;
+        this.readinessService = readinessService;
         this.recommendationService = recommendationService;
         this.findingRepository = findingRepository;
     }
@@ -103,6 +107,37 @@ public class ContinuityController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch findings: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/recommendations/{teamCode}")
+    public ResponseEntity<?> getRecommendations(@PathVariable String teamCode) {
+        try {
+            if (teamCode == null || teamCode.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
+            }
+
+            List<DiagnosticRecommendation> recommendations = recommendationService.getRecommendationsForTeam(teamCode);
+            return ResponseEntity.ok(Map.of("recommendations", recommendations, "count", recommendations.size()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch recommendations: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/summary/{teamCode}")
+    public ResponseEntity<?> getReadinessSummary(@PathVariable String teamCode) {
+        try {
+            if (teamCode == null || teamCode.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
+            }
+
+            return ResponseEntity.ok(readinessService.getTeamReadinessSummary(teamCode));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to build readiness summary: " + e.getMessage()));
         }
     }
 }

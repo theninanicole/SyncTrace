@@ -41,7 +41,7 @@ function TraceabilityResults({
             rows={enrichedRows}
             onComponentClick={onComponentClick}
             onAddClick={onAddClick}
-            emptyMessage="No SMART goals yet."
+            emptyMessage="No traceability data available."
           />
 
           {enrichedRows.length > 0 && (

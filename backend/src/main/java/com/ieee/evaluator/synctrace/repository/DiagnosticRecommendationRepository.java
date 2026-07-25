@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface DiagnosticRecommendationRepository extends JpaRepository<DiagnosticRecommendation, Long> {
     List<DiagnosticRecommendation> findByFindingId(Long findingId);
+    List<DiagnosticRecommendation> findByFindingIdIn(List<Long> findingIds);
     void deleteByFindingId(Long findingId);
 }
