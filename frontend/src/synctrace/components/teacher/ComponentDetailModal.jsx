@@ -45,7 +45,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
   const merged = detail || component;
   const label = componentLabel(merged);
   const isImplementation = merged.docType === 'IMPLEMENTATION';
-  const { filePath, source } = extractSourceMeta(merged.content || '');
+  const { source } = extractSourceMeta(merged.content || '');
   const contentLines = !isImplementation && merged.content
     ? merged.content.split('\n').map((line) => line.trim()).filter(Boolean)
     : [];
@@ -123,12 +123,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
         )
       }
       subtitle={
-        <span>
-          <span className="tm-badge" data-doctype={component.docType}>{component.docType} COMPONENT</span>
-          {(filePath || (merged.name && merged.name !== label)) && (
-            <span className="tm-detail__fullname">{filePath || merged.name}</span>
-          )}
-        </span>
+        <span className="tm-badge" data-doctype={component.docType}>{component.docType} COMPONENT</span>
       }
     >
       <div className="tm-detail">

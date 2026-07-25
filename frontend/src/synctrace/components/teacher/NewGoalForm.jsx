@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { GOAL_KINDS } from '../../constants';
 
-function NewGoalForm({ onCreate, onCancel, generalGoals = [] }) {
+function NewGoalForm({ onCreate, onCancel, generalGoals = [], defaultTeamCode = '' }) {
   const [description, setDescription] = useState('');
   const [goalKind, setGoalKind] = useState('SPECIFIC');
   const [parentGoalId, setParentGoalId] = useState('');
-  const [teamCode, setTeamCode] = useState('');
+  const [teamCode, setTeamCode] = useState(defaultTeamCode);
 
   function handleSubmit() {
     if (!description.trim()) return;
@@ -17,13 +17,14 @@ function NewGoalForm({ onCreate, onCancel, generalGoals = [] }) {
   }
 
   return (
-    <div className="tm-new-goal">
+    <div className="tm-new-goal" style={{ maxWidth: '320px', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
       <textarea
         className="pw-textarea"
         placeholder="e.g. Enable automated submission management via Google Sheets integration by end of development"
         rows={3}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
+        style={{ width: '100%', boxSizing: 'border-box' }}
       />
 
       <label className="tm-field-label">Goal kind</label>
@@ -34,6 +35,7 @@ function NewGoalForm({ onCreate, onCancel, generalGoals = [] }) {
           setGoalKind(e.target.value);
           if (e.target.value === 'GENERAL') setParentGoalId('');
         }}
+        style={{ width: '100%', boxSizing: 'border-box' }}
       >
         {GOAL_KINDS.map((k) => (
           <option key={k.value} value={k.value}>{k.label}</option>
@@ -47,6 +49,7 @@ function NewGoalForm({ onCreate, onCancel, generalGoals = [] }) {
             className="tm-select"
             value={parentGoalId}
             onChange={(e) => setParentGoalId(e.target.value)}
+            style={{ width: '100%', boxSizing: 'border-box' }}
           >
             <option value="">None</option>
             {generalGoals.map((g) => (
@@ -62,6 +65,7 @@ function NewGoalForm({ onCreate, onCancel, generalGoals = [] }) {
         placeholder="e.g. 2526-sem2-it332-08"
         value={teamCode}
         onChange={(e) => setTeamCode(e.target.value)}
+        style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, textOverflow: 'ellipsis' }}
       />
 
       <div className="pw-action-row">

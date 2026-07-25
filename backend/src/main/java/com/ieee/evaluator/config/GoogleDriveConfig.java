@@ -1,6 +1,6 @@
 package com.ieee.evaluator.config;
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
+import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.json.gson.GsonFactory;
@@ -15,16 +15,16 @@ import java.security.GeneralSecurityException;
 @Configuration
 public class GoogleDriveConfig {
 
-    private final GoogleCredential googleCredential;
+    private final Credential driveOAuthCredential;
 
-    public GoogleDriveConfig(@Qualifier("googleCredential") GoogleCredential googleCredential) {
-        this.googleCredential = googleCredential;
+    public GoogleDriveConfig(@Qualifier("driveOAuthCredential") Credential driveOAuthCredential) {
+        this.driveOAuthCredential = driveOAuthCredential;
     }
 
     @Bean
     public Drive driveService() throws IOException, GeneralSecurityException {
         HttpRequestInitializer timeoutInitializer = request -> {
-            googleCredential.initialize(request);
+            driveOAuthCredential.initialize(request);
             request.setConnectTimeout(60_000);
             request.setReadTimeout(300_000);
         };

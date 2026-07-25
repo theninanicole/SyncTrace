@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/synctrace/components")
@@ -352,13 +354,20 @@ public class TraceComponentController {
         return null;
     }
 
+    // Section headers in the evaluation output always appear alone on their own line,
+    // e.g. "Diagram Analysis:". Matching must anchor to line start — a plain substring
+    // search false-positives on ordinary words inside diagram descriptions themselves
+    // (e.g. "...wireframe with summary cards..." was mistaken for the "Summary:" header
+    // and truncated the diagram list mid-way).
+    private int findHeaderLineStart(String text, String headerName, int fromIndex) {
+        Pattern pattern = Pattern.compile(
+            "(?im)^[ \\t]*" + Pattern.quote(headerName) + "[ \\t]*:");
+        Matcher matcher = pattern.matcher(text);
+        return matcher.find(fromIndex) ? matcher.start() : -1;
+    }
+
     private int findSectionStart(String text, String sectionName) {
-        String lower = text.toLowerCase();
-        String target = sectionName.toLowerCase();
-        int idx = lower.indexOf(target);
-        if (idx == -1) return -1;
-        while (idx > 0 && text.charAt(idx - 1) != '\n') idx--;
-        return idx;
+        return findHeaderLineStart(text, sectionName, 0);
     }
 
     private int findNextSectionStart(String text, int fromIndex) {
@@ -368,9 +377,8 @@ public class TraceComponentController {
             "Rubric Evaluation", "Revision Analysis"
         };
         int earliest = -1;
-        String lower = text.toLowerCase();
         for (String header : headers) {
-            int idx = lower.indexOf(header.toLowerCase(), fromIndex);
+            int idx = findHeaderLineStart(text, header, fromIndex);
             if (idx != -1 && (earliest == -1 || idx < earliest)) earliest = idx;
         }
         return earliest;

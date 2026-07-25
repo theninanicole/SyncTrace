@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye, Plus, Trash2 } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
 import { getTraceComponents, createTraceComponent, deleteTraceComponent } from '../../api';
+import { getEvaluationHistory } from '../../../api';
+import { extractSubmissionMeta } from '../../../utils/dashboardUtils';
 import { ARTIFACT_KINDS_BY_DOC_TYPE, artifactKindLabel, componentLabel } from '../../constants';
 import ComponentDetailModal from './ComponentDetailModal';
 import ConfirmModal from '../common/ConfirmModal';
@@ -14,12 +16,13 @@ const DOC_TITLES = {
   IMPLEMENTATION: 'Implementation — Source code artifacts',
 };
 
-function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeComponentIds = [], onAddSelected, showToast }) {
+function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeComponentIds = [], onAddSelected, onComponentRenamed, showToast, teamCode = '' }) {
   const docType = initialDocType === 'ALL' ? 'SRS' : initialDocType;
 
   const [search, setSearch]             = useState('');
   const [components, setComponents]     = useState([]);
   const [loading, setLoading]           = useState(false);
+  const [historyTeamMap, setHistoryTeamMap] = useState(new Map());
   const [selectedIds, setSelectedIds]   = useState(new Set());
   const [previewComponent, setPreviewComponent] = useState(null);
   const [showNewForm, setShowNewForm]   = useState(false);
@@ -53,11 +56,38 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
     return () => { cancelled = true; };
   }, [isOpen, docType, search, showToast]);
 
+  // TraceComponent has no teamCode of its own — resolve it via the submission
+  // (sourceHistoryId) it was extracted from, same as the rest of the app.
+  useEffect(() => {
+    if (!isOpen || !teamCode) return;
+    let cancelled = false;
+    getEvaluationHistory()
+      .then((items) => {
+        if (cancelled) return;
+        const map = new Map();
+        items.forEach((h) => {
+          const meta = extractSubmissionMeta(h.fileName);
+          if (meta.teamCode) map.set(h.id, meta.teamCode);
+        });
+        setHistoryTeamMap(map);
+      })
+      .catch(() => { if (!cancelled) setHistoryTeamMap(new Map()); });
+    return () => { cancelled = true; };
+  }, [isOpen, teamCode]);
+
   const excludeSet = useMemo(() => new Set(excludeComponentIds), [excludeComponentIds]);
 
   /** Components grouped by artifact kind, ordered like the taxonomy. */
   const groupedComponents = useMemo(() => {
-    const visible = components.filter((c) => !excludeSet.has(c.id));
+    let visible = components.filter((c) => !excludeSet.has(c.id));
+    if (teamCode) {
+      visible = visible.filter((c) => {
+        // Manually-added components have no source submission — always show them.
+        if (c.sourceHistoryId == null) return true;
+        const resolvedTeam = historyTeamMap.get(c.sourceHistoryId);
+        return !resolvedTeam || resolvedTeam.toUpperCase() === teamCode.toUpperCase();
+      });
+    }
     const knownKinds = artifactOptions.map((o) => o.value);
     const groups = [];
 
@@ -74,7 +104,7 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
     }
 
     return groups;
-  }, [components, excludeSet, artifactOptions]);
+  }, [components, excludeSet, artifactOptions, teamCode, historyTeamMap]);
 
   if (!isOpen) return null;
 
@@ -117,6 +147,7 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
   function handleComponentRenamed(updated) {
     setComponents((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     setPreviewComponent(updated);
+    onComponentRenamed?.(updated);
   }
 
   async function confirmDeleteComponent() {
@@ -147,7 +178,7 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
         isOpen={isOpen}
         onClose={onClose}
         title={DOC_TITLES[docType] || `Add ${docType} components`}
-        subtitle="Pick the exact artifacts this goal maps to — one document at a time, no guessing."
+        subtitle="Select the specific artifacts that this goal maps to."
         containerClassName="tm-add-modal"
         footer={
           <div className="modal-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -155,7 +186,7 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
             <div className="modal-actions">
               <button className="btn" onClick={onClose}>Cancel</button>
               <button className="btn btn--primary" disabled={selectedIds.size === 0} onClick={handleAddSelected}>
-                Link Selected
+                Add Selected
               </button>
             </div>
           </div>
@@ -175,7 +206,7 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
           <div className="empty-state">
             <p>No {docType === 'IMPLEMENTATION' ? 'implementation' : docType} components found{search ? ` for "${search}"` : ''}.</p>
             <p className="tm-muted">
-              Build the library first: extract from evaluated documents, ingest the GitHub repo, or add one manually below.
+              Build the library first: extract from evaluated documents, ingest the GitHub repository, or add one manually below.
             </p>
           </div>
         ) : (
@@ -193,18 +224,9 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeCom
                       <label className="tm-component-row__main">
                         <input type="checkbox" checked={checked} onChange={() => toggleSelected(c.id)} />
                         <span className="tm-component-row__name">
-                          <button
-                            type="button"
-                            className="tm-code-link"
-                            title={c.name || componentLabel(c)}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setPreviewComponent(c);
-                            }}
-                          >
+                          <span title={c.name || componentLabel(c)}>
                             {componentLabel(c)}
-                          </button>
+                          </span>
                           {c.name && c.name !== componentLabel(c) && (
                             <span className="tm-component-row__fullname">{c.name}</span>
                           )}

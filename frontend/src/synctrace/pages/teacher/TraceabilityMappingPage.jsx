@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleCheck, Plus, Sparkles, TriangleAlert } from 'lucide-react';
+import { CircleCheck, Plus, TriangleAlert } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
@@ -10,7 +10,9 @@ import ExtractGoalsModal from '../../components/teacher/ExtractGoalsModal';
 import NewGoalForm from '../../components/teacher/NewGoalForm';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import { useTraceability, DOC_TYPES } from '../../hooks/useTraceability';
+import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import { orderGoalsHierarchically, preferredArtifactHint } from '../../constants';
+import TeamSelect from '../../components/common/TeamSelect';
 import './TraceabilityMappingPage.css';
 
 function TraceabilityMappingPage({
@@ -20,7 +22,8 @@ function TraceabilityMappingPage({
   onProgressRefresh,
 }) {
   const { toast, showToast, hideToast } = useToast();
-  const tm = useTraceability(showToast, initialGoalId);
+  const [selectedTeam, setSelectedTeam] = useSelectedTeam();
+  const tm = useTraceability(showToast, initialGoalId, selectedTeam);
 
   const [showNewGoalForm, setShowNewGoalForm] = useState(false);
   const [modalDocType, setModalDocType] = useState('SRS');
@@ -30,6 +33,7 @@ function TraceabilityMappingPage({
   const [previewComponent, setPreviewComponent] = useState(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (focusStep === 'goals') setIsExtractGoalsModalOpen(true);
     if (focusStep === 'library') setIsExtractModalOpen(true);
     if (focusStep === 'map' && focusDocType) {
@@ -80,11 +84,11 @@ function TraceabilityMappingPage({
 
       <PanelHeader
         title="Goals & Mapping"
-        subtitle="Extract SMART goals and link them to document and code components"
+        subtitle="Extract SMART goals and map them to document and implementation components"
         actions={
           <div className="teacher-header-actions">
             <button className="btn btn--soft tm-link-btn" onClick={() => setIsExtractGoalsModalOpen(true)}>
-              <Sparkles size={14} /> Extract Goals
+              Extract Goals
             </button>
             <button className="btn btn--primary tm-link-btn" onClick={() => setIsExtractModalOpen(true)}>
               Extract Components
@@ -93,14 +97,11 @@ function TraceabilityMappingPage({
         }
       />
 
-      <div className="tm-layout">
-        {/* ── Goal hint ─────────────────────────────────────────────────────── */}
-        <div className="tm-hint-container">
-          <div className="tm-sidebar-hint">
-            <p className="tm-muted"><strong>Select a goal</strong> to map its SRS, SDD, SPMP, STD, and Implementation components. <strong>Select a goal to view its traceability matrix.</strong></p>
-          </div>
-        </div>
+      <div className="tm-team-filter-row">
+        <TeamSelect value={selectedTeam} onChange={setSelectedTeam} />
+      </div>
 
+      <div className="tm-layout">
         {/* ── Goal sidebar ─────────────────────────────────────────────────── */}
         <aside className="tm-sidebar">
           <div className="tm-sidebar__header">
@@ -115,6 +116,7 @@ function TraceabilityMappingPage({
               onCreate={handleCreateGoal}
               onCancel={() => setShowNewGoalForm(false)}
               generalGoals={tm.generalGoals}
+              defaultTeamCode={selectedTeam}
             />
           )}
 
@@ -122,10 +124,7 @@ function TraceabilityMappingPage({
             <p className="tm-muted" style={{ padding: '0 0.25rem' }}>Loading goals...</p>
           ) : orderedGoals.length === 0 ? (
             <div className="tm-sidebar-empty">
-              <p className="tm-muted">No goals yet.</p>
-              <button type="button" className="btn btn--primary" style={{ width: '100%' }} onClick={() => setIsExtractGoalsModalOpen(true)}>
-                Extract from proposal
-              </button>
+              <p className="tm-muted">{selectedTeam ? `No goals yet for ${selectedTeam}.` : 'No goals yet.'}</p>
             </div>
           ) : (
             <div className="tm-goal-list">
@@ -156,9 +155,11 @@ function TraceabilityMappingPage({
           )}
 
           <div className="tm-sidebar__spacer" />
-          <button className="pw-btn pw-btn--primary" style={{ width: '100%' }} onClick={() => showToast('Mapping saved.', 'success')}>
-            Save Mapping
-          </button>
+          {orderedGoals.length > 0 && (
+            <button className="pw-btn pw-btn--primary" style={{ width: '100%' }} onClick={() => showToast('Mapping saved.', 'success')}>
+              Save Mapping
+            </button>
+          )}
         </aside>
 
         {/* ── Main content ────────────────────────────────────────────────── */}
@@ -196,7 +197,6 @@ function TraceabilityMappingPage({
                       docType={dt}
                       components={mappedByType[dt]}
                       complete={mappedByType[dt].length > 0}
-                      goalKind={tm.selectedGoal.goalKind || 'SPECIFIC'}
                       onAdd={() => openAddModal(dt)}
                       onRemove={tm.removeComponent}
                       onComponentClick={setPreviewComponent}
@@ -215,6 +215,8 @@ function TraceabilityMappingPage({
         initialDocType={modalDocType}
         excludeComponentIds={tm.mappedComponents.map((c) => c.id)}
         showToast={showToast}
+        teamCode={selectedTeam}
+        onComponentRenamed={refreshGoalsAndMappings}
         onAddSelected={async (componentIds) => {
           await tm.addComponents(componentIds);
           setIsModalOpen(false);
@@ -229,6 +231,7 @@ function TraceabilityMappingPage({
           onProgressRefresh?.();
         }}
         showToast={showToast}
+        teamCode={selectedTeam}
       />
 
       <ExtractGoalsModal
@@ -236,6 +239,7 @@ function TraceabilityMappingPage({
         onClose={() => setIsExtractGoalsModalOpen(false)}
         showToast={showToast}
         onExtracted={handleGoalsExtracted}
+        teamCode={selectedTeam}
       />
 
       <ComponentDetailModal

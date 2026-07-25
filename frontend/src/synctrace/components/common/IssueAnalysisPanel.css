@@ -5,6 +5,7 @@
   grid-template-columns: 360px 1fr;
   gap: 1rem;
   align-items: start;
+  min-width: 0;
 }
 
 .iap-sidebar {
@@ -40,10 +41,8 @@
 .iap-filter-row {
   display: flex;
   gap: 0.4rem;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
   margin-bottom: 0.9rem;
-  scrollbar-width: thin;
 }
 
 .iap-filter-chip {
@@ -159,6 +158,7 @@
 }
 
 .iap-detail {
+  min-width: 0;
   border: 1px solid var(--line-soft);
   border-radius: 14px;
   background: var(--bg-surface);

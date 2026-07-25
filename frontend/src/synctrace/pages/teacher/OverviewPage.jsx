@@ -41,7 +41,7 @@ function OverviewPage({ onOpenGroup }) {
 
       <PanelHeader
         title="Overview"
-        subtitle="See class readiness at a glance"
+        subtitle="Monitor traceability and project readiness across all groups"
       />
 
       <div className="ov-stats">
