@@ -4,6 +4,7 @@ import com.ieee.evaluator.model.TeamRepository;
 import com.ieee.evaluator.service.SubmissionSyncService;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponentSummaryDTO;
+import com.ieee.evaluator.synctrace.service.ComponentCodeHelper;
 import com.ieee.evaluator.synctrace.service.GitHubIngestionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -76,7 +77,12 @@ public class GitHubController {
         return new TraceComponentSummaryDTO(
             component.getId(),
             component.getDocType(),
+            component.getArtifactKind() != null
+                ? component.getArtifactKind()
+                : com.ieee.evaluator.synctrace.model.ArtifactKind.UNSPECIFIED,
             component.getName(),
+            ComponentCodeHelper.resolveDisplayCode(
+                component.getCodeName(), component.getName(), component.getContent()),
             component.getAiExtracted(),
             component.getSourceHistoryId(),
             component.getCreatedAt()

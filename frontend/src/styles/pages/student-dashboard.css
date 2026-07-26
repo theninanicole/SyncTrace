@@ -386,7 +386,9 @@
 .student-doc-badge--srs,
 .student-doc-badge--sdd,
 .student-doc-badge--spmp,
-.student-doc-badge--std {
+.student-doc-badge--std,
+.student-doc-badge--proposal,
+.student-doc-badge--github {
 background: var(--brand-soft);
 border-color: color-mix(in srgb, var(--brand) 40%, var(--line-soft));
 color: var(--brand);

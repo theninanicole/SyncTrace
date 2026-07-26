@@ -12,13 +12,11 @@ The system enables students and teachers to establish and monitor traceability r
 - Source code preprocessing
 - Traceability mapping
 - Continuity verification
-- Continuity gap detection
 - AI diagnostic explanations
 - AI-generated corrective recommendations
 - Interactive traceability matrix
-- Teacher traceability dashboard
-- Student traceability results
-- Project readiness monitoring
+- Teacher overview
+- Traceability results
 - Audit report generation and export
 
 ## Traceability Workflow

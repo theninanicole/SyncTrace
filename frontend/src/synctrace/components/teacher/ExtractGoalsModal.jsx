@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, CircleCheck, CircleX, FileText, Loader2, Users, Sparkles } from 'lucide-react';
+import { CircleCheck, CircleX, FileText, Loader2, Users, Sparkles } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
 import { extractSubmissionMeta, formatDateTime } from '../../../utils/dashboardUtils';
 import { getEvaluationHistory } from '../../../api';
@@ -12,10 +12,9 @@ function generateSessionId() {
     : Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
+function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted, teamCode = '' }) {
   const [historyItems, setHistoryItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [expandedTeam, setExpandedTeam] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState({ step: '', message: '', percent: 0 });
@@ -28,34 +27,34 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
       .then(setHistoryItems)
       .catch((err) => showToast?.(err.message, 'error'))
       .finally(() => setLoading(false));
-    setExpandedTeam(null);
     setSelectedId(null);
     setResult(null);
     setProgress({ step: '', message: '', percent: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, teamCode]);
 
   const teams = useMemo(() => {
     const byTeam = new Map();
     historyItems.forEach((item) => {
       const meta = extractSubmissionMeta(item.fileName);
-      const teamCode = meta.teamCode || 'Unassigned';
-      if (!byTeam.has(teamCode)) byTeam.set(teamCode, []);
-      byTeam.get(teamCode).push({ ...item, meta });
+      const itemTeamCode = meta.teamCode || 'Unassigned';
+      if (!byTeam.has(itemTeamCode)) byTeam.set(itemTeamCode, []);
+      byTeam.get(itemTeamCode).push({ ...item, meta });
     });
 
     return [...byTeam.entries()]
-      .map(([teamCode, docs]) => ({
-        teamCode,
+      .map(([code, docs]) => ({
+        teamCode: code,
         docs: docs.sort((a, b) => a.meta.documentType.localeCompare(b.meta.documentType)),
       }))
+      .filter(({ teamCode: code }) => !teamCode || code.toUpperCase() === teamCode.toUpperCase())
       .sort((a, b) => a.teamCode.localeCompare(b.teamCode));
-  }, [historyItems]);
+  }, [historyItems, teamCode]);
 
-  // Filter for PROPOSAL documents only
+  // Filter for proposal documents only
   const proposalDocs = useMemo(() => {
-    return teams.map(({ teamCode, docs }) => ({
-      teamCode,
+    return teams.map(({ teamCode: code, docs }) => ({
+      teamCode: code,
       docs: docs.filter(doc => doc.meta.documentType === 'PROPOSAL'),
     })).filter(({ docs }) => docs.length > 0);
   }, [teams]);
@@ -97,11 +96,14 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
 
     try {
       const selectedDoc = historyItems.find(item => item.id === selectedId);
+      const meta = extractSubmissionMeta(selectedDoc?.fileName);
+      const teamCode = meta.teamCode && meta.teamCode !== 'Unassigned' ? meta.teamCode : null;
       const data = await extractSmartGoalsFromProposal(
         selectedDoc.fileId,
         selectedDoc.fileName,
         'auto',
-        sessionId
+        sessionId,
+        teamCode
       );
       
       setResult(data);
@@ -109,7 +111,7 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
       if (data.count === 0) {
         showToast('No SMART goals found in this proposal. The document may be empty or the AI could not extract goals.', 'info');
       } else {
-        showToast(`Successfully extracted ${data.count} SMART goal(s) from proposal.`, 'success');
+        showToast(`Successfully extracted ${data.count} SMART goal(s) from the proposal.`, 'success');
       }
       
       onExtracted?.();
@@ -127,7 +129,7 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
       isOpen={isOpen}
       onClose={onClose}
       title="Extract SMART Goals from Proposal"
-      subtitle="Select a PROPOSAL document to extract SMART goals using AI analysis."
+      subtitle="Select a proposal document to extract its SMART goals."
       footer={
         <div className="modal-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
           <span className="tm-muted">
@@ -151,7 +153,7 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
         <p className="tm-muted">Loading submissions...</p>
       ) : proposalDocs.length === 0 ? (
         <div className="empty-state">
-          <p>No PROPOSAL documents found in evaluation history.</p>
+          <p>{teamCode ? `No proposal document found for ${teamCode}.` : 'No proposal document found in evaluation history.'}</p>
         </div>
       ) : (
         <>
@@ -185,51 +187,41 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted }) {
           )}
 
           <div className="tm-team-list">
-            {proposalDocs.map(({ teamCode, docs }) => {
-              const isExpanded = expandedTeam === teamCode;
-              return (
-                <div key={teamCode} className="tm-team-group">
-                  <button
-                    className="tm-team-group__header"
-                    onClick={() => setExpandedTeam(isExpanded ? null : teamCode)}
-                    aria-expanded={isExpanded}
-                  >
-                    <Users size={14} />
-                    <span className="tm-team-group__code">{teamCode}</span>
-                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
-
-                  {isExpanded && (
-                    <div className="tm-team-group__docs">
-                      {docs.map((doc) => {
-                        const checked = selectedId === doc.id;
-                        return (
-                          <label
-                            key={doc.id}
-                            className={`tm-team-doc ${checked ? 'tm-team-doc--checked' : ''}`}
-                          >
-                            <input
-                              type="radio"
-                              name="proposal-selection"
-                              checked={checked}
-                              disabled={isExtracting}
-                              onChange={() => setSelectedId(doc.id)}
-                            />
-                            <FileText size={14} />
-                            <span className="tm-badge" data-doctype={doc.meta.documentType}>
-                              {doc.meta.documentType || '—'}
-                            </span>
-                            <span className="tm-team-doc__meta">
-                              v{doc.version} · {formatDateTime(doc.evaluatedAt)}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
+            {proposalDocs.map(({ teamCode, docs }) => (
+              <div key={teamCode} className="tm-team-group">
+                <div className="tm-team-group__header tm-team-group__header--static">
+                  <Users size={14} />
+                  <span className="tm-team-group__code">{teamCode}</span>
                 </div>
-              );
-            })}
+
+                <div className="tm-team-group__docs">
+                  {docs.map((doc) => {
+                    const checked = selectedId === doc.id;
+                    return (
+                      <label
+                        key={doc.id}
+                        className={`tm-team-doc ${checked ? 'tm-team-doc--checked' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="proposal-selection"
+                          checked={checked}
+                          disabled={isExtracting}
+                          onChange={() => setSelectedId(doc.id)}
+                        />
+                        <FileText size={14} />
+                        <span className="tm-badge" data-doctype={doc.meta.documentType}>
+                          {doc.meta.documentType || '—'}
+                        </span>
+                        <span className="tm-team-doc__meta">
+                          v{doc.version} · {formatDateTime(doc.evaluatedAt)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ieee.evaluator.service.AiProvider;
 import com.ieee.evaluator.service.GoogleDocsService;
 import com.ieee.evaluator.service.ProgressEmitter;
+import com.ieee.evaluator.synctrace.model.SmartGoal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +57,11 @@ public class ProposalAnalysisService {
 
     public List<Map<String, Object>> extractSmartGoals(
             String fileId, String fileName, String aiModel, String sessionId) throws Exception {
+        return extractSmartGoals(fileId, fileName, aiModel, sessionId, null);
+    }
+
+    public List<Map<String, Object>> extractSmartGoals(
+            String fileId, String fileName, String aiModel, String sessionId, String teamCode) throws Exception {
 
         AiProvider provider = resolveProvider(aiModel);
         String runKey = buildRunKey(fileId, provider.getProviderName());
@@ -68,7 +74,7 @@ public class ProposalAnalysisService {
         emit(sessionId, "RECEIVED", "Request accepted — starting proposal analysis", 5);
 
         try {
-            List<Map<String, Object>> goals = extractWithRetry(fileId, fileName, provider, sessionId);
+            List<Map<String, Object>> goals = extractWithRetry(fileId, fileName, provider, sessionId, teamCode);
 
             emit(sessionId, "COMPLETE", "Proposal analysis complete", 100);
             progressEmitter.complete(sessionId);
@@ -83,7 +89,7 @@ public class ProposalAnalysisService {
     }
 
     private List<Map<String, Object>> extractWithRetry(
-            String fileId, String fileName, AiProvider provider, String sessionId) throws Exception {
+            String fileId, String fileName, AiProvider provider, String sessionId, String teamCode) throws Exception {
 
         int maxAttempts = 3;
         long delayMinMs = DEFAULT_RETRY_INITIAL_DELAY_MIN_MS;
@@ -108,7 +114,7 @@ public class ProposalAnalysisService {
             }
 
             try {
-                return extractOnce(fileId, fileName, provider, sessionId);
+                return extractOnce(fileId, fileName, provider, sessionId, teamCode);
             } catch (Exception e) {
                 lastError = e;
                 long elapsed = System.currentTimeMillis() - startedAt;
@@ -137,7 +143,7 @@ public class ProposalAnalysisService {
     }
 
     private List<Map<String, Object>> extractOnce(
-            String fileId, String fileName, AiProvider provider, String sessionId) throws Exception {
+            String fileId, String fileName, AiProvider provider, String sessionId, String teamCode) throws Exception {
 
         emit(sessionId, "EXTRACTING", "Downloading and extracting proposal text from Google Drive", 12);
         GoogleDocsService.DocumentData docData =
@@ -150,17 +156,18 @@ public class ProposalAnalysisService {
         emit(sessionId, "ANALYZING", "Extracting SMART goals using AI", 50);
 
         String prompt = proposalPromptService.smartGoalExtractionPrompt(docData.text());
-        String response = provider.analyze(prompt);
+        String response = provider.complete(prompt);
 
         emit(sessionId, "PROCESSING", "Parsing AI response and creating goals", 80);
 
-        return parseAndCreateGoals(response);
+        return parseAndCreateGoals(response, teamCode);
     }
 
     @Transactional
-    private List<Map<String, Object>> parseAndCreateGoals(String aiResponse) throws Exception {
+    protected List<Map<String, Object>> parseAndCreateGoals(String aiResponse, String teamCode) throws Exception {
         try {
-            JsonNode root = objectMapper.readTree(aiResponse);
+            String cleaned = stripCodeFences(aiResponse);
+            JsonNode root = objectMapper.readTree(cleaned);
             if (!root.isArray()) {
                 throw new RuntimeException("AI response is not a JSON array");
             }
@@ -168,13 +175,44 @@ public class ProposalAnalysisService {
             List<Map<String, Object>> createdGoals = new java.util.ArrayList<>();
             for (JsonNode node : root) {
                 if (node.isTextual()) {
-                    String goalDescription = node.asText();
-                    var goal = smartGoalService.createGoal(goalDescription);
-                    Map<String, Object> goalMap = new java.util.HashMap<>();
-                    goalMap.put("id", goal.getId());
-                    goalMap.put("description", goal.getDescription());
-                    goalMap.put("createdAt", goal.getCreatedAt());
-                    createdGoals.add(goalMap);
+                    // Legacy flat string → SPECIFIC
+                    createdGoals.add(persistGoal(node.asText(), SmartGoal.GoalKind.SPECIFIC, null, teamCode));
+                    continue;
+                }
+                if (!node.isObject()) continue;
+
+                String description = node.path("description").asText("").trim();
+                if (description.isBlank()) continue;
+
+                SmartGoal.GoalKind kind = parseGoalKind(node.path("goalKind").asText("SPECIFIC"));
+                if (kind == SmartGoal.GoalKind.GENERAL) {
+                    Map<String, Object> parentMap = persistGoal(description, SmartGoal.GoalKind.GENERAL, null, teamCode);
+                    createdGoals.add(parentMap);
+                    Long parentId = (Long) parentMap.get("id");
+
+                    JsonNode children = node.path("children");
+                    if (children.isArray()) {
+                        for (JsonNode child : children) {
+                            String childDesc = child.isTextual()
+                                ? child.asText("").trim()
+                                : child.path("description").asText("").trim();
+                            if (childDesc.isBlank()) continue;
+                            createdGoals.add(persistGoal(childDesc, SmartGoal.GoalKind.SPECIFIC, parentId, teamCode));
+                        }
+                    }
+                } else {
+                    createdGoals.add(persistGoal(description, SmartGoal.GoalKind.SPECIFIC, null, teamCode));
+                    JsonNode children = node.path("children");
+                    if (children.isArray()) {
+                        // Misplaced children under SPECIFIC — still create as SPECIFIC orphans
+                        for (JsonNode child : children) {
+                            String childDesc = child.isTextual()
+                                ? child.asText("").trim()
+                                : child.path("description").asText("").trim();
+                            if (childDesc.isBlank()) continue;
+                            createdGoals.add(persistGoal(childDesc, SmartGoal.GoalKind.SPECIFIC, null, teamCode));
+                        }
+                    }
                 }
             }
 
@@ -183,6 +221,42 @@ public class ProposalAnalysisService {
             log.error("Failed to parse AI response as JSON: {}", e.getMessage());
             throw new RuntimeException("Failed to parse AI response as JSON: " + e.getMessage());
         }
+    }
+
+    private Map<String, Object> persistGoal(
+            String description, SmartGoal.GoalKind kind, Long parentGoalId, String teamCode) {
+        var goal = smartGoalService.createGoal(description, kind, parentGoalId, teamCode);
+        Map<String, Object> goalMap = new java.util.HashMap<>();
+        goalMap.put("id", goal.getId());
+        goalMap.put("description", goal.getDescription());
+        goalMap.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : "SPECIFIC");
+        goalMap.put("parentGoalId", goal.getParentGoalId());
+        goalMap.put("teamCode", goal.getTeamCode());
+        goalMap.put("createdAt", goal.getCreatedAt());
+        return goalMap;
+    }
+
+    private static SmartGoal.GoalKind parseGoalKind(String raw) {
+        if (raw == null || raw.isBlank()) return SmartGoal.GoalKind.SPECIFIC;
+        try {
+            return SmartGoal.GoalKind.valueOf(raw.trim().toUpperCase());
+        } catch (Exception e) {
+            return SmartGoal.GoalKind.SPECIFIC;
+        }
+    }
+
+    private static String stripCodeFences(String raw) {
+        if (raw == null) return "[]";
+        String text = raw.trim();
+        if (text.startsWith("```")) {
+            text = text.replaceAll("^```(?:json)?\\s*", "").replaceAll("\\s*```$", "").trim();
+        }
+        int start = text.indexOf('[');
+        int end = text.lastIndexOf(']');
+        if (start >= 0 && end > start) {
+            return text.substring(start, end + 1);
+        }
+        return text;
     }
 
     private void emit(String sessionId, String step, String message, int percent) {

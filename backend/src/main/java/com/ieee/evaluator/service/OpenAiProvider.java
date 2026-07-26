@@ -79,6 +79,38 @@ public class OpenAiProvider implements AiProvider {
         return analyzeWithFileName("", text, base64Images, previousEvaluation, customInstructions);
     }
 
+    /**
+     * Raw chat completion — does not wrap the prompt in document-review instructions.
+     * Required for SyncTrace JSON tasks (mapping suggestions, goal extraction, etc.).
+     */
+    @Override
+    public String complete(String prompt) throws Exception {
+        String apiKey = settingsService.getValueOrNull(KEY_API_KEY);
+        String model  = settingsService.getValueOrNull(KEY_MODEL);
+
+        if (isBlank(apiKey)) {
+            throw new IllegalStateException(
+                "OpenAI API key is not configured. Please add OPENAI_API_KEY in System Settings.");
+        }
+        if (isBlank(model)) {
+            model = DEFAULT_MODEL;
+        }
+        if (isBlank(prompt)) {
+            throw new IllegalArgumentException("Prompt must not be blank.");
+        }
+
+        try {
+            return callOpenAi(apiKey.trim(), model.trim(), prompt, List.of());
+        } catch (HttpClientErrorException e) {
+            String reason = handleHttpError(e, "OpenAI");
+            // handleHttpError returns "EVALUATION ERROR: ..."; strip prefix for callers
+            if (reason != null && reason.startsWith("EVALUATION ERROR: ")) {
+                reason = reason.substring("EVALUATION ERROR: ".length());
+            }
+            throw new IllegalStateException(reason != null ? reason : e.getMessage(), e);
+        }
+    }
+
     // ── fileName-aware path — called directly from AiService ─────────────────
 
     public String analyzeWithFileName(

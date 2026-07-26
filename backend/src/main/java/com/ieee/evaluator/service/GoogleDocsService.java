@@ -1,6 +1,6 @@
 package com.ieee.evaluator.service;
 
-import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.ByteArrayContent;
 import com.google.api.services.drive.Drive;
@@ -32,15 +32,15 @@ public class GoogleDocsService {
 
     private final Drive driveService;
     private final PdfImageExtractor pdfImageExtractor;
-    private final Credential driveOAuthCredential;
+    private final GoogleCredential googleCredential;
 
     public GoogleDocsService(
             Drive driveService,
             PdfImageExtractor pdfImageExtractor,
-            @Qualifier("driveOAuthCredential") Credential driveOAuthCredential) {
-        this.driveService         = driveService;
-        this.pdfImageExtractor    = pdfImageExtractor;
-        this.driveOAuthCredential = driveOAuthCredential;
+            @Qualifier("googleCredential") GoogleCredential googleCredential) {
+        this.driveService      = driveService;
+        this.pdfImageExtractor = pdfImageExtractor;
+        this.googleCredential  = googleCredential;
     }
 
     public record DocumentData(String text, List<String> images) {}
@@ -174,17 +174,17 @@ public class GoogleDocsService {
 
     /**
      * Downloads a binary file (DOCX, plain text) using a direct HTTP request
-     * with the OAuth Bearer token. This works for files shared as
+     * with the service-account Bearer token. This works for files shared as
      * "Anyone with the link" where the Drive API media download (.setAlt("media"))
      * returns 403.
      */
     private byte[] downloadBlobBytesViaHttp(String fileId) throws Exception {
-        if (driveOAuthCredential.getAccessToken() == null ||
-            driveOAuthCredential.getExpiresInSeconds() != null &&
-            driveOAuthCredential.getExpiresInSeconds() <= 60) {
-            driveOAuthCredential.refreshToken();
+        if (googleCredential.getAccessToken() == null ||
+            googleCredential.getExpiresInSeconds() != null &&
+            googleCredential.getExpiresInSeconds() <= 60) {
+            googleCredential.refreshToken();
         }
-        String accessToken = driveOAuthCredential.getAccessToken();
+        String accessToken = googleCredential.getAccessToken();
 
         String downloadUrl = "https://www.googleapis.com/drive/v3/files/"
                 + fileId + "?alt=media";

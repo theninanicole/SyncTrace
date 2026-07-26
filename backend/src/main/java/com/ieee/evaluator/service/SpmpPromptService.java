@@ -57,10 +57,14 @@ public class SpmpPromptService {
                Use this format for each diagram found:
 
                * [IMG-X] - <Diagram Type>:
+                 - Elements: <exact IDs/labels from the document, comma-separated — e.g. MS-01 Alpha, TK-03 Design>
                  - Notation observed: <specific symbols, structure, and labels found>
                  - Correctness: <assessment of whether the diagram is properly constructed>
                  - Issues: <specific errors, missing elements, or inconsistencies>
                  - Alignment: <whether the diagram matches the written planning sections>
+
+               IMPORTANT: Preserve the exact element codes/IDs written in the document.
+               Do not invent codes when the document already has them.
 
             If no diagrams or figures are detected in the images, output exactly "None detected."
             """;

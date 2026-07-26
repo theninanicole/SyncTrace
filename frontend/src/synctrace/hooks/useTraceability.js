@@ -7,10 +7,11 @@ import {
   addGoalComponents,
   removeGoalComponent,
 } from '../api';
+import { DOC_TYPES } from '../constants';
 
-export const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD', 'IMPLEMENTATION'];
+export { DOC_TYPES };
 
-export function useTraceability(showToast, initialGoalId = null) {
+export function useTraceability(showToast, initialGoalId = null, teamCode = '') {
   const [goals, setGoals]                 = useState([]);
   const [loadingGoals, setLoadingGoals]    = useState(true);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
@@ -21,7 +22,7 @@ export function useTraceability(showToast, initialGoalId = null) {
   const loadGoals = useCallback(async (keepSelection = true) => {
     setLoadingGoals(true);
     try {
-      const data = await getSmartGoals();
+      const data = await getSmartGoals(teamCode || undefined);
       setGoals(data);
       if (!keepSelection || (data.length > 0 && !data.some((g) => g.id === selectedGoalId))) {
         const preferred = !keepSelection && data.some((g) => g.id === initialGoalId) ? initialGoalId : data[0]?.id ?? null;
@@ -32,12 +33,12 @@ export function useTraceability(showToast, initialGoalId = null) {
     } finally {
       setLoadingGoals(false);
     }
-  }, [selectedGoalId, showToast, initialGoalId]);
+  }, [selectedGoalId, showToast, initialGoalId, teamCode]);
 
   useEffect(() => {
     loadGoals(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [teamCode]);
 
   const loadMappings = useCallback(async (goalId) => {
     if (!goalId) {
@@ -58,9 +59,9 @@ export function useTraceability(showToast, initialGoalId = null) {
     loadMappings(selectedGoalId);
   }, [selectedGoalId, loadMappings]);
 
-  async function handleCreateGoal(description) {
+  async function handleCreateGoal(description, options = {}) {
     try {
-      const goal = await createSmartGoal(description);
+      const goal = await createSmartGoal(description, options);
       await loadGoals(true);
       setSelectedGoalId(goal.id);
       showToast?.('Goal created.', 'success');
@@ -105,9 +106,11 @@ export function useTraceability(showToast, initialGoalId = null) {
   }
 
   const selectedGoal = goals.find((g) => g.id === selectedGoalId) || null;
+  const generalGoals = goals.filter((g) => g.goalKind === 'GENERAL');
 
   return {
     goals,
+    generalGoals,
     loadingGoals,
     selectedGoalId,
     setSelectedGoalId,
@@ -115,6 +118,7 @@ export function useTraceability(showToast, initialGoalId = null) {
     mappedComponents,
     loadingMappings,
     loadGoals,
+    loadMappings,
     createGoal: handleCreateGoal,
     deleteGoal: handleDeleteGoal,
     addComponents: handleAddComponents,

@@ -51,6 +51,7 @@ public class ProgressEmitter {
      * @param percent    0–100 progress percentage
      */
     public void emit(String sessionId, String step, String message, int percent) {
+        if (sessionId == null) return;
         SseEmitter emitter = emitters.get(sessionId);
         if (emitter == null) return;
 
@@ -71,6 +72,7 @@ public class ProgressEmitter {
     // ── Terminal events ───────────────────────────────────────────────────────
 
     public void complete(String sessionId) {
+        if (sessionId == null) return;
         SseEmitter emitter = emitters.remove(sessionId);
         if (emitter == null) return;
         try {
@@ -82,6 +84,7 @@ public class ProgressEmitter {
     }
 
     public void error(String sessionId, String message) {
+        if (sessionId == null) return;
         SseEmitter emitter = emitters.remove(sessionId);
         if (emitter == null) return;
         try {

@@ -23,4 +23,12 @@ public interface AiProvider {
     default String analyze(String documentContent, List<String> base64Images, String previousEvaluation, String customInstructions) throws Exception {
         return analyze(documentContent, base64Images, previousEvaluation);
     }
+
+    /**
+     * Sends {@code prompt} to the model as-is (no document-review wrapping).
+     * Use for SyncTrace tasks that expect structured JSON responses.
+     */
+    default String complete(String prompt) throws Exception {
+        return analyze(prompt);
+    }
 }

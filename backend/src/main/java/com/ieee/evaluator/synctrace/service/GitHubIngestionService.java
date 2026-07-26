@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ieee.evaluator.service.ProgressEmitter;
 import com.ieee.evaluator.service.SystemSettingService;
+import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
@@ -197,22 +198,60 @@ public class GitHubIngestionService {
 
         // Dedupe by (docType, name) case-insensitively
         String componentName = teamCode + " - " + path;
+        if (componentName.length() > 250) {
+            componentName = componentName.substring(0, 249).trim() + "…";
+        }
         Optional<TraceComponent> existing = componentRepository.findByDocTypeAndNameIgnoreCase(
             DocType.IMPLEMENTATION, componentName);
         
         if (existing.isPresent()) {
+            TraceComponent found = existing.get();
+            boolean dirty = false;
+            if (found.getContent() == null || found.getContent().isBlank()
+                || !found.getContent().equals("File: " + path + "\n\n" + excerpt)) {
+                found.setContent("File: " + path + "\n\n" + excerpt);
+                dirty = true;
+            }
+            if (found.getCodeName() == null || found.getCodeName().isBlank()) {
+                found.setCodeName(ComponentCodeHelper.codeFromFilePath(path));
+                dirty = true;
+            }
+            if (dirty) {
+                return componentRepository.save(found);
+            }
             log.debug("Component already exists: {}", componentName);
-            return existing.get();
+            return found;
         }
 
         TraceComponent component = new TraceComponent();
         component.setDocType(DocType.IMPLEMENTATION);
+        component.setArtifactKind(classifyImplementationKind(path));
         component.setName(componentName);
+        component.setCodeName(ComponentCodeHelper.codeFromFilePath(path));
         component.setContent("File: " + path + "\n\n" + excerpt);
         component.setAiExtracted(true);
         component.setCreatedAt(LocalDateTime.now());
         
         return componentRepository.save(component);
+    }
+
+    private ArtifactKind classifyImplementationKind(String path) {
+        String lower = path == null ? "" : path.toLowerCase();
+        if (lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".cs") ||
+            lower.endsWith(".cpp") || lower.endsWith(".cc") || lower.endsWith(".cxx") ||
+            lower.endsWith(".h") || lower.endsWith(".hpp") || lower.endsWith(".py") ||
+            lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".js") ||
+            lower.endsWith(".jsx") || lower.endsWith(".go") || lower.endsWith(".rb") ||
+            lower.endsWith(".swift") || lower.endsWith(".php")) {
+            return ArtifactKind.IMPL_OO;
+        }
+        if (lower.endsWith(".sql") || lower.endsWith(".sh") || lower.endsWith(".bat") ||
+            lower.endsWith(".ps1") || lower.endsWith(".yml") || lower.endsWith(".yaml") ||
+            lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".properties") ||
+            lower.endsWith(".gradle") || lower.endsWith(".md") || lower.endsWith(".txt")) {
+            return ArtifactKind.IMPL_NON_OO;
+        }
+        return ArtifactKind.OTHER_IMPLEMENTATION;
     }
 
     private JsonNode fetchGitHubApi(String url) throws Exception {
@@ -226,6 +265,12 @@ public class GitHubIngestionService {
         if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
             throw new RuntimeException(
                 "GitHub API rate limit exceeded. Please add a GITHUB_TOKEN in System Settings for higher rate limits."
+            );
+        }
+
+        if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
+            throw new RuntimeException(
+                "GitHub repository or branch not found. Check the URL/branch (example: https://github.com/owner/repo/tree/main)."
             );
         }
 

@@ -1,53 +1,114 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Eye, Plus, Trash2 } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
 import { getTraceComponents, createTraceComponent, deleteTraceComponent } from '../../api';
-import { DOC_TYPES } from '../../hooks/useTraceability';
+import { getEvaluationHistory } from '../../../api';
+import { extractSubmissionMeta } from '../../../utils/dashboardUtils';
+import { ARTIFACT_KINDS_BY_DOC_TYPE, artifactKindLabel, componentLabel } from '../../constants';
 import ComponentDetailModal from './ComponentDetailModal';
 import ConfirmModal from '../common/ConfirmModal';
 
-const FILTERS = [{ key: 'ALL', label: 'All' }, ...DOC_TYPES.map((dt) => ({ key: dt, label: dt }))];
+const DOC_TITLES = {
+  SRS: 'SRS — Requirements artifacts',
+  SDD: 'SDD — Design artifacts',
+  SPMP: 'SPMP — Project management artifacts',
+  STD: 'STD — Test artifacts',
+  IMPLEMENTATION: 'Implementation — Source code artifacts',
+};
 
-function AddComponentModal({ isOpen, onClose, initialDocType = 'ALL', excludeComponentIds = [], onAddSelected, showToast }) {
-  const [activeFilter, setActiveFilter] = useState(initialDocType);
+function AddComponentModal({ isOpen, onClose, initialDocType = 'SRS', excludeComponentIds = [], onAddSelected, onComponentRenamed, showToast, teamCode = '' }) {
+  const docType = initialDocType === 'ALL' ? 'SRS' : initialDocType;
+
   const [search, setSearch]             = useState('');
   const [components, setComponents]     = useState([]);
   const [loading, setLoading]           = useState(false);
+  const [historyTeamMap, setHistoryTeamMap] = useState(new Map());
   const [selectedIds, setSelectedIds]   = useState(new Set());
   const [previewComponent, setPreviewComponent] = useState(null);
   const [showNewForm, setShowNewForm]   = useState(false);
   const [newName, setNewName]           = useState('');
+  const [newArtifactKind, setNewArtifactKind] = useState('');
   const [creating, setCreating]         = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting]         = useState(false);
 
+  const artifactOptions = ARTIFACT_KINDS_BY_DOC_TYPE[docType] || [];
+
   useEffect(() => {
     if (isOpen) {
-      setActiveFilter(initialDocType);
       setSearch('');
       setSelectedIds(new Set());
       setShowNewForm(false);
       setNewName('');
+      setNewArtifactKind((ARTIFACT_KINDS_BY_DOC_TYPE[docType] || [])[0]?.value || '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, docType]);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     setLoading(true);
-    const docType = activeFilter === 'ALL' ? undefined : activeFilter;
     getTraceComponents(docType, search || undefined)
       .then((data) => { if (!cancelled) setComponents(data); })
       .catch((err) => { if (!cancelled) showToast?.(err.message, 'error'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [isOpen, activeFilter, search, showToast]);
+  }, [isOpen, docType, search, showToast]);
+
+  // TraceComponent has no teamCode of its own — resolve it via the submission
+  // (sourceHistoryId) it was extracted from, same as the rest of the app.
+  useEffect(() => {
+    if (!isOpen || !teamCode) return;
+    let cancelled = false;
+    getEvaluationHistory()
+      .then((items) => {
+        if (cancelled) return;
+        const map = new Map();
+        items.forEach((h) => {
+          const meta = extractSubmissionMeta(h.fileName);
+          if (meta.teamCode) map.set(h.id, meta.teamCode);
+        });
+        setHistoryTeamMap(map);
+      })
+      .catch(() => { if (!cancelled) setHistoryTeamMap(new Map()); });
+    return () => { cancelled = true; };
+  }, [isOpen, teamCode]);
+
+  const excludeSet = useMemo(() => new Set(excludeComponentIds), [excludeComponentIds]);
+
+  /** Components grouped by artifact kind, ordered like the taxonomy. */
+  const groupedComponents = useMemo(() => {
+    let visible = components.filter((c) => !excludeSet.has(c.id));
+    if (teamCode) {
+      visible = visible.filter((c) => {
+        // Manually-added components have no source submission — always show them.
+        if (c.sourceHistoryId == null) return true;
+        const resolvedTeam = historyTeamMap.get(c.sourceHistoryId);
+        return !resolvedTeam || resolvedTeam.toUpperCase() === teamCode.toUpperCase();
+      });
+    }
+    const knownKinds = artifactOptions.map((o) => o.value);
+    const groups = [];
+
+    knownKinds.forEach((kind) => {
+      const items = visible.filter((c) => c.artifactKind === kind);
+      if (items.length > 0) {
+        groups.push({ kind, label: artifactKindLabel(kind), items });
+      }
+    });
+
+    const leftovers = visible.filter((c) => !knownKinds.includes(c.artifactKind));
+    if (leftovers.length > 0) {
+      groups.push({ kind: 'UNSPECIFIED', label: 'Untyped', items: leftovers });
+    }
+
+    return groups;
+  }, [components, excludeSet, artifactOptions, teamCode, historyTeamMap]);
 
   if (!isOpen) return null;
 
-  const excludeSet = new Set(excludeComponentIds);
-  const visibleComponents = components.filter((c) => !excludeSet.has(c.id));
+  const visibleCount = groupedComponents.reduce((sum, g) => sum + g.items.length, 0);
 
   function toggleSelected(id) {
     setSelectedIds((prev) => {
@@ -58,14 +119,15 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'ALL', excludeCom
   }
 
   async function handleCreateNewComponent() {
-    if (!newName.trim()) return;
-    if (activeFilter === 'ALL') {
-      showToast?.('Pick a specific category tab before adding a new component.', 'error');
-      return;
-    }
+    if (!newName.trim() || !newArtifactKind) return;
     setCreating(true);
     try {
-      const created = await createTraceComponent(activeFilter, newName.trim(), newName.trim());
+      const created = await createTraceComponent(
+        docType,
+        newName.trim(),
+        newName.trim(),
+        newArtifactKind,
+      );
       setComponents((prev) => [created, ...prev]);
       setSelectedIds((prev) => new Set(prev).add(created.id));
       setNewName('');
@@ -85,6 +147,7 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'ALL', excludeCom
   function handleComponentRenamed(updated) {
     setComponents((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     setPreviewComponent(updated);
+    onComponentRenamed?.(updated);
   }
 
   async function confirmDeleteComponent() {
@@ -114,8 +177,8 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'ALL', excludeCom
       <AppModal
         isOpen={isOpen}
         onClose={onClose}
-        title="Add Components"
-        subtitle="Select multiple existing artifacts to link to this goal."
+        title={DOC_TITLES[docType] || `Add ${docType} components`}
+        subtitle="Select the specific artifacts that this goal maps to."
         containerClassName="tm-add-modal"
         footer={
           <div className="modal-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -132,51 +195,56 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'ALL', excludeCom
         <input
           type="search"
           className="teacher-header-search tm-search"
-          placeholder="Search components..."
+          placeholder={`Search ${docType === 'IMPLEMENTATION' ? 'code' : docType} components...`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
 
-        <div className="pw-tabs" style={{ margin: '0.85rem 0' }}>
-          {FILTERS.map(({ key, label }) => (
-            <button
-              key={key}
-              className={`pw-tab ${activeFilter === key ? 'pw-tab--active' : ''}`}
-              onClick={() => setActiveFilter(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         {loading ? (
           <p className="tm-muted">Loading components...</p>
-        ) : visibleComponents.length === 0 ? (
+        ) : visibleCount === 0 ? (
           <div className="empty-state">
-            <p>No components found{search ? ` for "${search}"` : ''}.</p>
+            <p>No {docType === 'IMPLEMENTATION' ? 'implementation' : docType} components found{search ? ` for "${search}"` : ''}.</p>
+            <p className="tm-muted">
+              Build the library first: extract from evaluated documents, ingest the GitHub repository, or add one manually below.
+            </p>
           </div>
         ) : (
           <div className="tm-component-list">
-            {visibleComponents.map((c) => {
-              const checked = selectedIds.has(c.id);
-              return (
-                <div key={c.id} className={`tm-component-row ${checked ? 'tm-component-row--checked' : ''}`}>
-                  <label className="tm-component-row__main">
-                    <input type="checkbox" checked={checked} onChange={() => toggleSelected(c.id)} />
-                    <span className="tm-badge" data-doctype={c.docType}>{c.docType}</span>
-                    <span className="tm-component-row__name">{c.name}</span>
-                  </label>
-                  <div className="tm-component-row__actions">
-                    <button className="tm-icon-btn" title="Preview" onClick={() => setPreviewComponent(c)}>
-                      <Eye size={14} />
-                    </button>
-                    <button className="tm-icon-btn tm-icon-btn--danger" title="Delete component" onClick={() => setPendingDelete(c)}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+            {groupedComponents.map((group) => (
+              <div key={group.kind} className="tm-component-group">
+                <div className="tm-component-group__header">
+                  {group.label}
+                  <span className="tm-component-group__count">{group.items.length}</span>
                 </div>
-              );
-            })}
+                {group.items.map((c) => {
+                  const checked = selectedIds.has(c.id);
+                  return (
+                    <div key={c.id} className={`tm-component-row ${checked ? 'tm-component-row--checked' : ''}`}>
+                      <label className="tm-component-row__main">
+                        <input type="checkbox" checked={checked} onChange={() => toggleSelected(c.id)} />
+                        <span className="tm-component-row__name">
+                          <span title={c.name || componentLabel(c)}>
+                            {componentLabel(c)}
+                          </span>
+                          {c.name && c.name !== componentLabel(c) && (
+                            <span className="tm-component-row__fullname">{c.name}</span>
+                          )}
+                        </span>
+                      </label>
+                      <div className="tm-component-row__actions">
+                        <button className="tm-icon-btn" title="Preview" onClick={() => setPreviewComponent(c)}>
+                          <Eye size={14} />
+                        </button>
+                        <button className="tm-icon-btn tm-icon-btn--danger" title="Delete component" onClick={() => setPendingDelete(c)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         )}
 
@@ -186,13 +254,21 @@ function AddComponentModal({ isOpen, onClose, initialDocType = 'ALL', excludeCom
               <input
                 className="pw-input"
                 type="text"
-                placeholder={activeFilter === 'ALL' ? 'Pick a category tab first...' : `New ${activeFilter} component name`}
+                placeholder={`New ${docType} component name (e.g. UC-07: Export Audit Report)`}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                disabled={activeFilter === 'ALL'}
               />
+              <select
+                className="tm-select"
+                value={newArtifactKind}
+                onChange={(e) => setNewArtifactKind(e.target.value)}
+              >
+                {artifactOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
               <button className="btn" onClick={() => setShowNewForm(false)}>Cancel</button>
-              <button className="btn btn--soft" disabled={creating || !newName.trim()} onClick={handleCreateNewComponent}>
+              <button className="btn btn--soft" disabled={creating || !newName.trim() || !newArtifactKind} onClick={handleCreateNewComponent}>
                 {creating ? 'Adding...' : 'Add to Library'}
               </button>
             </div>

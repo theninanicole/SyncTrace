@@ -6,8 +6,10 @@ import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
+import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
+import com.ieee.evaluator.synctrace.service.TeamComponentResolverService;
 import com.lowagie.text.Document;
 import com.lowagie.text.Font;
 import com.lowagie.text.Paragraph;
@@ -30,16 +32,22 @@ public class AuditExportService {
     private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
     private final DiagnosticRecommendationRepository recommendationRepository;
+    private final GoalComponentMappingRepository mappingRepository;
+    private final TeamComponentResolverService teamComponentResolver;
 
     public AuditExportService(
             SmartGoalRepository goalRepository,
             TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
-            DiagnosticRecommendationRepository recommendationRepository) {
+            DiagnosticRecommendationRepository recommendationRepository,
+            GoalComponentMappingRepository mappingRepository,
+            TeamComponentResolverService teamComponentResolver) {
         this.goalRepository = goalRepository;
         this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
         this.recommendationRepository = recommendationRepository;
+        this.mappingRepository = mappingRepository;
+        this.teamComponentResolver = teamComponentResolver;
     }
 
     public byte[] exportAuditReport(String teamCode, String format) throws Exception {
@@ -173,9 +181,28 @@ public class AuditExportService {
     }
 
     private AuditReportData collectAuditData(String teamCode) {
-        // Filter data by team code where applicable
-        List<SmartGoal> allGoals = goalRepository.findAll();
+        // Filter components by team code using shared resolution logic
         List<TraceComponent> allComponents = componentRepository.findAll();
+        List<TraceComponent> teamComponents = teamComponentResolver.filterByTeam(allComponents, teamCode);
+        
+        // Get component IDs for team-scoped components
+        List<Long> teamComponentIds = teamComponents.stream()
+            .map(com.ieee.evaluator.synctrace.model.TraceComponent::getId)
+            .toList();
+        
+        // Filter goals to only include those with at least one mapping to a team-scoped component
+        List<SmartGoal> allGoals = goalRepository.findAll();
+        List<SmartGoal> teamGoals = allGoals.stream()
+            .filter(goal -> {
+                List<Long> mappedComponentIds = mappingRepository.findByGoalId(goal.getId()).stream()
+                    .map(com.ieee.evaluator.synctrace.model.GoalComponentMapping::getComponentId)
+                    .toList();
+                // Goal belongs to team if it has at least one mapping to a team-scoped component
+                return mappedComponentIds.stream().anyMatch(teamComponentIds::contains);
+            })
+            .toList();
+        
+        // Findings are already team-scoped
         List<ContinuityFinding> allFindings = findingRepository.findByTeamCode(teamCode);
         
         List<Long> findingIds = allFindings.stream()
@@ -187,29 +214,33 @@ public class AuditExportService {
             : recommendationRepository.findAllById(findingIds);
         
         return new AuditReportData(
-            allGoals.stream().map(this::goalToMap).toList(),
-            allComponents.stream().map(this::componentToMap).toList(),
+            teamGoals.stream().map(this::goalToMap).toList(),
+            teamComponents.stream().map(this::componentToMap).toList(),
             allFindings.stream().map(this::findingToMap).toList(),
             allRecommendations.stream().map(this::recommendationToMap).toList()
         );
     }
 
     private Map<String, Object> goalToMap(SmartGoal goal) {
-        return Map.of(
-            "id", goal.getId(),
-            "description", goal.getDescription(),
-            "createdAt", goal.getCreatedAt()
-        );
+        Map<String, Object> map = new java.util.HashMap<>();
+        map.put("id", goal.getId());
+        map.put("description", goal.getDescription());
+        map.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : "SPECIFIC");
+        map.put("parentGoalId", goal.getParentGoalId());
+        map.put("teamCode", goal.getTeamCode());
+        map.put("createdAt", goal.getCreatedAt());
+        return map;
     }
 
     private Map<String, Object> componentToMap(TraceComponent component) {
-        return Map.of(
-            "id", component.getId(),
-            "docType", component.getDocType(),
-            "name", component.getName(),
-            "aiExtracted", component.getAiExtracted(),
-            "createdAt", component.getCreatedAt()
-        );
+        Map<String, Object> map = new java.util.HashMap<>();
+        map.put("id", component.getId());
+        map.put("docType", component.getDocType());
+        map.put("artifactKind", component.getArtifactKind() != null ? component.getArtifactKind().name() : "UNSPECIFIED");
+        map.put("name", component.getName());
+        map.put("aiExtracted", component.getAiExtracted());
+        map.put("createdAt", component.getCreatedAt());
+        return map;
     }
 
     private Map<String, Object> findingToMap(ContinuityFinding finding) {

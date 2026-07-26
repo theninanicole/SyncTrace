@@ -6,7 +6,9 @@ import java.time.LocalDateTime;
 public record TraceComponentSummaryDTO(
     Long id,
     DocType docType,
+    ArtifactKind artifactKind,
     String name,
+    String codeName,
     Boolean aiExtracted,
     Long sourceHistoryId,
     LocalDateTime createdAt

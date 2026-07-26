@@ -25,13 +25,14 @@ public class ProposalAnalysisController {
             String fileName = payload.get("fileName");
             String model = payload.get("model");
             String sessionId = payload.get("sessionId");
+            String teamCode = payload.get("teamCode");
 
             if (fileId == null || fileId.isBlank() || fileName == null || fileName.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing fileId or fileName"));
             }
 
             List<Map<String, Object>> goals = proposalAnalysisService.extractSmartGoals(
-                fileId, fileName, model, sessionId);
+                fileId, fileName, model, sessionId, teamCode);
             
             return ResponseEntity.ok(Map.of("goals", goals, "count", goals.size()));
         } catch (IllegalStateException e) {

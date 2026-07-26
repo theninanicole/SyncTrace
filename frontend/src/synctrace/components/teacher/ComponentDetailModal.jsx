@@ -2,6 +2,16 @@ import { useEffect, useState } from 'react';
 import { Check, Loader2, Pencil, X } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
 import { renameTraceComponent, getTraceComponent } from '../../api';
+import { componentLabel } from '../../constants';
+
+function extractSourceMeta(content) {
+  if (!content) return { filePath: null, source: '' };
+  const match = content.match(/^File:\s*(.+?)\r?\n\r?\n([\s\S]*)$/);
+  if (match) {
+    return { filePath: match[1].trim(), source: match[2] };
+  }
+  return { filePath: null, source: content };
+}
 
 function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
   const [isEditing, setIsEditing]     = useState(false);
@@ -9,53 +19,65 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
   const [saving, setSaving]           = useState(false);
   const [imageExpanded, setImageExpanded] = useState(false);
   // List views omit content/imageData to keep them lightweight — fetch the full
-  // component (with its image) only when it's actually opened here.
+  // component (with image/source) only when it's actually opened here.
   const [detail, setDetail]           = useState(null);
+  const [loadError, setLoadError]     = useState('');
 
   useEffect(() => {
     setIsEditing(false);
-    setDraftName(component?.name || '');
+    setDraftName(component?.codeName || component?.name || '');
     setImageExpanded(false);
     setDetail(null);
+    setLoadError('');
 
     if (!component?.id) return;
     let cancelled = false;
     getTraceComponent(component.id)
       .then((full) => { if (!cancelled) setDetail(full); })
-      .catch(() => {});
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.message || 'Failed to load component details.');
+      });
     return () => { cancelled = true; };
-  }, [component?.id, component?.name]);
+  }, [component?.id, component?.name, component?.codeName]);
 
   if (!component) return null;
 
   const merged = detail || component;
-  const contentLines = merged.content
+  const label = componentLabel(merged);
+  const isImplementation = merged.docType === 'IMPLEMENTATION';
+  const { source } = extractSourceMeta(merged.content || '');
+  const contentLines = !isImplementation && merged.content
     ? merged.content.split('\n').map((line) => line.trim()).filter(Boolean)
     : [];
 
   function startEditing() {
-    setDraftName(component.name);
+    setDraftName(merged.codeName || merged.name || '');
     setIsEditing(true);
   }
 
   function cancelEditing() {
     setIsEditing(false);
-    setDraftName(component.name);
+    setDraftName(merged.codeName || merged.name || '');
   }
 
   async function handleSaveName() {
     const trimmed = draftName.trim();
-    if (!trimmed || trimmed === component.name) {
+    if (!trimmed) {
       setIsEditing(false);
       return;
     }
     setSaving(true);
     try {
-      const updated = await renameTraceComponent(component.id, trimmed);
+      const looksLikeCode = /^[A-Za-z]{1,6}[-\s_]?\d{1,3}$/.test(trimmed)
+        || (isImplementation && trimmed.length <= 64 && !trimmed.includes(' '));
+      const payload = looksLikeCode
+        ? { codeName: trimmed, name: merged.name || trimmed }
+        : { name: trimmed };
+      const updated = await renameTraceComponent(component.id, payload);
       setDetail(updated);
       onRenamed?.(updated);
       setIsEditing(false);
-      showToast?.('Component renamed.', 'success');
+      showToast?.(looksLikeCode ? 'Code name updated.' : 'Component renamed.', 'success');
     } catch (err) {
       showToast?.(err.message, 'error');
     } finally {
@@ -67,6 +89,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
     <AppModal
       isOpen={Boolean(component)}
       onClose={onClose}
+      containerClassName={isImplementation ? 'tm-detail-modal--code' : ''}
       title={
         isEditing ? (
           <div className="tm-rename-row">
@@ -81,8 +104,9 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
                 if (e.key === 'Escape') cancelEditing();
               }}
               disabled={saving}
+              placeholder={isImplementation ? 'FileName.java' : 'UC-01'}
             />
-            <button className="tm-icon-btn" title="Save name" onClick={handleSaveName} disabled={saving || !draftName.trim()}>
+            <button className="tm-icon-btn" title="Save" onClick={handleSaveName} disabled={saving || !draftName.trim()}>
               {saving ? <Loader2 size={14} className="tm-spin" /> : <Check size={14} />}
             </button>
             <button className="tm-icon-btn" title="Cancel" onClick={cancelEditing} disabled={saving}>
@@ -91,8 +115,8 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
           </div>
         ) : (
           <div className="tm-rename-row">
-            <span>{component.name}</span>
-            <button className="tm-icon-btn" title="Rename component" onClick={startEditing}>
+            <span className="tm-detail__code">{label}</span>
+            <button className="tm-icon-btn" title="Edit code / name" onClick={startEditing}>
               <Pencil size={14} />
             </button>
           </div>
@@ -103,29 +127,55 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
       }
     >
       <div className="tm-detail">
-        {merged.imageData && (
+        {loadError && <p className="tm-muted">{loadError}</p>}
+
+        {!isImplementation && merged.imageData && (
           <img
             className="tm-detail__image"
             src={`data:image/jpeg;base64,${merged.imageData}`}
-            alt={`${component.name} diagram`}
-            title="Click to enlarge"
+            alt={`${label} diagram page`}
+            title="Click to enlarge page"
             onClick={() => setImageExpanded(true)}
           />
         )}
-        <div className="tm-detail__box">
-          {contentLines.length > 1 ? (
-            <ul className="tm-detail__list">
-              {contentLines.map((line, i) => (
-                <li key={i}>{line}</li>
-              ))}
-            </ul>
-          ) : (
-            merged.content || component.name
-          )}
-        </div>
+
+        {!isImplementation && !merged.imageData && detail === null && !loadError && (
+          <p className="tm-muted">Loading page image...</p>
+        )}
+
+        {!isImplementation && !merged.imageData && detail !== null && (
+          <p className="tm-muted">No page image stored for this component.</p>
+        )}
+
+        {isImplementation ? (
+          <div className="tm-detail__code-panel">
+            {detail === null && !loadError ? (
+              <p className="tm-muted">Loading source code from GitHub ingest...</p>
+            ) : source ? (
+              <pre className="tm-detail__source"><code>{source}</code></pre>
+            ) : (
+              <p className="tm-muted">No source code stored for this file. Re-run GitHub ingest.</p>
+            )}
+          </div>
+        ) : (
+          <div className="tm-detail__box">
+            {contentLines.length > 1 ? (
+              <ul className="tm-detail__list">
+                {contentLines.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            ) : (
+              merged.content || merged.name || label
+            )}
+          </div>
+        )}
+
         {merged.aiExtracted && (
           <p className="tm-muted" style={{ marginTop: '0.75rem' }}>
-            Auto-extracted from an evaluated submission.
+            {isImplementation
+              ? 'Ingested from the team GitHub repository.'
+              : 'Auto-extracted from an evaluated submission.'}
           </p>
         )}
       </div>
@@ -141,7 +191,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
           </button>
           <img
             src={`data:image/jpeg;base64,${merged.imageData}`}
-            alt={`${component.name} diagram`}
+            alt={`${label} diagram page`}
             onClick={(e) => e.stopPropagation()}
           />
         </div>
