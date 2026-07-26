@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
@@ -18,10 +19,12 @@ public class SecurityConfig {
 
     private final SupabaseJwtValidator jwtValidator;
     private final AuthAllowlistService allowlistService;
+    private final CorsConfigurationSource corsConfigurationSource;
 
-    public SecurityConfig(SupabaseJwtValidator jwtValidator, AuthAllowlistService allowlistService) {
+    public SecurityConfig(SupabaseJwtValidator jwtValidator, AuthAllowlistService allowlistService, CorsConfigurationSource corsConfigurationSource) {
         this.jwtValidator = jwtValidator;
         this.allowlistService = allowlistService;
+        this.corsConfigurationSource = corsConfigurationSource;
     }
 
     @Bean
@@ -29,7 +32,7 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .cors(cors -> cors.configure(http))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .authorizeHttpRequests(auth -> auth
                 // Public endpoints
                 .requestMatchers("/api/auth/**").permitAll()
