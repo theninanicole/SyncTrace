@@ -12,6 +12,7 @@ function TraceabilityResults({
   onAddClick,
   aiIssues = [],
   issuesEmptyMessage = 'Run AI Analysis to detect continuity gaps.',
+  readOnly = false,
 }) {
   const enrichedRows = useMemo(
     () => rows.map((row) => ({
@@ -42,6 +43,7 @@ function TraceabilityResults({
             onComponentClick={onComponentClick}
             onAddClick={onAddClick}
             emptyMessage="No traceability data available."
+            readOnly={readOnly}
           />
 
           {enrichedRows.length > 0 && (

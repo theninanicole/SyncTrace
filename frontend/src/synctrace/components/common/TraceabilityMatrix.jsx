@@ -11,7 +11,13 @@ const DOC_COLUMNS = [
   { key: 'IMPLEMENTATION', label: 'Implementation' },
 ];
 
-function TraceabilityMatrix({ rows, onComponentClick, onAddClick, emptyMessage = 'No SMART goals to display.' }) {
+function TraceabilityMatrix({
+  rows,
+  onComponentClick,
+  onAddClick,
+  emptyMessage = 'No SMART goals to display.',
+  readOnly = false,
+}) {
   const [search, setSearch] = useState('');
 
   const filteredRows = useMemo(() => {
@@ -81,8 +87,8 @@ function TraceabilityMatrix({ rows, onComponentClick, onAddClick, emptyMessage =
                     <div className="trm-cell" key={col.key}>
                       {components.length === 0 ? (
                         <span
-                          className="trm-chip trm-chip--missing"
-                          onClick={() => onAddClick?.(row, col.key)}
+                          className={`trm-chip trm-chip--missing${readOnly ? ' trm-chip--readonly' : ''}`}
+                          onClick={readOnly ? undefined : () => onAddClick?.(row, col.key)}
                         >
                           Missing
                         </span>

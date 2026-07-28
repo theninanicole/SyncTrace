@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
-import { getSmartGoals, getAllGoalComponents, detectContinuityGaps, generateDiagnosticRecommendations, getContinuityFindings, getDiagnosticRecommendations } from '../../api';
+import { detectContinuityGaps, generateDiagnosticRecommendations } from '../../api';
 import { API_BASE_URL } from '../../../api';
-import { DOC_TYPES } from '../../hooks/useTraceability';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
-import { orderGoalsHierarchically } from '../../constants';
-import { buildAiIssues } from '../../utils/gapIssues';
+import { useTraceabilityResultsData } from '../../hooks/useTraceabilityResultsData';
 import TraceabilityResults from '../../components/common/TraceabilityResults';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import SendButton from '../../components/common/SendButton';
@@ -19,103 +17,19 @@ import './TraceabilityResultsPage.css';
 function TraceabilityResultsPage({ onNavigate }) {
   const { toast, showToast, hideToast } = useToast();
   const [selectedTeam, setSelectedTeam] = useSelectedTeam();
-  const [goals, setGoals] = useState([]);
-  const [componentsByGoal, setComponentsByGoal] = useState({});
-  const [loading, setLoading] = useState(true);
   const [previewComponent, setPreviewComponent] = useState(null);
 
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false);
   const [aiProgress, setAiProgress] = useState({ step: '', message: '', percent: 0 });
-  const [aiFindings, setAiFindings] = useState([]);
-  const [aiRecommendations, setAiRecommendations] = useState([]);
-
-  useEffect(() => {
-    loadResults();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeam]);
-
-  async function loadResults() {
-    setLoading(true);
-    try {
-      const [goalList, allGoalComponents, findingsData, recommendationsData] = await Promise.all([
-        getSmartGoals(selectedTeam || undefined),
-        getAllGoalComponents(),
-        selectedTeam ? getContinuityFindings(selectedTeam).catch(() => ({ findings: [] })) : { findings: [] },
-        selectedTeam ? getDiagnosticRecommendations(selectedTeam).catch(() => ({ recommendations: [] })) : { recommendations: [] },
-      ]);
-      setGoals(goalList);
-      setComponentsByGoal(allGoalComponents);
-      setAiFindings(findingsData.findings || []);
-      setAiRecommendations(recommendationsData.recommendations || []);
-    } catch (err) {
-      showToast?.(err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const rows = useMemo(() => {
-    const ordered = orderGoalsHierarchically(goals);
-    const indexById = new Map(ordered.map((g, i) => [g.id, i]));
-    return ordered.map((goal, gi) => {
-      const mapped = componentsByGoal[goal.id] || componentsByGoal[String(goal.id)] || [];
-      const cells = {};
-      DOC_TYPES.forEach((dt) => { cells[dt] = mapped.filter((c) => c.docType === dt); });
-      const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
-      const parentIdx = goal.parentGoalId != null ? indexById.get(goal.parentGoalId) : null;
-      return {
-        goalId: goal.id,
-        code: `G${gi + 1}`,
-        description: goal.description,
-        goalKind: goal.goalKind || 'SPECIFIC',
-        parentGoalId: goal.parentGoalId || null,
-        parentCode: parentIdx != null ? `G${parentIdx + 1}` : null,
-        teamCode: goal.teamCode || '',
-        cells,
-        coveredTypes,
-        aligned: coveredTypes === DOC_TYPES.length,
-        createdAt: goal.createdAt,
-        nested: goal.goalKind !== 'GENERAL' && Boolean(goal.parentGoalId),
-      };
-    });
-  }, [goals, componentsByGoal]);
-
-  const metrics = useMemo(() => {
-    let missingCells = 0;
-    let unmappedGoals = 0;
-    let partialGoals = 0;
-    let fullyCoveredGoals = 0;
-
-    rows.forEach((r) => {
-      DOC_TYPES.forEach((dt) => {
-        if (!r.cells[dt] || r.cells[dt].length === 0) missingCells++;
-      });
-
-      if (r.coveredTypes === 0) unmappedGoals++;
-      else if (r.coveredTypes < DOC_TYPES.length) partialGoals++;
-      else fullyCoveredGoals++;
-    });
-
-    const alignmentPercent = rows.length === 0 ? 0 : Math.round((1 - (missingCells / (rows.length * DOC_TYPES.length))) * 100);
-
-    return {
-      alignmentPercent,
-      unmappedGoals,
-      partialGoals,
-      missingCells,
-      fullyCoveredGoals,
-    };
-  }, [rows]);
-
-  const goalCodeById = useMemo(
-    () => new Map(rows.map((r) => [r.goalId, r.code])),
-    [rows],
-  );
-
-  const aiIssues = useMemo(
-    () => buildAiIssues(aiFindings, aiRecommendations, goalCodeById),
-    [aiFindings, aiRecommendations, goalCodeById],
-  );
+  const {
+    loading,
+    rows,
+    metrics,
+    aiIssues,
+    setAiFindings,
+    setAiRecommendations,
+    refresh: loadResults,
+  } = useTraceabilityResultsData(selectedTeam, { showToast });
 
   function generateSessionId() {
     return crypto.randomUUID
@@ -207,6 +121,8 @@ function TraceabilityResultsPage({ onNavigate }) {
             >
               {runningAiAnalysis ? 'Analyzing...' : 'Run AI Analysis'}
             </button>
+            <SendButton showToast={showToast} teamCode={selectedTeam} />
+            <ExportReportButton showToast={showToast} />
             <SendButton showToast={showToast} />
             <ExportReportButton showToast={showToast} teamCode={selectedTeam} />
           </div>

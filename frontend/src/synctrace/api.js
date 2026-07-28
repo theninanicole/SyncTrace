@@ -203,6 +203,23 @@ export const getContinuitySummary = async (teamCode) => {
     return data;
 };
 
+export const getTraceabilityResultPublication = async (teamCode) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/results/${encodeURIComponent(teamCode)}/publication`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load traceability result status.');
+    return data;
+};
+
+export const publishTraceabilityResults = async (teamCode) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/results/${encodeURIComponent(teamCode)}/publication`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results.');
+    return data;
+};
+
 // ── SyncTrace: GitHub Ingestion ───────────────────────────────────────────────
 
 export const getTeamRepositories = async () => {

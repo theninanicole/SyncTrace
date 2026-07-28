@@ -13,7 +13,7 @@ function extractSourceMeta(content) {
   return { filePath: null, source: content };
 }
 
-function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
+function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOnly = false }) {
   const [isEditing, setIsEditing]     = useState(false);
   const [draftName, setDraftName]     = useState('');
   const [saving, setSaving]           = useState(false);
@@ -116,9 +116,11 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast }) {
         ) : (
           <div className="tm-rename-row">
             <span className="tm-detail__code">{label}</span>
-            <button className="tm-icon-btn" title="Edit code / name" onClick={startEditing}>
-              <Pencil size={14} />
-            </button>
+            {!readOnly && (
+              <button className="tm-icon-btn" title="Edit code / name" onClick={startEditing}>
+                <Pencil size={14} />
+              </button>
+            )}
           </div>
         )
       }
