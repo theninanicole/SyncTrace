@@ -47,6 +47,11 @@ export const studentTutorialSteps = [
     placement: 'top',
   },
   {
+    target: '.student-traceability-card',
+    content: 'Traceability Results shows how your team goals connect to submitted documents and implementation.',
+    placement: 'top',
+  },
+  {
     target: '.student-sidebar__signout',
     content: 'You can sign out here when you are done.',
     placement: 'top',
