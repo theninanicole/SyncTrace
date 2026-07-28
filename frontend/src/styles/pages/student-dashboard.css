@@ -320,6 +320,47 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+.student-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.student-section-heading .card__title {
+  margin-bottom: 0.25rem;
+}
+
+.student-section-heading__subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.student-traceability-card {
+  margin-top: 1rem;
+}
+
+.student-traceability-kpis {
+  margin-bottom: 1rem;
+}
+
+.student-traceability-summary {
+  margin-bottom: 1rem;
+}
+
+.student-traceability-locked {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  border: 1px dashed var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface-2);
+}
+
 .student-doc-tab {
   border-radius: 999px;
   border: 1px solid var(--line-soft);
@@ -458,4 +499,11 @@ color: var(--brand);
 .app-table th:nth-child(5),
 .app-table td:nth-child(5) {
   text-align: center;
+}
+
+@media (max-width: 980px) {
+  .student-section-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

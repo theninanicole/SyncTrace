@@ -3,6 +3,7 @@ import PanelHeader from '../../components/common/PanelHeader';
 import StudentReportModal from '../../components/student/StudentReportModal';
 import StudentReportsTable from '../../components/student/StudentReportsTable';
 import StudentSidebar from '../../components/student/StudentSidebar';
+import StudentTraceabilityResults from '../../components/student/StudentTraceabilityResults';
 import TutorialOverlay from '../../components/common/TutorialOverlay';
 import { useStudentReports } from '../../hooks/useStudentReports';
 import { useTutorial } from '../../hooks/useTutorial';
@@ -24,11 +25,9 @@ function StudentDashboardPage({ studentData }) {
 
   const [selectedReport, setSelectedReport]       = useState(null);
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
-  const [modalOpen, setModalOpen]                 = useState(false);
 
   async function handleOpenReport(reportSummary) {
     vm.markViewed(reportSummary.id);
-    setModalOpen(true);
     setSelectedReport(null);
     setIsFetchingDetails(true);
     try {
@@ -43,7 +42,6 @@ function StudentDashboardPage({ studentData }) {
   }
 
   function handleClose() {
-    setModalOpen(false);
     setSelectedReport(null);
     setIsFetchingDetails(false);
   }
@@ -130,6 +128,8 @@ function StudentDashboardPage({ studentData }) {
             onOpen={handleOpenReport}
           />
         </div>
+
+        <StudentTraceabilityResults teamCode={studentData.groupCode} />
       </main>
 
       <StudentReportModal
