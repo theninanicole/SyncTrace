@@ -225,8 +225,6 @@ public class AuditExportService {
         Map<String, Object> map = new java.util.HashMap<>();
         map.put("id", goal.getId());
         map.put("description", goal.getDescription());
-        map.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : "SPECIFIC");
-        map.put("parentGoalId", goal.getParentGoalId());
         map.put("teamCode", goal.getTeamCode());
         map.put("createdAt", goal.getCreatedAt());
         return map;

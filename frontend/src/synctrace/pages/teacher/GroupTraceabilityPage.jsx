@@ -40,7 +40,7 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
         subtitle={section || 'Group traceability results'}
         actions={
           <div className="teacher-header-actions">
-            <SendButton showToast={showToast} />
+            <SendButton showToast={showToast} teamCode={teamCode} />
             <ExportReportButton showToast={showToast} teamCode={teamCode} />
           </div>
         }

@@ -122,8 +122,6 @@ function TraceabilityResultsPage({ onNavigate }) {
               {runningAiAnalysis ? 'Analyzing...' : 'Run AI Analysis'}
             </button>
             <SendButton showToast={showToast} teamCode={selectedTeam} />
-            <ExportReportButton showToast={showToast} />
-            <SendButton showToast={showToast} />
             <ExportReportButton showToast={showToast} teamCode={selectedTeam} />
           </div>
         }

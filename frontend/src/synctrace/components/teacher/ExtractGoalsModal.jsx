@@ -142,7 +142,6 @@ function ExtractGoalsModal({ isOpen, onClose, showToast, onExtracted, teamCode =
               disabled={!selectedId || isExtracting}
               onClick={handleExtract}
             >
-              {isExtracting ? <Loader2 size={14} className="tm-spin" /> : <Sparkles size={14} />}
               {isExtracting ? 'Extracting...' : 'Extract Goals'}
             </button>
           </div>

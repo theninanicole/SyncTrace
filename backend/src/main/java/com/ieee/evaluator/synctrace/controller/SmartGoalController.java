@@ -1,6 +1,5 @@
 package com.ieee.evaluator.synctrace.controller;
 
-import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.service.SmartGoalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -48,20 +47,10 @@ public class SmartGoalController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Description is required"));
             }
 
-            GoalKind goalKind = GoalKind.SPECIFIC;
-            if (payload.get("goalKind") != null && !String.valueOf(payload.get("goalKind")).isBlank()) {
-                goalKind = GoalKind.valueOf(String.valueOf(payload.get("goalKind")).trim().toUpperCase());
-            }
-
-            Long parentGoalId = null;
-            if (payload.get("parentGoalId") != null && !String.valueOf(payload.get("parentGoalId")).isBlank()) {
-                parentGoalId = Long.valueOf(String.valueOf(payload.get("parentGoalId")));
-            }
-
             String teamCode = payload.get("teamCode") != null
                 ? String.valueOf(payload.get("teamCode")) : null;
 
-            return ResponseEntity.ok(goalService.createGoal(description, goalKind, parentGoalId, teamCode));
+            return ResponseEntity.ok(goalService.createGoal(description, teamCode));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {

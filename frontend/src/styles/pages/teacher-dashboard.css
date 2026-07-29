@@ -147,6 +147,14 @@
   font-weight: 800;
 }
 
+.nav-btn--source {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-color: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  font-weight: 800;
+}
+
 .nav-btn--overview {
   background: transparent;
   border: 1px solid rgba(148, 163, 184, 0.6);
@@ -192,6 +200,11 @@
 }
 
 .nav-btn--traceability:hover {
+  transform: translateX(6px) scale(1.03);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
+}
+
+.nav-btn--source:hover {
   transform: translateX(6px) scale(1.03);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--srs) 28%, transparent);
 }
@@ -242,6 +255,12 @@
   color: var(--srs);
 }
 
+.nav-btn--source.nav-btn--active {
+  border-color: var(--srs);
+  background: #ffffff;
+  color: var(--srs);
+}
+
 .nav-btn--overview.nav-btn--active {
   border-color: var(--srs);
   background: #ffffff;
@@ -286,6 +305,12 @@
 }
 
 [data-theme='dark'] .nav-btn--traceability.nav-btn--active {
+  background: transparent;
+  color: var(--srs);
+  border-color: var(--srs);
+}
+
+[data-theme='dark'] .nav-btn--source.nav-btn--active {
   background: transparent;
   color: var(--srs);
   border-color: var(--srs);

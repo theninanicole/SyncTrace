@@ -18,8 +18,6 @@ export const createSmartGoal = async (description, options = {}) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             description,
-            goalKind: options.goalKind || 'SPECIFIC',
-            parentGoalId: options.parentGoalId || null,
             teamCode: options.teamCode || null,
         }),
     });

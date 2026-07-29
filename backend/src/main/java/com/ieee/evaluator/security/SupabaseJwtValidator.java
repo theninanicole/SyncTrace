@@ -5,13 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
+import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.security.*;
-import java.security.interfaces.RSAPublicKey;
-import java.security.spec.X509EncodedKeySpec;
+import java.security.interfaces.ECPublicKey;
+import java.security.spec.ECGenParameterSpec;
+import java.security.spec.ECParameterSpec;
+import java.security.spec.ECPoint;
+import java.security.spec.ECPublicKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 
 @Component
@@ -25,8 +31,8 @@ public class SupabaseJwtValidator {
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     public SupabaseJwtValidator(@Value("${app.supabase.project-url:}") String projectUrl) {
-        // Supabase JWT issuer is the project URL
-        this.jwtIssuer = projectUrl;
+        // Supabase JWT issuer is the project's GoTrue endpoint
+        this.jwtIssuer = projectUrl.replaceAll("/+$", "") + "/auth/v1";
         this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = new ObjectMapper();
     }
@@ -49,7 +55,7 @@ public class SupabaseJwtValidator {
         String kid = header.get("kid").asText();
         String alg = header.get("alg").asText();
 
-        if (!"RS256".equals(alg)) {
+        if (!"ES256".equals(alg)) {
             throw new IllegalArgumentException("Unsupported algorithm: " + alg);
         }
 
@@ -62,17 +68,18 @@ public class SupabaseJwtValidator {
         }
 
         // Extract public key
-        RSAPublicKey publicKey = extractPublicKey(key);
+        ECPublicKey publicKey = extractPublicKey(key);
 
-        // Verify signature
+        // Verify signature (JWS ES256 signatures are raw R||S, not ASN.1/DER)
         String signingInput = parts[0] + "." + parts[1];
-        byte[] signature = Base64.getUrlDecoder().decode(parts[2]);
+        byte[] rawSignature = Base64.getUrlDecoder().decode(parts[2]);
+        byte[] derSignature = rawToDerSignature(rawSignature);
 
-        Signature sig = Signature.getInstance("SHA256withRSA");
+        Signature sig = Signature.getInstance("SHA256withECDSA");
         sig.initVerify(publicKey);
         sig.update(signingInput.getBytes());
 
-        if (!sig.verify(signature)) {
+        if (!sig.verify(derSignature)) {
             throw new SecurityException("Invalid signature");
         }
 
@@ -133,48 +140,54 @@ public class SupabaseJwtValidator {
         return null;
     }
 
-    private RSAPublicKey extractPublicKey(JsonNode key) throws Exception {
-        String n = key.get("n").asText();
-        String e = key.get("e").asText();
+    private ECPublicKey extractPublicKey(JsonNode key) throws Exception {
+        byte[] xBytes = Base64.getUrlDecoder().decode(key.get("x").asText());
+        byte[] yBytes = Base64.getUrlDecoder().decode(key.get("y").asText());
 
-        byte[] nBytes = Base64.getUrlDecoder().decode(n);
-        byte[] eBytes = Base64.getUrlDecoder().decode(e);
+        BigInteger x = new BigInteger(1, xBytes);
+        BigInteger y = new BigInteger(1, yBytes);
 
-        // Build ASN.1 encoded public key
-        byte[] encodedKey = encodeRsaPublicKey(nBytes, eBytes);
+        AlgorithmParameters parameters = AlgorithmParameters.getInstance("EC");
+        parameters.init(new ECGenParameterSpec("secp256r1")); // NIST P-256, used by ES256
+        ECParameterSpec ecParameterSpec = parameters.getParameterSpec(ECParameterSpec.class);
 
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(encodedKey);
-        KeyFactory factory = KeyFactory.getInstance("RSA");
-        return (RSAPublicKey) factory.generatePublic(spec);
+        ECPublicKeySpec pubSpec = new ECPublicKeySpec(new ECPoint(x, y), ecParameterSpec);
+        KeyFactory factory = KeyFactory.getInstance("EC");
+        return (ECPublicKey) factory.generatePublic(pubSpec);
     }
 
-    private byte[] encodeRsaPublicKey(byte[] n, byte[] e) {
-        // Simple ASN.1 encoding for RSA public key
-        // Sequence { INTEGER n, INTEGER e }
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        
-        try {
-            out.write(0x30); // SEQUENCE tag
-            out.write(0x82); // Length format (2 bytes)
-            int totalLength = 2 + n.length + 2 + e.length;
-            out.write((totalLength >> 8) & 0xFF);
-            out.write(totalLength & 0xFF);
-            
-            // INTEGER n
-            out.write(0x02); // INTEGER tag
-            out.write(0x82); // Length format (2 bytes)
-            out.write((n.length >> 8) & 0xFF);
-            out.write(n.length & 0xFF);
-            out.write(n);
-            
-            // INTEGER e
-            out.write(0x02); // INTEGER tag
-            out.write(e.length);
-            out.write(e);
-            
-            return out.toByteArray();
-        } catch (java.io.IOException ex) {
-            throw new RuntimeException("Failed to encode public key", ex);
+    // JWS ES256 signatures are the raw 64-byte concatenation of R and S (32 bytes each).
+    // java.security's ECDSA verifier expects the ASN.1/DER SEQUENCE{INTEGER r, INTEGER s} encoding instead.
+    private byte[] rawToDerSignature(byte[] rawSignature) throws Exception {
+        int len = rawSignature.length / 2;
+        byte[] r = toUnsignedInteger(Arrays.copyOfRange(rawSignature, 0, len));
+        byte[] s = toUnsignedInteger(Arrays.copyOfRange(rawSignature, len, rawSignature.length));
+
+        ByteArrayOutputStream sequence = new ByteArrayOutputStream();
+        sequence.write(0x02); // INTEGER tag
+        sequence.write(r.length);
+        sequence.write(r);
+        sequence.write(0x02); // INTEGER tag
+        sequence.write(s.length);
+        sequence.write(s);
+
+        ByteArrayOutputStream der = new ByteArrayOutputStream();
+        der.write(0x30); // SEQUENCE tag
+        der.write(sequence.size());
+        der.write(sequence.toByteArray());
+        return der.toByteArray();
+    }
+
+    // Strips leading zero bytes, then re-adds a single 0x00 if the high bit is set,
+    // so the value isn't misread as a negative ASN.1 INTEGER.
+    private byte[] toUnsignedInteger(byte[] bytes) {
+        int offset = 0;
+        while (offset < bytes.length - 1 && bytes[offset] == 0) {
+            offset++;
         }
+        boolean needsPadding = (bytes[offset] & 0x80) != 0;
+        byte[] result = new byte[bytes.length - offset + (needsPadding ? 1 : 0)];
+        System.arraycopy(bytes, offset, result, needsPadding ? 1 : 0, bytes.length - offset);
+        return result;
     }
 }

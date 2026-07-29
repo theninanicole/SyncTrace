@@ -106,11 +106,9 @@ export function useTraceability(showToast, initialGoalId = null, teamCode = '') 
   }
 
   const selectedGoal = goals.find((g) => g.id === selectedGoalId) || null;
-  const generalGoals = goals.filter((g) => g.goalKind === 'GENERAL');
 
   return {
     goals,
-    generalGoals,
     loadingGoals,
     selectedGoalId,
     setSelectedGoalId,

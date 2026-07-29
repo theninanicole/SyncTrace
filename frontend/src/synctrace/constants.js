@@ -2,29 +2,6 @@
 
 export const DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD', 'IMPLEMENTATION'];
 
-export const GOAL_KINDS = [
-  { value: 'GENERAL', label: 'General (→ modules)' },
-  { value: 'SPECIFIC', label: 'Specific (→ functions/transactions)' },
-];
-
-/** Module-level artifact kinds preferred for GENERAL objectives. */
-export const MODULE_ARTIFACT_KINDS = new Set([
-  'CONTEXT_DIAGRAM', 'DATA_FLOW', 'OTHER_SRS',
-  'CLASS', 'DATA_MODEL', 'NON_OO', 'OTHER_SDD',
-  'MILESTONE', 'DELIVERABLE', 'OTHER_SPMP',
-  'TEST_DESIGN', 'OTHER_STD',
-  'IMPL_OO', 'IMPL_NON_OO', 'OTHER_IMPLEMENTATION',
-]);
-
-/** Function/transaction kinds preferred for SPECIFIC objectives. */
-export const FUNCTION_ARTIFACT_KINDS = new Set([
-  'USE_CASE', 'ACTIVITY', 'WIREFRAME',
-  'SEQUENCE', 'UI',
-  'TASK',
-  'TEST_CASE', 'TEST_LOG',
-  'IMPL_OO', 'IMPL_NON_OO',
-]);
-
 export const ARTIFACT_KINDS_BY_DOC_TYPE = {
   SRS: [
     { value: 'USE_CASE', label: 'Use Case' },
@@ -92,50 +69,3 @@ export function componentLabel(component) {
   return name.length > 28 ? `${name.slice(0, 27)}…` : name;
 }
 
-export function isPreferredArtifactKind(goalKind, artifactKind) {
-  if (!artifactKind || artifactKind === 'UNSPECIFIED') return false;
-  if (goalKind === 'GENERAL') return MODULE_ARTIFACT_KINDS.has(artifactKind);
-  return FUNCTION_ARTIFACT_KINDS.has(artifactKind);
-}
-
-export function preferredArtifactHint(goalKind) {
-  if (goalKind === 'GENERAL') {
-    return 'Prefer module-level artifacts (context/data modules, classes, milestones, deliverables).';
-  }
-  return 'Prefer function/transaction artifacts (use cases, activities, sequences, UI, test cases).';
-}
-
-/** Order goals as GENERAL parents, then SPECIFIC children, then orphan specifics. */
-export function orderGoalsHierarchically(goals) {
-  if (!Array.isArray(goals) || goals.length === 0) return [];
-  const byId = new Map(goals.map((g) => [g.id, g]));
-  const childrenByParent = new Map();
-  const roots = [];
-  const orphans = [];
-
-  goals.forEach((g) => {
-    if (g.goalKind === 'GENERAL') {
-      roots.push(g);
-      return;
-    }
-    if (g.parentGoalId && byId.has(g.parentGoalId)) {
-      if (!childrenByParent.has(g.parentGoalId)) childrenByParent.set(g.parentGoalId, []);
-      childrenByParent.get(g.parentGoalId).push(g);
-      return;
-    }
-    orphans.push(g);
-  });
-
-  const ordered = [];
-  roots.forEach((parent) => {
-    ordered.push(parent);
-    (childrenByParent.get(parent.id) || []).forEach((child) => ordered.push(child));
-  });
-  orphans.forEach((g) => ordered.push(g));
-
-  const seen = new Set(ordered.map((g) => g.id));
-  goals.forEach((g) => {
-    if (!seen.has(g.id)) ordered.push(g);
-  });
-  return ordered;
-}

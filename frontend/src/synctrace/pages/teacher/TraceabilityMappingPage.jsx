@@ -11,7 +11,6 @@ import NewGoalForm from '../../components/teacher/NewGoalForm';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import { useTraceability, DOC_TYPES } from '../../hooks/useTraceability';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
-import { orderGoalsHierarchically, preferredArtifactHint } from '../../constants';
 import TeamSelect from '../../components/common/TeamSelect';
 import './TraceabilityMappingPage.css';
 
@@ -74,9 +73,8 @@ function TraceabilityMappingPage({
     return acc;
   }, {});
 
-  const orderedGoals = orderGoalsHierarchically(tm.goals);
+  const orderedGoals = tm.goals;
   const goalIndexById = new Map(orderedGoals.map((g, i) => [g.id, i]));
-  const mappingHint = preferredArtifactHint(tm.selectedGoal?.goalKind || 'SPECIFIC');
 
   return (
     <div className="tm-root">
@@ -115,7 +113,6 @@ function TraceabilityMappingPage({
             <NewGoalForm
               onCreate={handleCreateGoal}
               onCancel={() => setShowNewGoalForm(false)}
-              generalGoals={tm.generalGoals}
               defaultTeamCode={selectedTeam}
             />
           )}
@@ -131,20 +128,14 @@ function TraceabilityMappingPage({
               {orderedGoals.map((g) => {
                 const allComplete = DOC_TYPES.every((dt) => g.categoryStatus?.[dt]);
                 const idx = goalIndexById.get(g.id) ?? 0;
-                const isChild = g.goalKind !== 'GENERAL' && Boolean(g.parentGoalId);
                 return (
                   <button
                     key={g.id}
-                    className={`tm-goal-item ${isChild ? 'tm-goal-item--child' : ''} ${tm.selectedGoalId === g.id ? 'tm-goal-item--active' : ''}`}
+                    className={`tm-goal-item ${tm.selectedGoalId === g.id ? 'tm-goal-item--active' : ''}`}
                     onClick={() => tm.setSelectedGoalId(g.id)}
                   >
                     <span className="tm-goal-item__code">G{idx + 1}</span>
-                    <span className="tm-goal-item__text">
-                      <span className={`tm-goal-kind tm-goal-kind--${(g.goalKind || 'SPECIFIC').toLowerCase()}`}>
-                        {g.goalKind === 'GENERAL' ? 'GEN' : 'SPEC'}
-                      </span>
-                      {g.description}
-                    </span>
+                    <span className="tm-goal-item__text">{g.description}</span>
                     <span className={`tm-status-icon ${allComplete ? 'tm-status-icon--ok' : 'tm-status-icon--warn'}`}>
                       {allComplete ? <CircleCheck size={16} /> : <TriangleAlert size={16} />}
                     </span>
@@ -171,20 +162,6 @@ function TraceabilityMappingPage({
                 <h3 className="pw-card__title">
                   G{(goalIndexById.get(tm.selectedGoal.id) ?? 0) + 1} — {tm.selectedGoal.description}
                 </h3>
-                <div className="tm-goal-meta">
-                  <span className={`tm-goal-kind tm-goal-kind--${(tm.selectedGoal.goalKind || 'SPECIFIC').toLowerCase()}`}>
-                    {tm.selectedGoal.goalKind === 'GENERAL' ? 'General objective → modules' : 'Specific objective → functions/transactions'}
-                  </span>
-                  {tm.selectedGoal.parentGoalId && (
-                    <span className="tm-goal-team">
-                      under G{(goalIndexById.get(tm.selectedGoal.parentGoalId) ?? -1) + 1 || '?'}
-                    </span>
-                  )}
-                  {tm.selectedGoal.teamCode && (
-                    <span className="tm-goal-team">{tm.selectedGoal.teamCode}</span>
-                  )}
-                </div>
-                <p className="tm-muted tm-mapping-hint">{mappingHint}</p>
               </section>
 
               {tm.loadingMappings ? (

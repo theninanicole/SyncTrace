@@ -14,7 +14,6 @@ import {
 } from '../../routes';
 import '../../../styles/pages/teacher-dashboard.css';
 import '../../../styles/components/layout.css';
-import './SyncTraceShell.css';
 
 function readLocation() {
   const loc = pathToView(window.location.pathname, window.location.search);
@@ -49,6 +48,7 @@ function SyncTraceDashboardPage({ onBack }) {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     syncFromUrl();
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);

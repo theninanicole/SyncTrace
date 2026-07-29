@@ -296,11 +296,6 @@
   border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
 }
 
-.tm-goal-item--child {
-  margin-left: 0.85rem;
-  border-left: 2px solid color-mix(in srgb, var(--brand) 35%, var(--line-soft));
-}
-
 .tm-goal-item__code {
   font-size: 0.68rem;
   font-weight: 800;
@@ -349,41 +344,6 @@
   color: var(--text-main);
   padding: 0.45rem 0.6rem;
   font-size: 0.85rem;
-}
-
-.tm-goal-kind {
-  display: inline-flex;
-  align-items: center;
-  margin-right: 0.4rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  vertical-align: middle;
-}
-
-.tm-goal-kind--general {
-  background: color-mix(in srgb, var(--brand) 16%, transparent);
-  color: var(--brand);
-}
-
-.tm-goal-kind--specific {
-  background: color-mix(in srgb, var(--spmp) 16%, transparent);
-  color: var(--spmp);
-}
-
-.tm-goal-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.45rem;
-}
-
-.tm-goal-team {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  font-weight: 600;
 }
 
 .tm-mapped-item__body {

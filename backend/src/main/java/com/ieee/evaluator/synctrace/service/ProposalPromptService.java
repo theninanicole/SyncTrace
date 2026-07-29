@@ -9,33 +9,24 @@ public class ProposalPromptService {
         return """
             You are analyzing a project proposal document for SyncTrace (software engineering capstone).
 
-            Extract SMART objectives using this hierarchy from the adviser model:
-            - GENERAL objectives describe high-level aims and are later mapped to MODULES.
-            - SPECIFIC objectives describe concrete functions/transactions and belong under a GENERAL parent when possible.
+            Extract the SMART goals stated in the proposal's Objective section only
+            (look for a heading such as "Objectives", "Objective", "Goals", or "General/Specific Objectives" —
+            ignore the Introduction, Background, Scope, Methodology, and other sections).
 
-            Prefer sections labeled General Objectives / Specific Objectives / Goals / Objectives.
+            Do not categorize goals as general or specific. Return each objective as a single flat goal.
             Preserve wording close to the document. Do not invent goals that are not in the proposal.
 
             Return raw JSON only (no markdown fences). Use this shape:
 
             [
               {
-                "goalKind": "GENERAL",
-                "description": "General objective text from the proposal",
-                "children": [
-                  {
-                    "goalKind": "SPECIFIC",
-                    "description": "Specific objective / function-transaction text"
-                  }
-                ]
+                "description": "Objective text from the proposal"
               }
             ]
 
             Rules:
-            - Top-level items should be GENERAL when the proposal has general objectives.
-            - Put related specific objectives in "children".
-            - If the proposal only lists flat goals with no general/specific split, return them as SPECIFIC objects (no children) at the top level.
-            - If none found, return [].
+            - List every distinct objective from the Objective section as its own entry, in the order they appear.
+            - If no Objective section is found, return [].
 
             Proposal text:
             %s
