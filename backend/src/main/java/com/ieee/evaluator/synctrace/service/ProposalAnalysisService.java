@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ieee.evaluator.service.AiProvider;
 import com.ieee.evaluator.service.GoogleDocsService;
 import com.ieee.evaluator.service.ProgressEmitter;
+import com.ieee.evaluator.synctrace.model.SmartGoal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -173,11 +174,46 @@ public class ProposalAnalysisService {
 
             List<Map<String, Object>> createdGoals = new java.util.ArrayList<>();
             for (JsonNode node : root) {
-                String description = node.isTextual()
-                    ? node.asText("").trim()
-                    : node.path("description").asText("").trim();
+                if (node.isTextual()) {
+                    // Legacy flat string → SPECIFIC
+                    createdGoals.add(persistGoal(node.asText(), SmartGoal.GoalKind.SPECIFIC, null, teamCode));
+                    continue;
+                }
+                if (!node.isObject()) continue;
+
+                String description = node.path("description").asText("").trim();
                 if (description.isBlank()) continue;
-                createdGoals.add(persistGoal(description, teamCode));
+
+                SmartGoal.GoalKind kind = parseGoalKind(node.path("goalKind").asText("SPECIFIC"));
+                if (kind == SmartGoal.GoalKind.GENERAL) {
+                    Map<String, Object> parentMap = persistGoal(description, SmartGoal.GoalKind.GENERAL, null, teamCode);
+                    createdGoals.add(parentMap);
+                    Long parentId = (Long) parentMap.get("id");
+
+                    JsonNode children = node.path("children");
+                    if (children.isArray()) {
+                        for (JsonNode child : children) {
+                            String childDesc = child.isTextual()
+                                ? child.asText("").trim()
+                                : child.path("description").asText("").trim();
+                            if (childDesc.isBlank()) continue;
+                            createdGoals.add(persistGoal(childDesc, SmartGoal.GoalKind.SPECIFIC, parentId, teamCode));
+                        }
+                    }
+                } else {
+                    createdGoals.add(persistGoal(description, SmartGoal.GoalKind.SPECIFIC, null, teamCode));
+                    JsonNode children = node.path("children");
+                    if (children.isArray()) {
+                        // Misplaced children under SPECIFIC — still create as SPECIFIC orphans
+                        for (JsonNode child : children) {
+                            String childDesc = child.isTextual()
+                                ? child.asText("").trim()
+                                : child.path("description").asText("").trim();
+                            if (childDesc.isBlank()) continue;
+                            createdGoals.add(persistGoal(childDesc, SmartGoal.GoalKind.SPECIFIC, null, teamCode));
+                        }
+                    }
+                }
             }
 
             return createdGoals;
@@ -187,14 +223,26 @@ public class ProposalAnalysisService {
         }
     }
 
-    private Map<String, Object> persistGoal(String description, String teamCode) {
-        var goal = smartGoalService.createGoal(description, teamCode);
+    private Map<String, Object> persistGoal(
+            String description, SmartGoal.GoalKind kind, Long parentGoalId, String teamCode) {
+        var goal = smartGoalService.createGoal(description, kind, parentGoalId, teamCode);
         Map<String, Object> goalMap = new java.util.HashMap<>();
         goalMap.put("id", goal.getId());
         goalMap.put("description", goal.getDescription());
+        goalMap.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : "SPECIFIC");
+        goalMap.put("parentGoalId", goal.getParentGoalId());
         goalMap.put("teamCode", goal.getTeamCode());
         goalMap.put("createdAt", goal.getCreatedAt());
         return goalMap;
+    }
+
+    private static SmartGoal.GoalKind parseGoalKind(String raw) {
+        if (raw == null || raw.isBlank()) return SmartGoal.GoalKind.SPECIFIC;
+        try {
+            return SmartGoal.GoalKind.valueOf(raw.trim().toUpperCase());
+        } catch (Exception e) {
+            return SmartGoal.GoalKind.SPECIFIC;
+        }
     }
 
     private static String stripCodeFences(String raw) {

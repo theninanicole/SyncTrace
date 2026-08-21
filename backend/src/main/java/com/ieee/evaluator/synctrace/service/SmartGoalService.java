@@ -2,6 +2,7 @@ package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
+import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.model.TraceComponentSummaryDTO;
@@ -61,6 +62,8 @@ public class SmartGoalService {
         Map<String, Object> result = new HashMap<>();
         result.put("id", goal.getId());
         result.put("description", goal.getDescription());
+        result.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : GoalKind.SPECIFIC.name());
+        result.put("parentGoalId", goal.getParentGoalId());
         result.put("teamCode", goal.getTeamCode());
         result.put("createdAt", goal.getCreatedAt());
 
@@ -78,23 +81,54 @@ public class SmartGoalService {
 
     @Transactional
     public SmartGoal createGoal(String description) {
-        return createGoal(description, null);
+        return createGoal(description, GoalKind.SPECIFIC, null, null);
     }
 
     @Transactional
     public SmartGoal createGoal(String description, String teamCode) {
+        return createGoal(description, GoalKind.SPECIFIC, null, teamCode);
+    }
+
+    @Transactional
+    public SmartGoal createGoal(String description, GoalKind goalKind, Long parentGoalId, String teamCode) {
+        GoalKind kind = goalKind != null ? goalKind : GoalKind.SPECIFIC;
+
         Optional<SmartGoal> existing = goalRepository.findByDescriptionIgnoreCase(description.trim());
         if (existing.isPresent()) {
             SmartGoal found = existing.get();
+            boolean dirty = false;
+            if (kind == GoalKind.GENERAL && found.getGoalKind() != GoalKind.GENERAL) {
+                found.setGoalKind(GoalKind.GENERAL);
+                found.setParentGoalId(null);
+                dirty = true;
+            }
+            if (kind == GoalKind.SPECIFIC && parentGoalId != null && found.getParentGoalId() == null) {
+                found.setParentGoalId(parentGoalId);
+                found.setGoalKind(GoalKind.SPECIFIC);
+                dirty = true;
+            }
             if (blankToNull(teamCode) != null && (found.getTeamCode() == null || found.getTeamCode().isBlank())) {
                 found.setTeamCode(blankToNull(teamCode));
-                return goalRepository.save(found);
+                dirty = true;
             }
-            return found;
+            return dirty ? goalRepository.save(found) : found;
+        }
+
+        if (kind == GoalKind.GENERAL && parentGoalId != null) {
+            throw new IllegalArgumentException("GENERAL goals cannot have a parent goal.");
+        }
+        if (kind == GoalKind.SPECIFIC && parentGoalId != null) {
+            SmartGoal parent = goalRepository.findById(parentGoalId)
+                .orElseThrow(() -> new IllegalArgumentException("Parent goal not found: " + parentGoalId));
+            if (parent.getGoalKind() != GoalKind.GENERAL) {
+                throw new IllegalArgumentException("Parent goal must be a GENERAL objective.");
+            }
         }
 
         SmartGoal goal = new SmartGoal();
         goal.setDescription(description.trim());
+        goal.setGoalKind(kind);
+        goal.setParentGoalId(kind == GoalKind.SPECIFIC ? parentGoalId : null);
         goal.setTeamCode(blankToNull(teamCode));
         goal.setCreatedAt(LocalDateTime.now());
         return goalRepository.save(goal);
@@ -102,6 +136,11 @@ public class SmartGoalService {
 
     @Transactional
     public void deleteGoal(Long goalId) {
+        List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtDesc(goalId);
+        for (SmartGoal child : children) {
+            mappingRepository.deleteByGoalId(child.getId());
+            goalRepository.deleteById(child.getId());
+        }
         mappingRepository.deleteByGoalId(goalId);
         goalRepository.deleteById(goalId);
     }

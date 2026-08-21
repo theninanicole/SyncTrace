@@ -73,9 +73,7 @@ function SyncTraceDashboardPage({ onBack }) {
   }
 
   const currentView = loc.view;
-  const focusGoalId = loc.focusGoalId;
   const focusStep = loc.focusStep;
-  const focusDocType = loc.focusDocType;
   const selectedTeamCode = loc.teamCode;
 
   // Sidebar: highlight "Overview" when viewing a group detail
@@ -90,12 +88,7 @@ function SyncTraceDashboardPage({ onBack }) {
           <OverviewPage onOpenGroup={openGroupResults} />
         )}
         {currentView === 'traceability' && (
-          <TraceabilityMappingPage
-            initialGoalId={focusGoalId}
-            focusStep={focusStep}
-            focusDocType={focusDocType}
-            onProgressRefresh={progress.refresh}
-          />
+          <TraceabilityMappingPage focusStep={focusStep} />
         )}
         {currentView === 'traceability-results' && (
           <TraceabilityResultsPage onNavigate={handleNavigate} />

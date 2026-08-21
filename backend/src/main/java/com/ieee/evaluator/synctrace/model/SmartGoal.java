@@ -16,9 +16,26 @@ public class SmartGoal {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /**
+     * GENERAL objectives map to modules;
+     * SPECIFIC objectives map to functions/transactions.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "goal_kind")
+    private GoalKind goalKind = GoalKind.SPECIFIC;
+
+    /** Parent GENERAL goal when this is a SPECIFIC objective. */
+    @Column(name = "parent_goal_id")
+    private Long parentGoalId;
+
     /** Optional team scope, e.g. 2526-sem2-it332-08. */
     @Column(name = "team_code")
     private String teamCode;
 
     private LocalDateTime createdAt;
+
+    public enum GoalKind {
+        GENERAL,
+        SPECIFIC
+    }
 }

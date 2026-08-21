@@ -64,6 +64,13 @@ public class TraceComponentService {
     @Transactional
     public TraceComponent createComponent(
             DocType docType, ArtifactKind artifactKind, String name, String content, String codeName) {
+        return createComponent(docType, artifactKind, name, content, codeName, null);
+    }
+
+    @Transactional
+    public TraceComponent createComponent(
+            DocType docType, ArtifactKind artifactKind, String name, String content, String codeName,
+            String imageData) {
         Optional<TraceComponent> existing = componentRepository.findByDocTypeAndNameIgnoreCase(docType, name.trim());
         if (existing.isPresent()) {
             return existing.get();
@@ -92,6 +99,7 @@ public class TraceComponentService {
         component.setName(name.trim());
         component.setCodeName(resolvedCode);
         component.setContent(content);
+        component.setImageData(imageData);
         component.setAiExtracted(false);
         component.setCreatedAt(LocalDateTime.now());
         return componentRepository.save(component);

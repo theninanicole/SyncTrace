@@ -1,222 +1,133 @@
 import { useEffect, useState } from 'react';
-import { CircleCheck, Plus, TriangleAlert } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
-import AddComponentModal from '../../components/teacher/AddComponentModal';
-import CategoryCard from '../../components/teacher/CategoryCard';
-import ExtractComponentsModal from '../../components/teacher/ExtractComponentsModal';
-import ExtractGoalsModal from '../../components/teacher/ExtractGoalsModal';
-import NewGoalForm from '../../components/teacher/NewGoalForm';
-import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
-import { useTraceability, DOC_TYPES } from '../../hooks/useTraceability';
-import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import TeamSelect from '../../components/common/TeamSelect';
+import MappingStageSelector from '../../components/teacher/staged-mapping/MappingStageSelector';
+import MappingStatusBadge from '../../components/teacher/staged-mapping/MappingStatusBadge';
+import MappingWorkspace from '../../components/teacher/staged-mapping/MappingWorkspace';
+import ExtractSmartGoalsDialog from '../../components/teacher/staged-mapping/ExtractSmartGoalsDialog';
+import ExtractComponentsDialog from '../../components/teacher/staged-mapping/ExtractComponentsDialog';
+import AddComponentDialog from '../../components/teacher/staged-mapping/AddComponentDialog';
+import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
+import { useSelectedTeam } from '../../hooks/useSelectedTeam';
+import { useStagedTraceability } from '../../hooks/useStagedTraceability';
 import './TraceabilityMappingPage.css';
 
-function TraceabilityMappingPage({
-  initialGoalId = null,
-  focusStep,
-  focusDocType = null,
-  onProgressRefresh,
-}) {
+function TraceabilityMappingPage({ focusStep }) {
   const { toast, showToast, hideToast } = useToast();
   const [selectedTeam, setSelectedTeam] = useSelectedTeam();
-  const tm = useTraceability(showToast, initialGoalId, selectedTeam);
+  const tm = useStagedTraceability(showToast, selectedTeam);
 
-  const [showNewGoalForm, setShowNewGoalForm] = useState(false);
-  const [modalDocType, setModalDocType] = useState('SRS');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isExtractModalOpen, setIsExtractModalOpen] = useState(false);
-  const [isExtractGoalsModalOpen, setIsExtractGoalsModalOpen] = useState(false);
+  const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
+  const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
+  const [addComponentDocType, setAddComponentDocType] = useState(null);
   const [previewComponent, setPreviewComponent] = useState(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (focusStep === 'goals') setIsExtractGoalsModalOpen(true);
-    if (focusStep === 'library') setIsExtractModalOpen(true);
-    if (focusStep === 'map' && focusDocType) {
-      setModalDocType(focusDocType);
-      setIsModalOpen(true);
+    if (focusStep === 'goals') setIsExtractGoalsOpen(true);
+    if (focusStep === 'library') setIsExtractComponentsOpen(true);
+  }, [focusStep]);
+
+  const isProposalStage = tm.stage.sourceType === 'PROPOSAL';
+  const isSaving = tm.saveState === 'saving';
+  const isVerifying = tm.saveState === 'verifying';
+  const isBusy = isSaving || isVerifying;
+
+  function saveButtonLabel() {
+    if (isSaving) return 'Saving mapping…';
+    if (isVerifying) return 'Verifying traceability…';
+    return 'Save Mapping';
+  }
+
+  const missingArtifact = tm.sourceItems.length === 0 || tm.targetItems.length === 0;
+  const missingWarning = (() => {
+    if (!missingArtifact) return null;
+    if (isProposalStage && tm.sourceItems.length === 0) {
+      return 'No SMART Goals are available yet. Extract them from the evaluated proposal before establishing Proposal → SRS mappings.';
     }
-  }, [focusStep, focusDocType]);
-
-  function openAddModal(docType) {
-    setModalDocType(docType);
-    setIsModalOpen(true);
-  }
-
-  async function handleCreateGoal(description, options) {
-    const goal = await tm.createGoal(description, options);
-    if (goal) {
-      setShowNewGoalForm(false);
-      onProgressRefresh?.();
+    if (tm.sourceItems.length === 0 && tm.precedingStage) {
+      const libraryHasComponents = (tm.components[tm.stage.sourceType] || []).length > 0;
+      if (libraryHasComponents) {
+        return `No ${tm.stage.sourceType} components have been mapped yet in ${tm.precedingStage.label}. Establish those mappings before starting ${tm.stage.label}.`;
+      }
     }
-  }
-
-  async function handleGoalsExtracted() {
-    await tm.loadGoals();
-    setIsExtractGoalsModalOpen(false);
-    onProgressRefresh?.();
-  }
-
-  async function refreshGoalsAndMappings() {
-    await tm.loadGoals(true);
-    if (tm.selectedGoalId) {
-      await tm.loadMappings(tm.selectedGoalId);
-    }
-    onProgressRefresh?.();
-  }
-
-  const mappedByType = DOC_TYPES.reduce((acc, dt) => {
-    acc[dt] = tm.mappedComponents.filter((c) => c.docType === dt);
-    return acc;
-  }, {});
-
-  const orderedGoals = tm.goals;
-  const goalIndexById = new Map(orderedGoals.map((g, i) => [g.id, i]));
+    const missingSide = tm.sourceItems.length === 0 ? tm.stage.sourceType : tm.stage.targetType;
+    return `No ${missingSide} components are currently available. Extract or add components before establishing ${tm.stage.label} mappings.`;
+  })();
 
   return (
-    <div className="tm-root">
+    <div className="stm-root">
       <ToastMessage toast={toast} onClose={hideToast} />
 
       <PanelHeader
-        title="Goals & Mapping"
-        subtitle="Extract SMART goals and map them to document and implementation components"
+        title="Traceability Mapping"
+        subtitle="Establish traceability relationships between project artifacts, one staged mapping at a time."
         actions={
           <div className="teacher-header-actions">
-            <button className="btn btn--soft tm-link-btn" onClick={() => setIsExtractGoalsModalOpen(true)}>
-              Extract Goals
-            </button>
-            <button className="btn btn--primary tm-link-btn" onClick={() => setIsExtractModalOpen(true)}>
+            {isProposalStage && (
+              <button className="btn btn--soft" onClick={() => setIsExtractGoalsOpen(true)}>
+                Extract SMART Goals
+              </button>
+            )}
+            <button className="btn btn--soft" onClick={() => setIsExtractComponentsOpen(true)}>
               Extract Components
+            </button>
+            <button className="btn btn--primary" disabled={isBusy} onClick={tm.saveMapping}>
+              {saveButtonLabel()}
             </button>
           </div>
         }
       />
 
-      <div className="tm-team-filter-row">
+      <div className="stm-context-row">
         <TeamSelect value={selectedTeam} onChange={setSelectedTeam} />
+        <MappingStageSelector stages={tm.stages} selectedStage={tm.selectedStage} onChange={tm.setSelectedStage} />
+        <MappingStatusBadge status={tm.stageStatus} />
       </div>
 
-      <div className="tm-layout">
-        {/* ── Goal sidebar ─────────────────────────────────────────────────── */}
-        <aside className="tm-sidebar">
-          <div className="tm-sidebar__header">
-            <span>SMART GOALS</span>
-            <button className="tm-icon-btn" title="Add goal" onClick={() => setShowNewGoalForm((v) => !v)}>
-              <Plus size={14} />
-            </button>
-          </div>
+      {missingWarning && (
+        <div className="stm-warning-banner">
+          <span>{missingWarning}</span>
+        </div>
+      )}
 
-          {showNewGoalForm && (
-            <NewGoalForm
-              onCreate={handleCreateGoal}
-              onCancel={() => setShowNewGoalForm(false)}
-              defaultTeamCode={selectedTeam}
-            />
-          )}
-
-          {tm.loadingGoals ? (
-            <p className="tm-muted" style={{ padding: '0 0.25rem' }}>Loading goals...</p>
-          ) : orderedGoals.length === 0 ? (
-            <div className="tm-sidebar-empty">
-              <p className="tm-muted">{selectedTeam ? `No goals yet for ${selectedTeam}.` : 'No goals yet.'}</p>
-            </div>
-          ) : (
-            <div className="tm-goal-list">
-              {orderedGoals.map((g) => {
-                const allComplete = DOC_TYPES.every((dt) => g.categoryStatus?.[dt]);
-                const idx = goalIndexById.get(g.id) ?? 0;
-                return (
-                  <button
-                    key={g.id}
-                    className={`tm-goal-item ${tm.selectedGoalId === g.id ? 'tm-goal-item--active' : ''}`}
-                    onClick={() => tm.setSelectedGoalId(g.id)}
-                  >
-                    <span className="tm-goal-item__code">G{idx + 1}</span>
-                    <span className="tm-goal-item__text">{g.description}</span>
-                    <span className={`tm-status-icon ${allComplete ? 'tm-status-icon--ok' : 'tm-status-icon--warn'}`}>
-                      {allComplete ? <CircleCheck size={16} /> : <TriangleAlert size={16} />}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="tm-sidebar__spacer" />
-          {orderedGoals.length > 0 && (
-            <button className="pw-btn pw-btn--primary" style={{ width: '100%' }} onClick={() => showToast('Mapping saved.', 'success')}>
-              Save Mapping
-            </button>
-          )}
-        </aside>
-
-        {/* ── Main content ────────────────────────────────────────────────── */}
-        <main className="tm-main">
-          {tm.selectedGoal ? (
-            <>
-              <section className="tm-card tm-goal-summary">
-                <span className="tm-muted tm-eyebrow">TRACEABILITY CENTER POINT</span>
-                <h3 className="pw-card__title">
-                  G{(goalIndexById.get(tm.selectedGoal.id) ?? 0) + 1} — {tm.selectedGoal.description}
-                </h3>
-              </section>
-
-              {tm.loadingMappings ? (
-                <p className="tm-muted">Loading mappings...</p>
-              ) : (
-                <div className="tm-grid">
-                  {DOC_TYPES.map((dt) => (
-                    <CategoryCard
-                      key={dt}
-                      docType={dt}
-                      components={mappedByType[dt]}
-                      complete={mappedByType[dt].length > 0}
-                      onAdd={() => openAddModal(dt)}
-                      onRemove={tm.removeComponent}
-                      onComponentClick={setPreviewComponent}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : null}
-        </main>
-      </div>
-
-      <AddComponentModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        initialDocType={modalDocType}
-        excludeComponentIds={tm.mappedComponents.map((c) => c.id)}
-        showToast={showToast}
-        teamCode={selectedTeam}
-        onComponentRenamed={refreshGoalsAndMappings}
-        onAddSelected={async (componentIds) => {
-          await tm.addComponents(componentIds);
-          setIsModalOpen(false);
-          onProgressRefresh?.();
-        }}
+      <MappingWorkspace
+        tm={tm}
+        onExtractGoalsClick={() => setIsExtractGoalsOpen(true)}
+        onAddComponentClick={(docType) => setAddComponentDocType(docType)}
+        onPreviewComponentClick={setPreviewComponent}
+        onRemoveComponentClick={(docType, id) => tm.removeComponent(docType, id)}
       />
 
-      <ExtractComponentsModal
-        isOpen={isExtractModalOpen}
-        onClose={() => {
-          setIsExtractModalOpen(false);
-          onProgressRefresh?.();
-        }}
-        showToast={showToast}
+      {tm.verification.status !== 'idle' && (
+        <div className={`stm-verification-banner stm-verification-banner--${tm.verification.status}`}>
+          <span>{tm.verification.message}</span>
+        </div>
+      )}
+
+      <ExtractSmartGoalsDialog
+        isOpen={isExtractGoalsOpen}
+        onClose={() => setIsExtractGoalsOpen(false)}
         teamCode={selectedTeam}
+        extracting={tm.extractingGoals}
+        onExtract={tm.extractSmartGoals}
       />
 
-      <ExtractGoalsModal
-        isOpen={isExtractGoalsModalOpen}
-        onClose={() => setIsExtractGoalsModalOpen(false)}
-        showToast={showToast}
-        onExtracted={handleGoalsExtracted}
+      <ExtractComponentsDialog
+        isOpen={isExtractComponentsOpen}
+        onClose={() => setIsExtractComponentsOpen(false)}
         teamCode={selectedTeam}
+        extracting={tm.extractingComponents}
+        onExtract={tm.extractComponents}
+      />
+
+      <AddComponentDialog
+        isOpen={Boolean(addComponentDocType)}
+        onClose={() => setAddComponentDocType(null)}
+        docType={addComponentDocType}
+        onAdd={(data) => tm.addComponent(addComponentDocType, data)}
       />
 
       <ComponentDetailModal
@@ -225,7 +136,7 @@ function TraceabilityMappingPage({
         showToast={showToast}
         onRenamed={(updated) => {
           setPreviewComponent(updated);
-          refreshGoalsAndMappings();
+          tm.refreshComponents();
         }}
       />
     </div>
