@@ -1,12 +1,12 @@
-import { ArrowLeft, ClipboardList, FolderGit2, LayoutDashboard, Table2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { signOut } from '../../../services/authService';
 import appLogo from '../../../assets/logo.png';
 
 const NAV_ITEMS = [
-  { key: 'overview', label: 'Overview', hint: 'Class readiness', Icon: LayoutDashboard },
-  { key: 'source', label: 'Source Code', hint: 'GitHub ingest', Icon: FolderGit2 },
-  { key: 'traceability', label: 'Traceability Mapping', hint: 'Link goals to artifacts', Icon: ClipboardList },
-  { key: 'traceability-results', label: 'Traceability Results', hint: 'Coverage gaps', Icon: Table2 },
+  { key: 'overview', label: 'Overview' },
+  { key: 'source', label: 'Source Code' },
+  { key: 'traceability', label: 'Traceability Mapping' },
+  { key: 'traceability-results', label: 'Traceability Results' },
 ];
 
 function SyncTraceSidebar({ currentView, onNavigate, onBack }) {
@@ -23,24 +23,15 @@ function SyncTraceSidebar({ currentView, onNavigate, onBack }) {
       </button>
 
       <nav className="teacher-sidebar__nav">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.Icon;
-          return (
-            <button
-              key={item.key}
-              className={`nav-btn nav-btn--${item.key} ${currentView === item.key ? 'nav-btn--active' : ''}`}
-              onClick={() => onNavigate(item.key)}
-            >
-              <span className="st-nav-row">
-                <Icon size={15} />
-                <span className="st-nav-copy">
-                  <span className="st-nav-label">{item.label}</span>
-                  <span className="st-nav-hint">{item.hint}</span>
-                </span>
-              </span>
-            </button>
-          );
-        })}
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.key}
+            className={`nav-btn nav-btn--${item.key} ${currentView === item.key ? 'nav-btn--active' : ''}`}
+            onClick={() => onNavigate(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
 
       <div className="teacher-sidebar__spacer" />

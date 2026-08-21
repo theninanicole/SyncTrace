@@ -12,8 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @Slf4j
@@ -62,6 +64,13 @@ public class TraceComponentService {
     @Transactional
     public TraceComponent createComponent(
             DocType docType, ArtifactKind artifactKind, String name, String content, String codeName) {
+        return createComponent(docType, artifactKind, name, content, codeName, null);
+    }
+
+    @Transactional
+    public TraceComponent createComponent(
+            DocType docType, ArtifactKind artifactKind, String name, String content, String codeName,
+            String imageData) {
         Optional<TraceComponent> existing = componentRepository.findByDocTypeAndNameIgnoreCase(docType, name.trim());
         if (existing.isPresent()) {
             return existing.get();
@@ -90,6 +99,7 @@ public class TraceComponentService {
         component.setName(name.trim());
         component.setCodeName(resolvedCode);
         component.setContent(content);
+        component.setImageData(imageData);
         component.setAiExtracted(false);
         component.setCreatedAt(LocalDateTime.now());
         return componentRepository.save(component);
@@ -142,6 +152,13 @@ public class TraceComponentService {
     @Transactional
     public List<TraceComponent> persistExtractedComponents(List<TraceComponent> extracted) {
         List<TraceComponent> saved = new ArrayList<>();
+        // Distinct diagrams found within the SAME extraction call must never merge with
+        // each other just because they coincidentally land on the same fallback code or
+        // name — they are always separate components. Tracking IDs saved during this
+        // batch lets us restrict merging to components that already existed beforehand
+        // (e.g. a genuine re-extraction of the same document), so siblings from this
+        // batch are never mistaken for duplicates of one another.
+        Set<Long> createdThisBatch = new HashSet<>();
         for (TraceComponent candidate : extracted) {
             if (candidate.getName() == null || candidate.getName().isBlank() || candidate.getDocType() == null) {
                 continue;
@@ -166,12 +183,14 @@ public class TraceComponentService {
                 existing = componentRepository
                     .findAllByDocTypeAndCodeNameIgnoreCase(candidate.getDocType(), code)
                     .stream()
+                    .filter(c -> !createdThisBatch.contains(c.getId()))
                     .filter(c -> belongsToSameSource(c, candidate))
                     .findFirst();
             }
             if (existing.isEmpty()) {
                 existing = componentRepository.findByDocTypeAndNameIgnoreCase(
                     candidate.getDocType(), safeName)
+                    .filter(c -> !createdThisBatch.contains(c.getId()))
                     .filter(c -> belongsToSameSource(c, candidate));
             }
             if (existing.isPresent()) {
@@ -198,7 +217,9 @@ public class TraceComponentService {
                 candidate.setCreatedAt(LocalDateTime.now());
             }
             candidate.setAiExtracted(true);
-            saved.add(componentRepository.save(candidate));
+            TraceComponent persisted = componentRepository.save(candidate);
+            createdThisBatch.add(persisted.getId());
+            saved.add(persisted);
         }
         return saved;
     }

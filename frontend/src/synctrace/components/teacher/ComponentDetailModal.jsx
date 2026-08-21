@@ -4,6 +4,14 @@ import AppModal from '../../../components/common/AppModal';
 import { renameTraceComponent, getTraceComponent } from '../../api';
 import { componentLabel } from '../../constants';
 
+function isImgHeaderLine(line) {
+  return /^\*?\s*\[IMG-\d+\]/i.test(line);
+}
+
+function cleanContentLine(line) {
+  return line.replace(/^[-*]\s+/, '');
+}
+
 function extractSourceMeta(content) {
   if (!content) return { filePath: null, source: '' };
   const match = content.match(/^File:\s*(.+?)\r?\n\r?\n([\s\S]*)$/);
@@ -48,6 +56,8 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOn
   const { source } = extractSourceMeta(merged.content || '');
   const contentLines = !isImplementation && merged.content
     ? merged.content.split('\n').map((line) => line.trim()).filter(Boolean)
+        .filter((line) => !isImgHeaderLine(line))
+        .map(cleanContentLine)
     : [];
 
   function startEditing() {
@@ -176,8 +186,8 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOn
         {merged.aiExtracted && (
           <p className="tm-muted" style={{ marginTop: '0.75rem' }}>
             {isImplementation
-              ? 'Ingested from the team GitHub repository.'
-              : 'Auto-extracted from an evaluated submission.'}
+              ? 'Ingested from the team\'s GitHub repository.'
+              : 'Extracted from an evaluated submission.'}
           </p>
         )}
       </div>

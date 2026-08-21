@@ -88,7 +88,9 @@ public class TraceComponentController {
                     "error", "artifactKind must be a concrete component type, not UNSPECIFIED"));
             }
             String codeName = payload.get("codeName") != null ? String.valueOf(payload.get("codeName")) : null;
-            return ResponseEntity.ok(componentService.createComponent(docType, artifactKind, name, content, codeName));
+            String imageData = payload.get("imageData") != null ? String.valueOf(payload.get("imageData")) : null;
+            return ResponseEntity.ok(
+                componentService.createComponent(docType, artifactKind, name, content, codeName, imageData));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid docType/artifactKind: " + e.getMessage()));
         } catch (Exception e) {

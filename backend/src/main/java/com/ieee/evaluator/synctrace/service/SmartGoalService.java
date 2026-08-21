@@ -85,6 +85,11 @@ public class SmartGoalService {
     }
 
     @Transactional
+    public SmartGoal createGoal(String description, String teamCode) {
+        return createGoal(description, GoalKind.SPECIFIC, null, teamCode);
+    }
+
+    @Transactional
     public SmartGoal createGoal(String description, GoalKind goalKind, Long parentGoalId, String teamCode) {
         GoalKind kind = goalKind != null ? goalKind : GoalKind.SPECIFIC;
 

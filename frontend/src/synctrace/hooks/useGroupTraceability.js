@@ -3,7 +3,6 @@ import { getSmartGoals, getAllGoalComponents, getContinuitySummary, getContinuit
 import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
-import { orderGoalsHierarchically } from '../constants';
 import { groupStatus } from './useGroupOverview';
 import { buildAiIssues } from '../utils/gapIssues';
 
@@ -76,8 +75,7 @@ export function useGroupTraceability(teamCode, showToast) {
 
       const section = roster.find((s) => s.groupCode?.toUpperCase() === teamCode.toUpperCase())?.section || '';
 
-      const orderedGoals = orderGoalsHierarchically(goalList);
-      const indexById = new Map(orderedGoals.map((g, i) => [g.id, i]));
+      const orderedGoals = goalList;
       const perGoalComponents = orderedGoals.map((g) =>
         componentsByGoal[g.id] || componentsByGoal[String(g.id)] || []
       );
@@ -100,19 +98,14 @@ export function useGroupTraceability(teamCode, showToast) {
 
         const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
         coveredCount += coveredTypes;
-        const parentIdx = goal.parentGoalId != null ? indexById.get(goal.parentGoalId) : null;
 
         return {
           goalId: goal.id,
           code: `G${gi + 1}`,
           description: goal.description,
-          goalKind: goal.goalKind || 'SPECIFIC',
-          parentGoalId: goal.parentGoalId || null,
-          parentCode: parentIdx != null ? `G${parentIdx + 1}` : null,
           teamCode: goal.teamCode || '',
           cells,
           aligned: coveredTypes === DOC_TYPES.length,
-          nested: goal.goalKind !== 'GENERAL' && Boolean(goal.parentGoalId),
           createdAt: goal.createdAt,
         };
       });

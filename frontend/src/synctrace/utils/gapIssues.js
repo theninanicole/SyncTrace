@@ -1,4 +1,4 @@
-import { DOC_TYPES, isPreferredArtifactKind, preferredArtifactHint } from '../constants';
+import { DOC_TYPES } from '../constants';
 
 export const DOC_TYPE_SEVERITY = {
   SRS: { level: 'HIGH', label: 'Requirements (SRS)', confidence: 92 },
@@ -18,7 +18,6 @@ function docTypeLabel(docType) {
 
 /** Short inline diagnosis for a matrix row (shown under the goal). */
 export function buildRowDiagnosis(row) {
-  const goalKind = row.goalKind || 'SPECIFIC';
   const missing = DOC_TYPES.filter((docType) => (row.cells[docType] || []).length === 0);
   const mapped = DOC_TYPES.flatMap((dt) => row.cells[dt] || []);
 
@@ -35,11 +34,6 @@ export function buildRowDiagnosis(row) {
         ? 'Recommend linking an implementation file from GitHub ingest.'
         : `Recommend mapping a ${primary} component.`;
     return `${labels.join(', ')} coverage is missing. ${tip}`;
-  }
-
-  const hasPreferred = mapped.some((c) => isPreferredArtifactKind(goalKind, c.artifactKind));
-  if (!hasPreferred) {
-    return preferredArtifactHint(goalKind);
   }
 
   return null;

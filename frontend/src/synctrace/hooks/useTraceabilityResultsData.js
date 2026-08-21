@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSmartGoals, getAllGoalComponents, getContinuityFindings, getDiagnosticRecommendations } from '../api';
-import { DOC_TYPES, orderGoalsHierarchically } from '../constants';
+import { DOC_TYPES } from '../constants';
 import { buildAiIssues } from '../utils/gapIssues';
 
 export function useTraceabilityResultsData(teamCode, options = {}) {
@@ -45,27 +45,20 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   }, [loadResults]);
 
   const rows = useMemo(() => {
-    const ordered = orderGoalsHierarchically(goals);
-    const indexById = new Map(ordered.map((g, i) => [g.id, i]));
-    return ordered.map((goal, gi) => {
+    return goals.map((goal, gi) => {
       const mapped = componentsByGoal[goal.id] || componentsByGoal[String(goal.id)] || [];
       const cells = {};
       DOC_TYPES.forEach((dt) => { cells[dt] = mapped.filter((c) => c.docType === dt); });
       const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
-      const parentIdx = goal.parentGoalId != null ? indexById.get(goal.parentGoalId) : null;
       return {
         goalId: goal.id,
         code: `G${gi + 1}`,
         description: goal.description,
-        goalKind: goal.goalKind || 'SPECIFIC',
-        parentGoalId: goal.parentGoalId || null,
-        parentCode: parentIdx != null ? `G${parentIdx + 1}` : null,
         teamCode: goal.teamCode || '',
         cells,
         coveredTypes,
         aligned: coveredTypes === DOC_TYPES.length,
         createdAt: goal.createdAt,
-        nested: goal.goalKind !== 'GENERAL' && Boolean(goal.parentGoalId),
       };
     });
   }, [componentsByGoal, goals]);

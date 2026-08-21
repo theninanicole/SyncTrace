@@ -7,7 +7,7 @@ import {
   addGoalComponents,
   removeGoalComponent,
 } from '../api';
-import { DOC_TYPES } from '../constants';
+import { DOC_TYPES, groupGoalsIntoClusters } from '../constants';
 
 export { DOC_TYPES };
 
@@ -24,8 +24,23 @@ export function useTraceability(showToast, initialGoalId = null, teamCode = '') 
     try {
       const data = await getSmartGoals(teamCode || undefined);
       setGoals(data);
-      if (!keepSelection || (data.length > 0 && !data.some((g) => g.id === selectedGoalId))) {
-        const preferred = !keepSelection && data.some((g) => g.id === initialGoalId) ? initialGoalId : data[0]?.id ?? null;
+
+      // Selection always tracks a cluster's canonical (primary) id, never a
+      // SPECIFIC child's own id — resolve any id to its cluster's id first.
+      const clustersForData = groupGoalsIntoClusters(data);
+      const clusterIdFor = (id) => {
+        if (id == null) return null;
+        const cluster = clustersForData.find(
+          (c) => c.id === id || c.children.some((child) => child.id === id)
+        );
+        return cluster ? cluster.id : null;
+      };
+
+      const resolvedSelection = keepSelection ? clusterIdFor(selectedGoalId) : null;
+      if (resolvedSelection) {
+        if (resolvedSelection !== selectedGoalId) setSelectedGoalId(resolvedSelection);
+      } else {
+        const preferred = (!keepSelection && clusterIdFor(initialGoalId)) || clustersForData[0]?.id || null;
         setSelectedGoalId(preferred);
       }
     } catch (err) {
@@ -40,14 +55,28 @@ export function useTraceability(showToast, initialGoalId = null, teamCode = '') 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamCode]);
 
-  const loadMappings = useCallback(async (goalId) => {
-    if (!goalId) {
+  // A SMART Goal cluster (GENERAL objective + its SPECIFIC children, or a lone
+  // orphan SPECIFIC) is mapped as one unit — components map to the cluster's
+  // canonical (primary) goal id, and mapped components are the union across
+  // every member of the cluster.
+  function memberIdsFor(goalId) {
+    if (!goalId) return [];
+    const cluster = groupGoalsIntoClusters(goals).find((c) => c.id === goalId);
+    return cluster ? [cluster.primary.id, ...cluster.children.map((c) => c.id)] : [goalId];
+  }
+
+  const loadMappings = useCallback(async (ids) => {
+    const idList = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+    if (idList.length === 0) {
       setMappedComponents([]);
       return;
     }
     setLoadingMappings(true);
     try {
-      setMappedComponents(await getGoalComponents(goalId));
+      const results = await Promise.all(idList.map((id) => getGoalComponents(id)));
+      const merged = new Map();
+      results.flat().forEach((c) => merged.set(c.id, c));
+      setMappedComponents([...merged.values()]);
     } catch (err) {
       showToast?.(err.message, 'error');
     } finally {
@@ -56,8 +85,9 @@ export function useTraceability(showToast, initialGoalId = null, teamCode = '') 
   }, [showToast]);
 
   useEffect(() => {
-    loadMappings(selectedGoalId);
-  }, [selectedGoalId, loadMappings]);
+    loadMappings(memberIdsFor(selectedGoalId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGoalId, goals, loadMappings]);
 
   async function handleCreateGoal(description, options = {}) {
     try {
@@ -85,8 +115,10 @@ export function useTraceability(showToast, initialGoalId = null, teamCode = '') 
   async function handleAddComponents(componentIds) {
     if (!selectedGoalId || componentIds.length === 0) return;
     try {
+      // Components map to the cluster's canonical (GENERAL/primary) goal id —
+      // the whole cluster is treated as one SMART Goal.
       await addGoalComponents(selectedGoalId, componentIds);
-      await loadMappings(selectedGoalId);
+      await loadMappings(memberIdsFor(selectedGoalId));
       await loadGoals(true);
       showToast?.(`${componentIds.length} component(s) mapped.`, 'success');
     } catch (err) {
@@ -97,24 +129,32 @@ export function useTraceability(showToast, initialGoalId = null, teamCode = '') 
   async function handleRemoveComponent(componentId) {
     if (!selectedGoalId) return;
     try {
-      await removeGoalComponent(selectedGoalId, componentId);
-      await loadMappings(selectedGoalId);
+      // The component may be attached to any member of the cluster (union view),
+      // so remove it from every member — a no-op on ids where it isn't mapped.
+      const ids = memberIdsFor(selectedGoalId);
+      await Promise.all(ids.map((id) => removeGoalComponent(id, componentId)));
+      await loadMappings(ids);
       await loadGoals(true);
     } catch (err) {
       showToast?.(err.message, 'error');
     }
   }
 
-  const selectedGoal = goals.find((g) => g.id === selectedGoalId) || null;
+  const clusters = groupGoalsIntoClusters(goals);
+  const selectedCluster = clusters.find((c) => c.id === selectedGoalId) || null;
+  const selectedGoal = selectedCluster?.primary || goals.find((g) => g.id === selectedGoalId) || null;
   const generalGoals = goals.filter((g) => g.goalKind === 'GENERAL');
 
   return {
     goals,
+    clusters,
+    selectedCluster,
     generalGoals,
     loadingGoals,
     selectedGoalId,
     setSelectedGoalId,
     selectedGoal,
+    memberIdsFor,
     mappedComponents,
     loadingMappings,
     loadGoals,
