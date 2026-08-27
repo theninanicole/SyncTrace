@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronRight, CircleAlert, CircleCheck, ListChecks, Search, TriangleAlert } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
+import ConfirmModal from '../../components/common/ConfirmModal';
 import { useToast } from '../../../hooks/useToast';
 import { formatDate } from '../../../utils/dashboardUtils';
 import { useGroupOverview, STATUS_META } from '../../hooks/useGroupOverview';
@@ -20,6 +21,8 @@ function OverviewPage({ onOpenGroup }) {
   const { groups, loading } = useGroupOverview(showToast);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [sendAllOpen, setSendAllOpen] = useState(false);
+  const [sendingAll, setSendingAll] = useState(false);
 
   const stats = useMemo(() => ({
     total: groups.length,
@@ -35,6 +38,18 @@ function OverviewPage({ onOpenGroup }) {
     return true;
   }), [groups, activeFilter, search]);
 
+  async function handleSendAll() {
+    setSendingAll(true);
+    setSendAllOpen(false);
+    try {
+      throw new Error('Send All Results is unavailable because the existing backend only supports publishing one team at a time.');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSendingAll(false);
+    }
+  }
+
   return (
     <div className="ov-root">
       <ToastMessage toast={toast} onClose={hideToast} />
@@ -42,6 +57,17 @@ function OverviewPage({ onOpenGroup }) {
       <PanelHeader
         title="Overview"
         subtitle="Monitor traceability and project readiness across all groups"
+        actions={(
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => setSendAllOpen(true)}
+            disabled={loading || sendingAll || groups.length === 0}
+            title="Global distribution requires backend support"
+          >
+            {sendingAll ? 'Sending...' : 'Send All Results'}
+          </button>
+        )}
       />
 
       <div className="ov-stats">
@@ -139,6 +165,16 @@ function OverviewPage({ onOpenGroup }) {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={sendAllOpen}
+        title="Send finalized traceability results to all project groups?"
+        message="All eligible project groups will receive their finalized results. This action cannot be completed because the existing backend only supports publishing one team at a time."
+        confirmLabel="Send All Results"
+        submitting={sendingAll}
+        onConfirm={handleSendAll}
+        onCancel={() => setSendAllOpen(false)}
+      />
     </div>
   );
 }
