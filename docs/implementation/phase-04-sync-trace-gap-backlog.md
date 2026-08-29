@@ -53,7 +53,7 @@ The remaining work is not about adding the entire product from scratch. It is ab
   - Add meaningful fallback messaging when AI providers are unavailable or return unusable JSON.
   - Confirm progress events are still reliable even when analysis fails mid-stream.
 
-- [ ] Verify the teacher/student full workflow end-to-end
+- [x] Verify the teacher/student full workflow end-to-end
   - Goal creation
   - GitHub ingestion
   - Component mapping
@@ -61,6 +61,7 @@ The remaining work is not about adding the entire product from scratch. It is ab
   - Recommendation generation
   - Publishing results
   - Student result visibility
+  - **Critical finding (fixed):** [TraceabilityMappingPage.jsx](../../frontend/src/synctrace/pages/teacher/TraceabilityMappingPage.jsx) used [useStagedTraceability.js](../../frontend/src/synctrace/hooks/useStagedTraceability.js), which only persisted goal-to-component mappings to `localStorage` and never called the backend `addGoalComponents` API. Continuity detection, readiness scoring, audit export, and the Results page all read from the real `GoalComponentMapping` table, so mappings created on the live Mapping page never reached them. Fixed by resolving each stage link back to its originating SmartGoal and persisting it via `addGoalComponents` on Save Mapping.
 
 - [ ] Validate report export UX with real data
   - Confirm JSON, CSV, and PDF export from [AuditExportController.java](../../backend/src/main/java/com/ieee/evaluator/synctrace/controller/AuditExportController.java) and the frontend export flow are functional and reliable.
