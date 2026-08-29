@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -91,6 +92,38 @@ class DiagnosticRecommendationServiceTest {
     void generateRecommendationsThrowsWhenNoProviderMatchesRequestedModel() {
         assertThrows(IllegalStateException.class,
                 () -> service.generateRecommendations(TEAM_CODE, "unknown-model", null));
+    }
+
+    @Test
+    void generateRecommendationsEmitsProgressErrorWhenNoProviderMatchesRequestedModel() {
+        String sessionId = "session-1";
+
+        assertThrows(IllegalStateException.class,
+                () -> service.generateRecommendations(TEAM_CODE, "unknown-model", sessionId));
+
+        verify(progressEmitter).error(eq(sessionId), anyString());
+    }
+
+    @Test
+    void generateRecommendationsStripsMarkdownFencesBeforeParsingAiResponse() throws Exception {
+        ContinuityFinding finding = new ContinuityFinding();
+        finding.setId(9L);
+        finding.setTeamCode(TEAM_CODE);
+        finding.setSeverity(ContinuityFinding.Severity.HIGH);
+        finding.setDocTypeFrom(DocType.SRS);
+        finding.setDocTypeTo(DocType.SDD);
+        finding.setDescription("Missing SDD coverage");
+
+        when(findingRepository.findByTeamCode(TEAM_CODE)).thenReturn(List.of(finding));
+        when(openAiProvider.complete(anyString())).thenReturn(
+                "```json\n[{\"rootCause\":\"No design doc\",\"recommendation\":\"Add SDD\",\"priority\":\"HIGH\"}]\n```");
+        when(recommendationRepository.save(any(DiagnosticRecommendation.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<DiagnosticRecommendation> recommendations = service.generateRecommendations(TEAM_CODE, "openai", null);
+
+        assertEquals(1, recommendations.size());
+        assertEquals("Add SDD", recommendations.get(0).getRecommendation());
     }
 
     @Test
