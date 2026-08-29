@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/common/ConfirmModal';
 import { useToast } from '../../../hooks/useToast';
 import { formatDate } from '../../../utils/dashboardUtils';
 import { useGroupOverview, STATUS_META } from '../../hooks/useGroupOverview';
+import { publishAllTraceabilityResults } from '../../api';
 import './TraceabilityMappingPage.css';
 import './OverviewPage.css';
 
@@ -42,7 +43,12 @@ function OverviewPage({ onOpenGroup }) {
     setSendingAll(true);
     setSendAllOpen(false);
     try {
-      throw new Error('Send All Results is unavailable because the existing backend only supports publishing one team at a time.');
+      const teamCodes = groups.map((g) => g.teamCode).filter(Boolean);
+      const data = await publishAllTraceabilityResults(teamCodes);
+      showToast(
+        data.message || `Published results for ${data.successCount} of ${data.totalCount} team(s).`,
+        data.successCount === data.totalCount ? 'success' : 'error',
+      );
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -63,7 +69,6 @@ function OverviewPage({ onOpenGroup }) {
             className="btn btn--primary"
             onClick={() => setSendAllOpen(true)}
             disabled={loading || sendingAll || groups.length === 0}
-            title="Global distribution requires backend support"
           >
             {sendingAll ? 'Sending...' : 'Send All Results'}
           </button>
@@ -169,7 +174,7 @@ function OverviewPage({ onOpenGroup }) {
       <ConfirmModal
         isOpen={sendAllOpen}
         title="Send finalized traceability results to all project groups?"
-        message="All eligible project groups will receive their finalized results. This action cannot be completed because the existing backend only supports publishing one team at a time."
+        message={`All ${groups.length} eligible project group${groups.length === 1 ? '' : 's'} will receive their finalized traceability results.`}
         confirmLabel="Send All Results"
         submitting={sendingAll}
         onConfirm={handleSendAll}

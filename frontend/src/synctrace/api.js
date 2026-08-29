@@ -224,6 +224,17 @@ export const publishTraceabilityResults = async (teamCode) => {
     return data;
 };
 
+export const publishAllTraceabilityResults = async (teamCodes) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/results/publish-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCodes }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results to all teams.');
+    return data;
+};
+
 // ── SyncTrace: GitHub Ingestion ───────────────────────────────────────────────
 
 export const getLinkedGitHubRepositories = async () => {
