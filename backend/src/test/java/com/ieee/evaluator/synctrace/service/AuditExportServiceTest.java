@@ -1,5 +1,8 @@
 package com.ieee.evaluator.synctrace.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
 import com.ieee.evaluator.synctrace.model.*;
@@ -35,16 +38,18 @@ class AuditExportServiceTest {
 
     private TeamComponentResolverService teamComponentResolver;
     private AuditExportService auditExportService;
+    private ObjectMapper objectMapper;
 
     private static final String TEAM_A = "2026-SEM1-IT01-01";
     private static final String TEAM_B = "2026-SEM1-IT01-02";
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         teamComponentResolver = new TeamComponentResolverService(componentRepository, historyRepository);
         auditExportService = new AuditExportService(
                 goalRepository, componentRepository, findingRepository,
-                recommendationRepository, mappingRepository, teamComponentResolver);
+                recommendationRepository, mappingRepository, teamComponentResolver, objectMapper);
     }
 
     @Test
@@ -133,27 +138,135 @@ class AuditExportServiceTest {
 
         // Export audit report for team A
         byte[] reportA = auditExportService.exportAuditReport(TEAM_A, "json");
-        String reportAString = new String(reportA);
+        JsonNode reportAJson = objectMapper.readTree(reportA);
 
         // Verify team A's data is present
-        assertTrue(reportAString.contains("\"description\": \"Goal A\""), "Team A's goal should be in export");
-        assertTrue(reportAString.contains(TEAM_A), "Team A's component should be in export");
+        assertGoalDescriptionPresent(reportAJson, "Goal A");
+        assertTrue(new String(reportA).contains(TEAM_A), "Team A's component should be in export");
 
         // Verify team B's data is NOT present (data leakage check)
-        assertFalse(reportAString.contains("\"description\": \"Goal B\""), "Team B's goal should NOT be in export");
-        assertFalse(reportAString.contains(TEAM_B), "Team B's component should NOT be in export");
+        assertGoalDescriptionAbsent(reportAJson, "Goal B");
+        assertFalse(new String(reportA).contains(TEAM_B), "Team B's component should NOT be in export");
 
         // Export audit report for team B
         byte[] reportB = auditExportService.exportAuditReport(TEAM_B, "json");
-        String reportBString = new String(reportB);
+        JsonNode reportBJson = objectMapper.readTree(reportB);
 
         // Verify team B's data is present
-        assertTrue(reportBString.contains("\"description\": \"Goal B\""), "Team B's goal should be in export");
-        assertTrue(reportBString.contains(TEAM_B), "Team B's component should be in export");
+        assertGoalDescriptionPresent(reportBJson, "Goal B");
+        assertTrue(new String(reportB).contains(TEAM_B), "Team B's component should be in export");
 
         // Verify team A's data is NOT present (data leakage check)
-        assertFalse(reportBString.contains("\"description\": \"Goal A\""), "Team A's goal should NOT be in export");
-        assertFalse(reportBString.contains(TEAM_A), "Team A's component should NOT be in export");
+        assertGoalDescriptionAbsent(reportBJson, "Goal A");
+        assertFalse(new String(reportB).contains(TEAM_A), "Team A's component should NOT be in export");
+    }
+
+    private void assertGoalDescriptionPresent(JsonNode report, String description) {
+        boolean found = false;
+        for (JsonNode goal : report.get("goals")) {
+            if (description.equals(goal.get("description").asText())) found = true;
+        }
+        assertTrue(found, "Expected goal '" + description + "' to be present in export");
+    }
+
+    private void assertGoalDescriptionAbsent(JsonNode report, String description) {
+        for (JsonNode goal : report.get("goals")) {
+            assertFalse(description.equals(goal.get("description").asText()),
+                    "Did not expect goal '" + description + "' in export");
+        }
+    }
+
+    @Test
+    void exportCsvIncludesGoalsComponentsFindingsAndRecommendations() throws Exception {
+        stubSingleTeamReport(TEAM_A);
+
+        byte[] csvBytes = auditExportService.exportAuditReport(TEAM_A, "csv");
+        String csv = new String(csvBytes);
+
+        assertTrue(csv.contains("SMART Goals"), "CSV should include a Goals section");
+        assertTrue(csv.contains("Goal A"), "CSV should include the goal description");
+        assertTrue(csv.contains("Components"), "CSV should include a Components section");
+        assertTrue(csv.contains("Design Document"), "CSV should include the component name");
+        assertTrue(csv.contains("Continuity Findings"), "CSV should include a Findings section");
+        assertTrue(csv.contains("Missing SDD coverage"), "CSV should include the finding description");
+        assertTrue(csv.contains("Recommendations"), "CSV should include a Recommendations section");
+        assertTrue(csv.contains("Add an SDD component"), "CSV should include the recommendation text");
+    }
+
+    @Test
+    void exportPdfProducesAValidPdfDocument() throws Exception {
+        stubSingleTeamReport(TEAM_A);
+
+        byte[] pdfBytes = auditExportService.exportAuditReport(TEAM_A, "pdf");
+
+        assertTrue(pdfBytes.length > 0, "PDF export should not be empty");
+        String header = new String(pdfBytes, 0, 4);
+        assertEquals("%PDF", header, "Output should start with the PDF magic header");
+    }
+
+    @Test
+    void exportJsonRoundTripsDescriptionsContainingControlCharacters() throws Exception {
+        // Tabs/quotes in AI- or user-authored text must not corrupt the exported JSON.
+        String trickyDescription = "Missing SDD coverage\tfor \"Goal A\" — please review";
+        stubSingleTeamReport(TEAM_A, trickyDescription);
+
+        byte[] jsonBytes = auditExportService.exportAuditReport(TEAM_A, "json");
+        JsonNode report = objectMapper.readTree(jsonBytes);
+
+        String actualDescription = report.get("findings").get(0).get("description").asText();
+        assertEquals(trickyDescription, actualDescription);
+    }
+
+    /** Wires one goal, one component, one finding, and one recommendation for {@code teamCode}. */
+    private void stubSingleTeamReport(String teamCode) {
+        stubSingleTeamReport(teamCode, "Missing SDD coverage");
+    }
+
+    private void stubSingleTeamReport(String teamCode, String findingDescription) {
+        EvaluationHistory history = new EvaluationHistory();
+        history.setId(1L);
+        history.setFileName("[SDD] G01 - " + teamCode + " | Student A");
+        when(historyRepository.findById(1L)).thenReturn(Optional.of(history));
+
+        TraceComponent component = new TraceComponent();
+        component.setId(30L);
+        component.setName("Design Document");
+        component.setDocType(TraceComponent.DocType.SDD);
+        component.setAiExtracted(true);
+        component.setSourceHistoryId(1L);
+        component.setCreatedAt(LocalDateTime.now());
+        when(componentRepository.findAll()).thenReturn(List.of(component));
+
+        SmartGoal goal = new SmartGoal();
+        goal.setId(200L);
+        goal.setDescription("Goal A");
+        goal.setTeamCode(teamCode);
+        goal.setCreatedAt(LocalDateTime.now());
+        when(goalRepository.findAll()).thenReturn(List.of(goal));
+
+        GoalComponentMapping mapping = new GoalComponentMapping();
+        mapping.setGoalId(200L);
+        mapping.setComponentId(30L);
+        when(mappingRepository.findByGoalId(200L)).thenReturn(List.of(mapping));
+
+        ContinuityFinding finding = new ContinuityFinding();
+        finding.setId(40L);
+        finding.setTeamCode(teamCode);
+        finding.setSeverity(ContinuityFinding.Severity.HIGH);
+        finding.setDocTypeFrom(TraceComponent.DocType.SRS);
+        finding.setDocTypeTo(TraceComponent.DocType.SDD);
+        finding.setDescription(findingDescription);
+        finding.setDetectedAt(LocalDateTime.now());
+        when(findingRepository.findByTeamCode(teamCode)).thenReturn(List.of(finding));
+
+        DiagnosticRecommendation recommendation = new DiagnosticRecommendation();
+        recommendation.setId(50L);
+        recommendation.setFindingId(40L);
+        recommendation.setRootCause("No design doc mapped");
+        recommendation.setRecommendation("Add an SDD component");
+        recommendation.setPriority("HIGH");
+        recommendation.setCreatedAt(LocalDateTime.now());
+        when(recommendationRepository.findAllById(List.of(40L))).thenReturn(List.of(recommendation));
     }
 
     @Test
