@@ -28,6 +28,9 @@ public class GitHubIngestionService {
     private static final String GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
     private static final int MAX_CONTENT_CHARS = 5000;
     private static final int PROGRESS_BATCH_SIZE = 10; // Emit progress every N files
+    private static final int MAX_FILES_PER_INGEST = 500;
+    private static final long MAX_FILE_SIZE_BYTES = 300_000; // ~300 KB; larger files are skipped, not downloaded
+    private static final String RATE_LIMIT_MARKER = "GITHUB API RATE LIMIT";
     private static final String KEY_GITHUB_TOKEN = "GITHUB_TOKEN";
     private static final String KEY_FILE_EXTENSIONS = "GITHUB_FILE_EXTENSIONS";
     private static final String DEFAULT_EXTENSIONS = "java,js,jsx,py,ts,tsx,sql,html,css,json,xml,yml,yaml";
@@ -106,43 +109,80 @@ public class GitHubIngestionService {
             throw new RuntimeException("Failed to fetch repository tree");
         }
 
+        if (treeResponse.path("truncated").asBoolean(false)) {
+            log.warn("GitHub tree listing for {}/{} (branch: {}) was truncated by the API; " +
+                "some files in this repository will not be considered for ingestion.", owner, repo, branch);
+            emit(sessionId, "WARNING",
+                "This repository's file listing is too large for GitHub to return in full. Some files may be skipped.", 15);
+        }
+
         JsonNode tree = treeResponse.get("tree");
-        int totalFiles = 0;
-        int processedFiles = 0;
-        
-        // Count total files first for progress calculation
+        List<String> eligiblePaths = new ArrayList<>();
+        int skippedForSize = 0;
+
         for (JsonNode node : tree) {
-            if ("blob".equals(node.get("type").asText())) {
-                String path = node.get("path").asText();
-                if (shouldIncludeFile(path, allowedExtensions)) {
-                    totalFiles++;
+            if (!"blob".equals(node.get("type").asText())) continue;
+            String path = node.get("path").asText();
+            if (!shouldIncludeFile(path, allowedExtensions)) continue;
+
+            long size = node.path("size").asLong(0);
+            if (size > MAX_FILE_SIZE_BYTES) {
+                skippedForSize++;
+                continue;
+            }
+            eligiblePaths.add(path);
+        }
+
+        boolean cappedByFileLimit = eligiblePaths.size() > MAX_FILES_PER_INGEST;
+        int totalFiles = Math.min(eligiblePaths.size(), MAX_FILES_PER_INGEST);
+        List<String> pathsToIngest = eligiblePaths.subList(0, totalFiles);
+
+        StringBuilder startMessage = new StringBuilder("Found " + totalFiles + " files to ingest.");
+        if (skippedForSize > 0) {
+            startMessage.append(" Skipped ").append(skippedForSize).append(" file(s) over ")
+                .append(MAX_FILE_SIZE_BYTES / 1000).append(" KB.");
+        }
+        if (cappedByFileLimit) {
+            startMessage.append(" Repository has more matching files than the ")
+                .append(MAX_FILES_PER_INGEST).append("-file limit per ingestion; only the first ")
+                .append(MAX_FILES_PER_INGEST).append(" will be ingested.");
+            log.warn("GitHub ingestion for {}/{} capped at {} files ({} matched)",
+                owner, repo, MAX_FILES_PER_INGEST, eligiblePaths.size());
+        }
+        emit(sessionId, "PROCESSING", startMessage.toString(), 20);
+
+        int processedFiles = 0;
+        boolean rateLimited = false;
+
+        for (String path : pathsToIngest) {
+            try {
+                TraceComponent component = ingestFile(owner, repo, branch, path, teamCode);
+                if (component != null) {
+                    ingestedComponents.add(component);
                 }
+                processedFiles++;
+
+                // Emit progress every PROGRESS_BATCH_SIZE files
+                if (processedFiles % PROGRESS_BATCH_SIZE == 0 || processedFiles == totalFiles) {
+                    int percent = 20 + (int) ((double) processedFiles / totalFiles * 70); // 20-90% range
+                    emit(sessionId, "INGESTING", "Ingested " + processedFiles + " of " + totalFiles + " files", percent);
+                }
+            } catch (Exception e) {
+                String message = e.getMessage() != null ? e.getMessage().toUpperCase() : "";
+                if (message.contains(RATE_LIMIT_MARKER)) {
+                    log.warn("GitHub rate limit hit after ingesting {} of {} files for {}/{}; stopping early.",
+                        processedFiles, totalFiles, owner, repo);
+                    rateLimited = true;
+                    break;
+                }
+                log.warn("Failed to ingest file {}: {}", path, e.getMessage());
             }
         }
 
-        emit(sessionId, "PROCESSING", "Found " + totalFiles + " files to ingest. Starting ingestion...", 20);
-
-        for (JsonNode node : tree) {
-            if ("blob".equals(node.get("type").asText())) {
-                String path = node.get("path").asText();
-                if (shouldIncludeFile(path, allowedExtensions)) {
-                    try {
-                        TraceComponent component = ingestFile(owner, repo, branch, path, teamCode);
-                        if (component != null) {
-                            ingestedComponents.add(component);
-                        }
-                        processedFiles++;
-                        
-                        // Emit progress every PROGRESS_BATCH_SIZE files
-                        if (processedFiles % PROGRESS_BATCH_SIZE == 0 || processedFiles == totalFiles) {
-                            int percent = 20 + (int) ((double) processedFiles / totalFiles * 70); // 20-90% range
-                            emit(sessionId, "INGESTING", "Ingested " + processedFiles + " of " + totalFiles + " files", percent);
-                        }
-                    } catch (Exception e) {
-                        log.warn("Failed to ingest file {}: {}", path, e.getMessage());
-                    }
-                }
-            }
+        if (rateLimited) {
+            emit(sessionId, "WARNING",
+                "GitHub rate limit reached. Ingested " + processedFiles + " of " + totalFiles +
+                    " files before stopping; add a GITHUB_TOKEN in System Settings and re-run to continue.", 90);
         }
 
         log.info("GitHub ingestion complete. Ingested {} files.", ingestedComponents.size());
@@ -181,6 +221,12 @@ public class GitHubIngestionService {
         
         HttpEntity<String> request = new HttpEntity<>(headers);
         ResponseEntity<String> response = restTemplate.exchange(rawUrl, HttpMethod.GET, request, String.class);
+
+        if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
+            throw new RuntimeException(
+                RATE_LIMIT_MARKER + ": GitHub rate limit exceeded while fetching file content. " +
+                "Add a GITHUB_TOKEN in System Settings for higher rate limits.");
+        }
 
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new RuntimeException("Failed to fetch file content: " + response.getStatusCode());
@@ -264,7 +310,7 @@ public class GitHubIngestionService {
 
         if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
             throw new RuntimeException(
-                "GitHub API rate limit exceeded. Please add a GITHUB_TOKEN in System Settings for higher rate limits."
+                RATE_LIMIT_MARKER + ": GitHub API rate limit exceeded. Please add a GITHUB_TOKEN in System Settings for higher rate limits."
             );
         }
 

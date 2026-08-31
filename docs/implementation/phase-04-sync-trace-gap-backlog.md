@@ -69,9 +69,10 @@ The remaining work is not about adding the entire product from scratch. It is ab
   - **Findings (fixed):** CSV export only included the Continuity Findings table, silently dropping goals, components, and recommendations that the JSON/PDF exports both include. JSON export was hand-built via string concatenation with incomplete escaping (control characters like tabs could produce invalid JSON). Fixed by exporting all four sections in CSV and switching JSON export to Jackson serialization via Spring's `ObjectMapper`.
 
 ### P1 — Important quality and robustness improvements
-- [ ] Add repo ingestion safeguards for large and restricted repositories
+- [x] Add repo ingestion safeguards for large and restricted repositories
   - Add better rate-limit handling, file-size caps, and skip logic for unsupported or excessively large GitHub repos.
   - Review the current assumptions in [GitHubIngestionService.java](../../backend/src/main/java/com/ieee/evaluator/synctrace/service/GitHubIngestionService.java).
+  - **Findings (fixed):** the service ignored GitHub's `truncated` tree flag, downloaded oversized files in full before truncating locally, had no cap on total files per ingestion run, and kept hammering every remaining file after a 403 rate-limit response instead of stopping. Fixed with a 300 KB per-file size skip (using the tree API's `size` field, before downloading), a 500-file cap per run with a clear warning, truncated-tree detection, and early-exit on rate limiting.
 
 - [ ] Tighten environment and configuration validation
   - Define required secrets and config checks before startup.
