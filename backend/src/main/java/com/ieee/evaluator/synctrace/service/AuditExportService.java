@@ -1,5 +1,6 @@
 package com.ieee.evaluator.synctrace.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,6 +36,7 @@ public class AuditExportService {
     private final DiagnosticRecommendationRepository recommendationRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final TeamComponentResolverService teamComponentResolver;
+    private final ObjectMapper objectMapper;
 
     public AuditExportService(
             SmartGoalRepository goalRepository,
@@ -41,13 +44,15 @@ public class AuditExportService {
             ContinuityFindingRepository findingRepository,
             DiagnosticRecommendationRepository recommendationRepository,
             GoalComponentMappingRepository mappingRepository,
-            TeamComponentResolverService teamComponentResolver) {
+            TeamComponentResolverService teamComponentResolver,
+            ObjectMapper objectMapper) {
         this.goalRepository = goalRepository;
         this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
         this.recommendationRepository = recommendationRepository;
         this.mappingRepository = mappingRepository;
         this.teamComponentResolver = teamComponentResolver;
+        this.objectMapper = objectMapper;
     }
 
     public byte[] exportAuditReport(String teamCode, String format) throws Exception {
@@ -63,67 +68,68 @@ public class AuditExportService {
         }
     }
 
-    private byte[] exportJson(String teamCode) {
+    private byte[] exportJson(String teamCode) throws Exception {
         AuditReportData data = collectAuditData(teamCode);
-        
-        StringBuilder json = new StringBuilder();
-        json.append("{\n");
-        json.append("  \"teamCode\": \"").append(teamCode).append("\",\n");
-        json.append("  \"exportedAt\": \"").append(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)).append("\",\n");
-        
-        json.append("  \"goals\": [");
-        List<Map<String, Object>> goals = data.goals();
-        for (int i = 0; i < goals.size(); i++) {
-            if (i > 0) json.append(",");
-            json.append("\n    ").append(mapToJson(goals.get(i)));
-        }
-        json.append("\n  ],\n");
-        
-        json.append("  \"components\": [");
-        List<Map<String, Object>> components = data.components();
-        for (int i = 0; i < components.size(); i++) {
-            if (i > 0) json.append(",");
-            json.append("\n    ").append(mapToJson(components.get(i)));
-        }
-        json.append("\n  ],\n");
-        
-        json.append("  \"findings\": [");
-        List<Map<String, Object>> findings = data.findings();
-        for (int i = 0; i < findings.size(); i++) {
-            if (i > 0) json.append(",");
-            json.append("\n    ").append(mapToJson(findings.get(i)));
-        }
-        json.append("\n  ],\n");
-        
-        json.append("  \"recommendations\": [");
-        List<Map<String, Object>> recommendations = data.recommendations();
-        for (int i = 0; i < recommendations.size(); i++) {
-            if (i > 0) json.append(",");
-            json.append("\n    ").append(mapToJson(recommendations.get(i)));
-        }
-        json.append("\n  ]\n");
-        json.append("}");
-        
-        return json.toString().getBytes();
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("teamCode", teamCode);
+        report.put("exportedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        report.put("goals", data.goals());
+        report.put("components", data.components());
+        report.put("findings", data.findings());
+        report.put("recommendations", data.recommendations());
+
+        return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(report);
     }
 
     private byte[] exportCsv(String teamCode) {
         AuditReportData data = collectAuditData(teamCode);
         StringBuilder csv = new StringBuilder();
-        
-        // Findings CSV
+
+        csv.append("SMART Goals\n");
+        csv.append("ID,Description,Team Code,Created At\n");
+        for (Map<String, Object> goal : data.goals()) {
+            appendCsvRow(csv, goal.get("id"), goal.get("description"), goal.get("teamCode"), goal.get("createdAt"));
+        }
+        csv.append("\n");
+
+        csv.append("Components\n");
+        csv.append("ID,Doc Type,Artifact Kind,Name,AI Extracted,Created At\n");
+        for (Map<String, Object> component : data.components()) {
+            appendCsvRow(csv, component.get("id"), component.get("docType"), component.get("artifactKind"),
+                    component.get("name"), component.get("aiExtracted"), component.get("createdAt"));
+        }
+        csv.append("\n");
+
+        csv.append("Continuity Findings\n");
         csv.append("ID,Team Code,Severity,Doc Type From,Doc Type To,Description,Detected At\n");
         for (Map<String, Object> finding : data.findings()) {
-            csv.append(finding.get("id")).append(",");
-            csv.append(escapeCsv(finding.get("teamCode").toString())).append(",");
-            csv.append(escapeCsv(finding.get("severity").toString())).append(",");
-            csv.append(escapeCsv(finding.get("docTypeFrom").toString())).append(",");
-            csv.append(escapeCsv(finding.get("docTypeTo").toString())).append(",");
-            csv.append(escapeCsv(finding.get("description").toString())).append(",");
-            csv.append(escapeCsv(finding.get("detectedAt").toString())).append("\n");
+            appendCsvRow(csv, finding.get("id"), finding.get("teamCode"), finding.get("severity"),
+                    finding.get("docTypeFrom"), finding.get("docTypeTo"), finding.get("description"),
+                    finding.get("detectedAt"));
         }
-        
+        csv.append("\n");
+
+        csv.append("Recommendations\n");
+        csv.append("ID,Finding ID,Root Cause,Recommendation,Priority,Created At\n");
+        for (Map<String, Object> rec : data.recommendations()) {
+            appendCsvRow(csv, rec.get("id"), rec.get("findingId"), rec.get("rootCause"),
+                    rec.get("recommendation"), rec.get("priority"), rec.get("createdAt"));
+        }
+
         return csv.toString().getBytes();
+    }
+
+    private void appendCsvRow(StringBuilder csv, Object... values) {
+        for (int i = 0; i < values.length; i++) {
+            if (i > 0) csv.append(",");
+            csv.append(escapeCsv(csvValue(values[i])));
+        }
+        csv.append("\n");
+    }
+
+    private String csvValue(Object value) {
+        return value == null ? "" : value.toString();
     }
 
     private byte[] exportPdf(String teamCode) throws Exception {
@@ -242,53 +248,26 @@ public class AuditExportService {
     }
 
     private Map<String, Object> findingToMap(ContinuityFinding finding) {
-        return Map.of(
-            "id", finding.getId(),
-            "teamCode", finding.getTeamCode(),
-            "severity", finding.getSeverity(),
-            "docTypeFrom", finding.getDocTypeFrom(),
-            "docTypeTo", finding.getDocTypeTo(),
-            "description", finding.getDescription(),
-            "detectedAt", finding.getDetectedAt()
-        );
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", finding.getId());
+        map.put("teamCode", finding.getTeamCode());
+        map.put("severity", finding.getSeverity());
+        map.put("docTypeFrom", finding.getDocTypeFrom());
+        map.put("docTypeTo", finding.getDocTypeTo());
+        map.put("description", finding.getDescription());
+        map.put("detectedAt", finding.getDetectedAt());
+        return map;
     }
 
     private Map<String, Object> recommendationToMap(DiagnosticRecommendation rec) {
-        return Map.of(
-            "id", rec.getId(),
-            "findingId", rec.getFindingId(),
-            "rootCause", rec.getRootCause(),
-            "recommendation", rec.getRecommendation(),
-            "priority", rec.getPriority(),
-            "createdAt", rec.getCreatedAt()
-        );
-    }
-
-    private String mapToJson(Map<String, Object> map) {
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : map.entrySet()) {
-            if (!first) sb.append(", ");
-            first = false;
-            sb.append("\"").append(entry.getKey()).append("\": ");
-            Object value = entry.getValue();
-            if (value == null) {
-                sb.append("null");
-            } else if (value instanceof String) {
-                sb.append("\"").append(escapeJson(value.toString())).append("\"");
-            } else {
-                sb.append("\"").append(escapeJson(value.toString())).append("\"");
-            }
-        }
-        sb.append("}");
-        return sb.toString();
-    }
-
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", rec.getId());
+        map.put("findingId", rec.getFindingId());
+        map.put("rootCause", rec.getRootCause());
+        map.put("recommendation", rec.getRecommendation());
+        map.put("priority", rec.getPriority());
+        map.put("createdAt", rec.getCreatedAt());
+        return map;
     }
 
     private String escapeCsv(String s) {

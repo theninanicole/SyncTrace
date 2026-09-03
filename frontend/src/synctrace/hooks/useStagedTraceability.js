@@ -6,6 +6,7 @@ import {
   extractTraceComponents,
   createTraceComponent,
   deleteTraceComponent,
+  addGoalComponents,
 } from '../api';
 import { getEvaluationHistory } from '../../api';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
@@ -18,9 +19,35 @@ function nextLocalMappingId() {
 }
 
 /**
- * Mappings have no backend table yet, so they're persisted to localStorage —
- * durable across navigation and page reloads on this browser, but not shared
- * across devices/sessions the way real backend data would be.
+ * Traces a stage mapping's sourceId back through earlier stages to the SmartGoal
+ * cluster id(s) it originates from. Stage chains only carry a real backend
+ * meaning once resolved to a goal, since GoalComponentMapping is goal-to-component.
+ */
+function resolveGoalIdsForSource(sourceId, stageKey, mappingsList) {
+  const currentStage = STAGES.find((s) => s.key === stageKey);
+  if (!currentStage) return [];
+  if (currentStage.sourceType === 'PROPOSAL') return [sourceId];
+
+  const goalIds = new Set();
+  STAGES
+    .filter((s) => s.targetType === currentStage.sourceType)
+    .forEach((precedingStage) => {
+      mappingsList
+        .filter((m) => m.stage === precedingStage.key && m.targetId === sourceId)
+        .forEach((m) => {
+          resolveGoalIdsForSource(m.sourceId, precedingStage.key, mappingsList)
+            .forEach((id) => goalIds.add(id));
+        });
+    });
+  return [...goalIds];
+}
+
+/**
+ * The staged-workspace mapping chain (stage, sourceId, targetId) is a local
+ * editing surface persisted to localStorage. Save Mapping resolves each stage
+ * link back to its originating SmartGoal and persists it as a real
+ * GoalComponentMapping row via addGoalComponents, which is what continuity
+ * detection, readiness scoring, and audit export actually read.
  */
 const MAPPINGS_STORAGE_KEY = 'synctrace.stagedMappings';
 
@@ -61,8 +88,9 @@ function computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage 
 /**
  * Staged traceability workspace. SMART goals and components are real,
  * backend-persisted data (SmartGoal / TraceComponent). The source-to-target
- * mapping relationships (stage, sourceId, targetId) have no backend table
- * yet, so they're persisted to this browser's localStorage instead.
+ * mapping chain (stage, sourceId, targetId) is edited locally and persisted
+ * to this browser's localStorage; saveMapping() is what pushes the resolved
+ * goal-to-component links to the backend as real GoalComponentMapping rows.
  */
 export function useStagedTraceability(showToast, teamCode) {
   const [selectedStage, setSelectedStageState] = useState(STAGES[0].key);
@@ -313,9 +341,28 @@ export function useStagedTraceability(showToast, teamCode) {
     setSaveState('saving');
     setLastError(null);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const goalComponentPairs = new Map(); // goalId -> Set<componentId>
+      const addPair = (goalId, componentId) => {
+        if (!goalComponentPairs.has(goalId)) goalComponentPairs.set(goalId, new Set());
+        goalComponentPairs.get(goalId).add(componentId);
+      };
+
+      mappingsForStage.forEach((m) => {
+        const goalIds = resolveGoalIdsForSource(m.sourceId, m.stage, mappings);
+        goalIds.forEach((goalId) => {
+          addPair(goalId, m.targetId);
+          if (stage.sourceType !== 'PROPOSAL') addPair(goalId, m.sourceId);
+        });
+      });
+
+      const persistResults = await Promise.allSettled(
+        [...goalComponentPairs.entries()].map(([goalId, componentIds]) =>
+          addGoalComponents(goalId, [...componentIds])
+        )
+      );
+      const persistFailures = persistResults.filter((r) => r.status === 'rejected').length;
+
       setSaveState('verifying');
-      await new Promise((resolve) => setTimeout(resolve, 700));
 
       const mappedSourceIds = new Set(mappingsForStage.map((m) => m.sourceId));
       const unmapped = sourceItems.filter((s) => !mappedSourceIds.has(s.id));
@@ -327,13 +374,21 @@ export function useStagedTraceability(showToast, teamCode) {
         verifiedAt: new Date().toISOString(),
       };
       setVerification(verified);
-      showToast?.(
-        unmapped.length === 0
-          ? 'Mapping saved. Traceability verified — full coverage.'
-          : 'Mapping saved. Traceability verified — some gaps remain.',
-        unmapped.length === 0 ? 'success' : 'info'
-      );
-      return { ok: true, verification: verified };
+
+      if (persistFailures > 0) {
+        showToast?.(
+          `Mapping saved locally, but ${persistFailures} goal link(s) failed to sync to the server. Traceability results may be incomplete until you retry.`,
+          'error'
+        );
+      } else {
+        showToast?.(
+          unmapped.length === 0
+            ? 'Mapping saved. Traceability verified — full coverage.'
+            : 'Mapping saved. Traceability verified — some gaps remain.',
+          unmapped.length === 0 ? 'success' : 'info'
+        );
+      }
+      return { ok: persistFailures === 0, verification: verified };
     } catch (err) {
       const message = err.message || 'Failed to save mapping.';
       setLastError(message);

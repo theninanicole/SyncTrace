@@ -59,12 +59,21 @@ public class SourceCodeAlignmentService {
     public List<ContinuityFinding> analyzeAlignment(
             String teamCode, String aiModel, String sessionId) throws Exception {
 
-        AiProvider provider = resolveProvider(aiModel);
+        AiProvider provider;
+        try {
+            provider = resolveProvider(aiModel);
+        } catch (Exception e) {
+            progressEmitter.error(sessionId, e.getMessage());
+            throw e;
+        }
+
         String runKey = buildRunKey(teamCode, provider.getProviderName());
 
         if (!inFlightAnalyses.add(runKey)) {
-            throw new IllegalStateException(
+            IllegalStateException busy = new IllegalStateException(
                 "An analysis is already in progress for this team and provider. Please wait for it to finish.");
+            progressEmitter.error(sessionId, busy.getMessage());
+            throw busy;
         }
 
         emit(sessionId, "RECEIVED", "Request accepted — starting source code alignment", 5);
@@ -208,7 +217,7 @@ public class SourceCodeAlignmentService {
     @Transactional
     private List<ContinuityFinding> parseAndCreateFindings(String aiResponse, String teamCode) throws Exception {
         try {
-            JsonNode root = objectMapper.readTree(aiResponse);
+            JsonNode root = objectMapper.readTree(stripJsonCodeFences(aiResponse));
             if (!root.isArray()) {
                 throw new RuntimeException("AI response is not a JSON array");
             }
@@ -239,8 +248,22 @@ public class SourceCodeAlignmentService {
             return findings;
         } catch (Exception e) {
             log.error("Failed to parse AI response as JSON: {}", e.getMessage());
-            throw new RuntimeException("Failed to parse AI response as JSON: " + e.getMessage());
+            throw new RuntimeException(
+                "The AI returned a response that could not be understood. Please try running the analysis again.", e);
         }
+    }
+
+    /** Defensively strips ```json fences the model may add despite being told not to. */
+    private static String stripJsonCodeFences(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (!trimmed.startsWith("```")) {
+            return trimmed;
+        }
+        int firstNewline = trimmed.indexOf('\n');
+        String withoutOpeningFence = firstNewline != -1 ? trimmed.substring(firstNewline + 1) : trimmed;
+        int lastFence = withoutOpeningFence.lastIndexOf("```");
+        return (lastFence != -1 ? withoutOpeningFence.substring(0, lastFence) : withoutOpeningFence).trim();
     }
 
     private void emit(String sessionId, String step, String message, int percent) {

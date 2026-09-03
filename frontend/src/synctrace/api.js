@@ -224,7 +224,59 @@ export const publishTraceabilityResults = async (teamCode) => {
     return data;
 };
 
+export const publishAllTraceabilityResults = async (teamCodes) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/results/publish-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCodes }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results to all teams.');
+    return data;
+};
+
 // ── SyncTrace: GitHub Ingestion ───────────────────────────────────────────────
+
+export const getLinkedGitHubRepositories = async () => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/github/repositories`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch linked GitHub repositories.');
+    return data;
+};
+
+export const linkGitHubRepository = async ({ teamCode, githubUrl }) => {
+    const response = await fetch(`${API_BASE_URL}/synctrace/github/repositories/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, githubUrl }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to link GitHub repository.');
+    }
+    return data;
+};
+
+export const ingestGitHubRepository = async ({ repositoryId, teamCode, githubUrl, sessionId }) => {
+    const endpoint = repositoryId
+        ? `${API_BASE_URL}/synctrace/github/repositories/${repositoryId}/ingest`
+        : `${API_BASE_URL}/synctrace/github/ingest`;
+
+    const payload = repositoryId
+        ? { teamCode, sessionId }
+        : { teamCode, githubUrl, sessionId };
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.error || data.message || `GitHub ingestion failed (${response.status})`);
+    }
+    return data;
+};
 
 export const getTeamRepositories = async () => {
     const response = await fetch(`${API_BASE_URL}/synctrace/github/teams`);
@@ -234,16 +286,7 @@ export const getTeamRepositories = async () => {
 };
 
 export const ingestRepository = async ({ teamCode, githubUrl, sessionId }) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/github/ingest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamCode, githubUrl, sessionId }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-        throw new Error(data.error || data.message || `GitHub ingestion failed (${response.status})`);
-    }
-    return data;
+    return ingestGitHubRepository({ teamCode, githubUrl, sessionId });
 };
 
 // ── SyncTrace: Audit Export ─────────────────────────────────────────────────
