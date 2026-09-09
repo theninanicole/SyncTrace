@@ -249,7 +249,10 @@ public class GitHubIngestionService {
         }
         Optional<TraceComponent> existing = componentRepository.findByDocTypeAndNameIgnoreCase(
             DocType.IMPLEMENTATION, componentName);
-        
+
+        String sourceRef = owner + "/" + repo + "@" + branch + ":" + path;
+        String sourceUrl = String.format("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, path);
+
         if (existing.isPresent()) {
             TraceComponent found = existing.get();
             boolean dirty = false;
@@ -262,11 +265,15 @@ public class GitHubIngestionService {
                 found.setCodeName(ComponentCodeHelper.codeFromFilePath(path));
                 dirty = true;
             }
+            found.setSourceType("GITHUB");
+            found.setSourceRef(sourceRef);
+            found.setSourceUrl(sourceUrl);
+            found.setSourceCapturedAt(LocalDateTime.now());
             if (dirty) {
                 return componentRepository.save(found);
             }
             log.debug("Component already exists: {}", componentName);
-            return found;
+            return componentRepository.save(found);
         }
 
         TraceComponent component = new TraceComponent();
@@ -276,6 +283,10 @@ public class GitHubIngestionService {
         component.setCodeName(ComponentCodeHelper.codeFromFilePath(path));
         component.setContent("File: " + path + "\n\n" + excerpt);
         component.setAiExtracted(true);
+        component.setSourceType("GITHUB");
+        component.setSourceRef(sourceRef);
+        component.setSourceUrl(sourceUrl);
+        component.setSourceCapturedAt(LocalDateTime.now());
         component.setCreatedAt(LocalDateTime.now());
         
         return componentRepository.save(component);

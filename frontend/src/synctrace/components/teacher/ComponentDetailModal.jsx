@@ -3,6 +3,7 @@ import { Check, Loader2, Pencil, X } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
 import { renameTraceComponent, getTraceComponent } from '../../api';
 import { componentLabel } from '../../constants';
+import { formatDate } from '../../../utils/dashboardUtils';
 
 function isImgHeaderLine(line) {
   return /^\*?\s*\[IMG-\d+\]/i.test(line);
@@ -19,6 +20,33 @@ function extractSourceMeta(content) {
     return { filePath: match[1].trim(), source: match[2] };
   }
   return { filePath: null, source: content };
+}
+
+/** Describes where a component's content came from, for display in the detail modal. */
+function describeProvenance(component) {
+  const capturedAt = component.sourceCapturedAt || component.createdAt;
+  const dateLabel = capturedAt ? formatDate(capturedAt) : null;
+
+  if (component.sourceType === 'GITHUB') {
+    return { label: component.sourceRef ? `GitHub \u2014 ${component.sourceRef}` : 'Ingested from GitHub', url: component.sourceUrl, dateLabel };
+  }
+  if (component.sourceType === 'EVALUATION_HISTORY') {
+    return { label: 'AI-extracted from an evaluated submission', url: null, dateLabel };
+  }
+  if (component.sourceType === 'MANUAL') {
+    return { label: 'Manually added', url: null, dateLabel };
+  }
+  // Backward compatibility for components created before source tracking was added.
+  if (component.aiExtracted) {
+    return {
+      label: component.docType === 'IMPLEMENTATION'
+        ? 'Ingested from the team\'s GitHub repository.'
+        : 'Extracted from an evaluated submission.',
+      url: null,
+      dateLabel,
+    };
+  }
+  return { label: 'Manually added', url: null, dateLabel };
 }
 
 function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOnly = false }) {
@@ -183,13 +211,19 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOn
           </div>
         )}
 
-        {merged.aiExtracted && (
-          <p className="tm-muted" style={{ marginTop: '0.75rem' }}>
-            {isImplementation
-              ? 'Ingested from the team\'s GitHub repository.'
-              : 'Extracted from an evaluated submission.'}
-          </p>
-        )}
+        {(() => {
+          const provenance = describeProvenance(merged);
+          return (
+            <p className="tm-muted tm-detail__provenance" style={{ marginTop: '0.75rem' }}>
+              {provenance.url ? (
+                <a href={provenance.url} target="_blank" rel="noreferrer">{provenance.label}</a>
+              ) : (
+                provenance.label
+              )}
+              {provenance.dateLabel && <span> &middot; {provenance.dateLabel}</span>}
+            </p>
+          );
+        })()}
       </div>
 
       {imageExpanded && merged.imageData && (

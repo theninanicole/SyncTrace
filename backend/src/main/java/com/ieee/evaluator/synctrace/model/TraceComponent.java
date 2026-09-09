@@ -33,6 +33,22 @@ public class TraceComponent {
 
     private Long sourceHistoryId;
 
+    /** Where this component's content originated: GITHUB, EVALUATION_HISTORY, or MANUAL. */
+    @Column(name = "source_type", length = 32)
+    private String sourceType;
+
+    /** Human-readable origin locator, e.g. "owner/repo@branch:path" or "history:123". */
+    @Column(name = "source_ref", length = 500)
+    private String sourceRef;
+
+    /** Direct link to the source when one exists (GitHub blob URL). */
+    @Column(name = "source_url", length = 600)
+    private String sourceUrl;
+
+    /** When this component's content was captured/ingested from its source. */
+    @Column(name = "source_captured_at")
+    private LocalDateTime sourceCapturedAt;
+
     @Column(columnDefinition = "TEXT")
     private String imageData;
 

@@ -229,6 +229,10 @@ public class SmartGoalService {
             code,
             c.getAiExtracted(),
             c.getSourceHistoryId(),
+            c.getSourceType(),
+            c.getSourceRef(),
+            c.getSourceUrl(),
+            c.getSourceCapturedAt(),
             c.getCreatedAt()
         );
     }
