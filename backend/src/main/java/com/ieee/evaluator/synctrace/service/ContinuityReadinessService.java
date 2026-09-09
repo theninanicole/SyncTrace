@@ -34,6 +34,14 @@ public class ContinuityReadinessService {
         DocType.IMPLEMENTATION
     );
 
+    // Per-finding score deduction by severity, and the overall cap on how much
+    // open findings can drag the score down (coverage still dominates the score).
+    private static final int PENALTY_CRITICAL = 8;
+    private static final int PENALTY_HIGH = 5;
+    private static final int PENALTY_MEDIUM = 3;
+    private static final int PENALTY_LOW = 1;
+    private static final int MAX_FINDINGS_PENALTY = 40;
+
     private final SmartGoalRepository goalRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final TraceComponentRepository componentRepository;
@@ -68,6 +76,7 @@ public class ContinuityReadinessService {
         int totalGoals = teamGoals.size();
         int readyGoals = 0;
         int totalMappedComponents = 0;
+        double totalCoverageFraction = 0;
         List<Map<String, Object>> goalSummaries = new ArrayList<>();
 
         for (SmartGoal goal : teamGoals) {
@@ -81,6 +90,7 @@ public class ContinuityReadinessService {
             }
 
             totalMappedComponents += coveredTypes.size();
+            totalCoverageFraction += (double) coveredTypes.size() / REQUIRED_DOC_TYPES.size();
 
             Map<String, Object> goalSummary = new LinkedHashMap<>();
             goalSummary.put("goalId", goal.getId());
@@ -108,14 +118,21 @@ public class ContinuityReadinessService {
             }
         }
 
+        // Coverage is averaged per-goal so partial progress (e.g. 3 of 5 doc types mapped)
+        // is reflected in the score, instead of only counting goals that are fully done.
+        int averageCoveragePercent = totalGoals == 0
+            ? 0
+            : (int) Math.round((totalCoverageFraction / totalGoals) * 100);
+        int findingsPenalty = Math.min(MAX_FINDINGS_PENALTY, computeFindingsPenalty(severityCounts));
         int readinessScore = totalGoals == 0
             ? 0
-            : (int) Math.round((readyGoals * 100.0) / totalGoals);
+            : Math.max(0, Math.min(100, averageCoveragePercent - findingsPenalty));
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("teamCode", teamCode);
-        summary.put("status", statusFor(readinessScore, totalFindings));
+        summary.put("status", statusFor(totalGoals, readinessScore, totalFindings));
         summary.put("readinessScore", readinessScore);
+        summary.put("averageCoveragePercent", averageCoveragePercent);
         summary.put("totalGoals", totalGoals);
         summary.put("readyGoals", readyGoals);
         summary.put("totalFindings", totalFindings);
@@ -187,7 +204,17 @@ public class ContinuityReadinessService {
         return recommendationsByFinding;
     }
 
-    private String statusFor(int readinessScore, int totalFindings) {
+    private int computeFindingsPenalty(Map<String, Integer> severityCounts) {
+        return severityCounts.getOrDefault("CRITICAL", 0) * PENALTY_CRITICAL
+            + severityCounts.getOrDefault("HIGH", 0) * PENALTY_HIGH
+            + severityCounts.getOrDefault("MEDIUM", 0) * PENALTY_MEDIUM
+            + severityCounts.getOrDefault("LOW", 0) * PENALTY_LOW;
+    }
+
+    private String statusFor(int totalGoals, int readinessScore, int totalFindings) {
+        if (totalGoals == 0) {
+            return "NOT_STARTED";
+        }
         if (totalFindings == 0 && readinessScore == 100) {
             return "READY";
         }

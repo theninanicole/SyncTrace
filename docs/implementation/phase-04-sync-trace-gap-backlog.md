@@ -79,9 +79,10 @@ The remaining work is not about adding the entire product from scratch. It is ab
   - Ensure local setup and deployment config are consistent with [README.md](../../README.md) and [application.properties](../../backend/src/main/resources/application.properties).
   - **Findings (fixed):** missing required config (datasource, Google service account, Google OAuth, spreadsheet ID) only ever surfaced one at a time as a deep Spring bean-creation stack trace, forcing a fix-and-restart cycle to discover each subsequent problem. Added [StartupConfigEnvironmentPostProcessor](../../backend/src/main/java/com/ieee/evaluator/config/StartupConfigEnvironmentPostProcessor.java), registered via `META-INF/spring.factories`, which prints one consolidated, actionable warning listing every missing required setting before Spring attempts to create any beans.
 
-- [ ] Improve readiness model quality
+- [x] Improve readiness model quality
   - Confirm that readiness percentages and readiness status are based on meaningful criteria rather than only mapping coverage.
   - Validate against the real project lifecycle and teacher expectations.
+  - **Findings (fixed):** [ContinuityReadinessService.java](../../backend/src/main/java/com/ieee/evaluator/synctrace/service/ContinuityReadinessService.java) computed readiness as a strictly binary per-goal gate (fully covered + zero findings, or it contributed 0). A team where every goal was 80% mapped scored identically (0%) to a team that hadn't started at all, giving teachers no signal of incremental progress across a semester. Fixed by averaging per-goal doc-type coverage for partial credit, applying a severity-weighted (capped) penalty for open findings, and adding a `NOT_STARTED` status distinct from `BLOCKED` for teams with zero mapped goals.
 
 - [ ] Review source provenance visibility in the UI
   - Expose source metadata clearly for implementation components ingested from GitHub and evaluation extracts.

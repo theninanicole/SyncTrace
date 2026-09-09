@@ -1,5 +1,6 @@
 package com.ieee.evaluator.synctrace.service;
 
+import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
@@ -65,6 +66,7 @@ class ContinuityReadinessServiceTest {
         assertEquals(0, summary.get("totalGoals"));
         assertEquals(0, summary.get("readyGoals"));
         assertEquals(0, summary.get("readinessScore"));
+        assertEquals("NOT_STARTED", summary.get("status"));
     }
 
     @Test
@@ -111,13 +113,39 @@ class ContinuityReadinessServiceTest {
 
         assertEquals(1, summary.get("totalGoals"));
         assertEquals(0, summary.get("readyGoals"));
-        assertEquals(0, summary.get("readinessScore"));
+        // 1 of 5 required doc types covered -> partial credit, not zeroed out entirely.
+        assertEquals(20, summary.get("readinessScore"));
+        assertEquals("BLOCKED", summary.get("status"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> goalSummaries = (List<Map<String, Object>>) summary.get("goalSummaries");
         @SuppressWarnings("unchecked")
         List<String> missingDocTypes = (List<String>) goalSummaries.get(0).get("missingDocTypes");
         assertTrue(missingDocTypes.contains("IMPLEMENTATION"));
+    }
+
+    @Test
+    void getTeamReadinessSummaryReducesScoreProportionallyToFindingSeverity() {
+        long goalId = 3L;
+        SmartGoal goal = new SmartGoal();
+        goal.setId(goalId);
+        goal.setDescription("Goal C");
+
+        when(goalRepository.findAll()).thenReturn(List.of(goal));
+        stubFullyCoveredGoal(goalId);
+
+        ContinuityFinding criticalFinding = new ContinuityFinding();
+        criticalFinding.setId(500L);
+        criticalFinding.setGoalId(goalId);
+        criticalFinding.setSeverity(ContinuityFinding.Severity.CRITICAL);
+        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of(criticalFinding));
+
+        Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
+
+        // Full coverage (100) minus the CRITICAL penalty (8), not a full reset to 0.
+        assertEquals(92, summary.get("readinessScore"));
+        assertEquals(0, summary.get("readyGoals"));
+        assertEquals("ON_TRACK", summary.get("status"));
     }
 
     /** Wires one mapped component per required doc type, all resolved to {@link #TEAM_CODE}. */
