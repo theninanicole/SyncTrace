@@ -74,9 +74,10 @@ The remaining work is not about adding the entire product from scratch. It is ab
   - Review the current assumptions in [GitHubIngestionService.java](../../backend/src/main/java/com/ieee/evaluator/synctrace/service/GitHubIngestionService.java).
   - **Findings (fixed):** the service ignored GitHub's `truncated` tree flag, downloaded oversized files in full before truncating locally, had no cap on total files per ingestion run, and kept hammering every remaining file after a 403 rate-limit response instead of stopping. Fixed with a 300 KB per-file size skip (using the tree API's `size` field, before downloading), a 500-file cap per run with a clear warning, truncated-tree detection, and early-exit on rate limiting.
 
-- [ ] Tighten environment and configuration validation
+- [x] Tighten environment and configuration validation
   - Define required secrets and config checks before startup.
   - Ensure local setup and deployment config are consistent with [README.md](../../README.md) and [application.properties](../../backend/src/main/resources/application.properties).
+  - **Findings (fixed):** missing required config (datasource, Google service account, Google OAuth, spreadsheet ID) only ever surfaced one at a time as a deep Spring bean-creation stack trace, forcing a fix-and-restart cycle to discover each subsequent problem. Added [StartupConfigEnvironmentPostProcessor](../../backend/src/main/java/com/ieee/evaluator/config/StartupConfigEnvironmentPostProcessor.java), registered via `META-INF/spring.factories`, which prints one consolidated, actionable warning listing every missing required setting before Spring attempts to create any beans.
 
 - [ ] Improve readiness model quality
   - Confirm that readiness percentages and readiness status are based on meaningful criteria rather than only mapping coverage.
