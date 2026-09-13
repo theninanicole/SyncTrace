@@ -11,5 +11,9 @@ public record TraceComponentSummaryDTO(
     String codeName,
     Boolean aiExtracted,
     Long sourceHistoryId,
+    String sourceType,
+    String sourceRef,
+    String sourceUrl,
+    LocalDateTime sourceCapturedAt,
     LocalDateTime createdAt
 ) {}

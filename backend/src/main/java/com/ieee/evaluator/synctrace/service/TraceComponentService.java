@@ -101,6 +101,8 @@ public class TraceComponentService {
         component.setContent(content);
         component.setImageData(imageData);
         component.setAiExtracted(false);
+        component.setSourceType("MANUAL");
+        component.setSourceCapturedAt(LocalDateTime.now());
         component.setCreatedAt(LocalDateTime.now());
         return componentRepository.save(component);
     }
@@ -235,6 +237,10 @@ public class TraceComponentService {
             code,
             c.getAiExtracted(),
             c.getSourceHistoryId(),
+            c.getSourceType(),
+            c.getSourceRef(),
+            c.getSourceUrl(),
+            c.getSourceCapturedAt(),
             c.getCreatedAt()
         );
     }

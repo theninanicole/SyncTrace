@@ -1,5 +1,6 @@
 package com.ieee.evaluator.synctrace.service;
 
+import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
@@ -57,14 +58,22 @@ class ContinuityReadinessServiceTest {
 
     @Test
     void getTeamReadinessSummaryReturnsZeroedSummaryWhenTeamHasNoMappedGoals() {
-        when(goalRepository.findAll()).thenReturn(List.of());
+        long goalId = 100L;
+        SmartGoal goal = new SmartGoal();
+        goal.setId(goalId);
+        goal.setDescription("Unstarted Goal");
+        goal.setTeamCode(TEAM_CODE);
+
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(TEAM_CODE)).thenReturn(List.of(goal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
+        when(mappingRepository.findByGoalId(goalId)).thenReturn(List.of());
 
         Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
 
-        assertEquals(0, summary.get("totalGoals"));
+        assertEquals(1, summary.get("totalGoals"));
         assertEquals(0, summary.get("readyGoals"));
         assertEquals(0, summary.get("readinessScore"));
+        assertEquals("NOT_STARTED", summary.get("status"));
     }
 
     @Test
@@ -73,8 +82,9 @@ class ContinuityReadinessServiceTest {
         SmartGoal goal = new SmartGoal();
         goal.setId(goalId);
         goal.setDescription("Goal A");
+        goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findAll()).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(TEAM_CODE)).thenReturn(List.of(goal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
         stubFullyCoveredGoal(goalId);
 
@@ -87,11 +97,40 @@ class ContinuityReadinessServiceTest {
     }
 
     @Test
+    void getTeamReadinessSummaryAveragesCoverageAcrossUnstartedGoals() {
+        long coveredGoalId = 10L;
+        long unstartedGoalId = 11L;
+
+        SmartGoal coveredGoal = new SmartGoal();
+        coveredGoal.setId(coveredGoalId);
+        coveredGoal.setDescription("Covered goal");
+        coveredGoal.setTeamCode(TEAM_CODE);
+
+        SmartGoal unstartedGoal = new SmartGoal();
+        unstartedGoal.setId(unstartedGoalId);
+        unstartedGoal.setDescription("Unstarted goal");
+        unstartedGoal.setTeamCode(TEAM_CODE);
+
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(TEAM_CODE))
+                .thenReturn(List.of(coveredGoal, unstartedGoal));
+        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
+        stubFullyCoveredGoal(coveredGoalId);
+        when(mappingRepository.findByGoalId(unstartedGoalId)).thenReturn(List.of());
+
+        Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
+
+        assertEquals(2, summary.get("totalGoals"));
+        assertEquals(50, summary.get("averageCoveragePercent"));
+        assertEquals(50, summary.get("readinessScore"));
+    }
+
+    @Test
     void getTeamReadinessSummaryFlagsMissingDocTypeForPartiallyCoveredGoal() {
         long goalId = 2L;
         SmartGoal goal = new SmartGoal();
         goal.setId(goalId);
         goal.setDescription("Goal B");
+        goal.setTeamCode(TEAM_CODE);
 
         GoalComponentMapping mapping = new GoalComponentMapping();
         mapping.setGoalId(goalId);
@@ -101,7 +140,7 @@ class ContinuityReadinessServiceTest {
         srsComponent.setId(50L);
         srsComponent.setDocType(DocType.SRS);
 
-        when(goalRepository.findAll()).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(TEAM_CODE)).thenReturn(List.of(goal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
         when(mappingRepository.findByGoalId(goalId)).thenReturn(List.of(mapping));
         when(componentRepository.findAllById(anyList())).thenReturn(List.of(srsComponent));
@@ -111,13 +150,40 @@ class ContinuityReadinessServiceTest {
 
         assertEquals(1, summary.get("totalGoals"));
         assertEquals(0, summary.get("readyGoals"));
-        assertEquals(0, summary.get("readinessScore"));
+        // 1 of 5 required doc types covered -> partial credit, not zeroed out entirely.
+        assertEquals(20, summary.get("readinessScore"));
+        assertEquals("BLOCKED", summary.get("status"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> goalSummaries = (List<Map<String, Object>>) summary.get("goalSummaries");
         @SuppressWarnings("unchecked")
         List<String> missingDocTypes = (List<String>) goalSummaries.get(0).get("missingDocTypes");
         assertTrue(missingDocTypes.contains("IMPLEMENTATION"));
+    }
+
+    @Test
+    void getTeamReadinessSummaryReducesScoreProportionallyToFindingSeverity() {
+        long goalId = 3L;
+        SmartGoal goal = new SmartGoal();
+        goal.setId(goalId);
+        goal.setDescription("Goal C");
+        goal.setTeamCode(TEAM_CODE);
+
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(TEAM_CODE)).thenReturn(List.of(goal));
+        stubFullyCoveredGoal(goalId);
+
+        ContinuityFinding criticalFinding = new ContinuityFinding();
+        criticalFinding.setId(500L);
+        criticalFinding.setGoalId(goalId);
+        criticalFinding.setSeverity(ContinuityFinding.Severity.CRITICAL);
+        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of(criticalFinding));
+
+        Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
+
+        // Full coverage (100) minus the CRITICAL penalty (8), not a full reset to 0.
+        assertEquals(92, summary.get("readinessScore"));
+        assertEquals(0, summary.get("readyGoals"));
+        assertEquals("ON_TRACK", summary.get("status"));
     }
 
     /** Wires one mapped component per required doc type, all resolved to {@link #TEAM_CODE}. */

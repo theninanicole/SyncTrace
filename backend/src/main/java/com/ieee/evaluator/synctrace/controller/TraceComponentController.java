@@ -264,6 +264,9 @@ public class TraceComponentController {
                 component.setSourceHistoryId(historyId);
                 component.setImageData(imageData);
                 component.setAiExtracted(true);
+                component.setSourceType("EVALUATION_HISTORY");
+                component.setSourceRef("history:" + historyId);
+                component.setSourceCapturedAt(LocalDateTime.now());
                 component.setCreatedAt(LocalDateTime.now());
                 created.add(component);
             }
@@ -283,6 +286,9 @@ public class TraceComponentController {
         component.setSourceHistoryId(historyId);
         component.setImageData(imageData);
         component.setAiExtracted(true);
+        component.setSourceType("EVALUATION_HISTORY");
+        component.setSourceRef("history:" + historyId);
+        component.setSourceCapturedAt(LocalDateTime.now());
         component.setCreatedAt(LocalDateTime.now());
         created.add(component);
         return created;

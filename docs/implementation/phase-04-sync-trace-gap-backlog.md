@@ -69,21 +69,25 @@ The remaining work is not about adding the entire product from scratch. It is ab
   - **Findings (fixed):** CSV export only included the Continuity Findings table, silently dropping goals, components, and recommendations that the JSON/PDF exports both include. JSON export was hand-built via string concatenation with incomplete escaping (control characters like tabs could produce invalid JSON). Fixed by exporting all four sections in CSV and switching JSON export to Jackson serialization via Spring's `ObjectMapper`.
 
 ### P1 — Important quality and robustness improvements
-- [ ] Add repo ingestion safeguards for large and restricted repositories
+- [x] Add repo ingestion safeguards for large and restricted repositories
   - Add better rate-limit handling, file-size caps, and skip logic for unsupported or excessively large GitHub repos.
   - Review the current assumptions in [GitHubIngestionService.java](../../backend/src/main/java/com/ieee/evaluator/synctrace/service/GitHubIngestionService.java).
+  - **Findings (fixed):** the service ignored GitHub's `truncated` tree flag, downloaded oversized files in full before truncating locally, had no cap on total files per ingestion run, and kept hammering every remaining file after a 403 rate-limit response instead of stopping. Fixed with a 300 KB per-file size skip (using the tree API's `size` field, before downloading), a 500-file cap per run with a clear warning, truncated-tree detection, and early-exit on rate limiting.
 
-- [ ] Tighten environment and configuration validation
+- [x] Tighten environment and configuration validation
   - Define required secrets and config checks before startup.
   - Ensure local setup and deployment config are consistent with [README.md](../../README.md) and [application.properties](../../backend/src/main/resources/application.properties).
+  - **Findings (fixed):** missing required config (datasource, Google service account, Google OAuth, spreadsheet ID) only ever surfaced one at a time as a deep Spring bean-creation stack trace, forcing a fix-and-restart cycle to discover each subsequent problem. Added [StartupConfigEnvironmentPostProcessor](../../backend/src/main/java/com/ieee/evaluator/config/StartupConfigEnvironmentPostProcessor.java), registered via `META-INF/spring.factories`, which prints one consolidated, actionable warning listing every missing required setting before Spring attempts to create any beans.
 
-- [ ] Improve readiness model quality
+- [x] Improve readiness model quality
   - Confirm that readiness percentages and readiness status are based on meaningful criteria rather than only mapping coverage.
   - Validate against the real project lifecycle and teacher expectations.
+  - **Findings (fixed):** [ContinuityReadinessService.java](../../backend/src/main/java/com/ieee/evaluator/synctrace/service/ContinuityReadinessService.java) computed readiness as a strictly binary per-goal gate (fully covered + zero findings, or it contributed 0). A team where every goal was 80% mapped scored identically (0%) to a team that hadn't started at all, giving teachers no signal of incremental progress across a semester. Fixed by averaging per-goal doc-type coverage for partial credit, applying a severity-weighted (capped) penalty for open findings, and adding a `NOT_STARTED` status distinct from `BLOCKED` for teams with zero mapped goals.
 
-- [ ] Review source provenance visibility in the UI
+- [x] Review source provenance visibility in the UI
   - Expose source metadata clearly for implementation components ingested from GitHub and evaluation extracts.
   - Confirm provenance is visible and useful in the traceability workflow.
+  - **Findings (fixed):** Phase 03's docs claimed `TraceComponent` was extended with `sourceType`, `sourceRef`, `sourceUrl`, `sourceHash`, and `sourceCapturedAt`, but none of those fields actually existed on the entity \u2014 the only real signal was a shared `aiExtracted` boolean (same value for both GitHub-ingested and AI-extracted-from-evaluation components) and a fragile `"File: {path}\n\n..."` string prefix. Added `sourceType`, `sourceRef`, `sourceUrl`, and `sourceCapturedAt` to `TraceComponent`, populated them across all three creation paths (GitHub ingestion, evaluation extraction, manual creation), and replaced the vague provenance hint in [ComponentDetailModal.jsx](../../frontend/src/synctrace/components/teacher/ComponentDetailModal.jsx) with a clear, linked "Source" line showing origin and capture date (`sourceHash` was intentionally left out of scope \u2014 not needed for UI visibility).
 
 - [ ] Clean up API contract inconsistency between docs and code
   - Decide on the final names and contract versions for all sync-trace endpoints.

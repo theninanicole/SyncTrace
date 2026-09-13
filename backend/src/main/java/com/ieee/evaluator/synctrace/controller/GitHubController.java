@@ -192,6 +192,10 @@ public class GitHubController {
                 component.getCodeName(), component.getName(), component.getContent()),
             component.getAiExtracted(),
             component.getSourceHistoryId(),
+            component.getSourceType(),
+            component.getSourceRef(),
+            component.getSourceUrl(),
+            component.getSourceCapturedAt(),
             component.getCreatedAt()
         );
     }

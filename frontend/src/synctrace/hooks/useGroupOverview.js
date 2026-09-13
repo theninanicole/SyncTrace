@@ -36,6 +36,7 @@ function mapBackendStatus(status) {
     case 'READY':
       return 'ready';
     case 'ON_TRACK':
+    case 'NOT_STARTED':
       return 'revision';
     case 'AT_RISK':
     case 'BLOCKED':
