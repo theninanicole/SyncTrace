@@ -130,7 +130,7 @@ public class ContinuityReadinessService {
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("teamCode", teamCode);
-        summary.put("status", statusFor(totalGoals, readinessScore, totalFindings));
+        summary.put("status", statusFor(totalGoals, totalMappedComponents, readinessScore, totalFindings));
         summary.put("readinessScore", readinessScore);
         summary.put("averageCoveragePercent", averageCoveragePercent);
         summary.put("totalGoals", totalGoals);
@@ -144,13 +144,7 @@ public class ContinuityReadinessService {
     }
 
     private List<SmartGoal> getTeamGoals(String teamCode) {
-        List<SmartGoal> teamGoals = new ArrayList<>();
-        for (SmartGoal goal : goalRepository.findAll()) {
-            if (!getCoveredDocTypes(goal.getId(), teamCode).isEmpty()) {
-                teamGoals.add(goal);
-            }
-        }
-        return teamGoals;
+        return goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(teamCode.trim());
     }
 
     private Set<DocType> getCoveredDocTypes(Long goalId, String teamCode) {
@@ -211,8 +205,8 @@ public class ContinuityReadinessService {
             + severityCounts.getOrDefault("LOW", 0) * PENALTY_LOW;
     }
 
-    private String statusFor(int totalGoals, int readinessScore, int totalFindings) {
-        if (totalGoals == 0) {
+    private String statusFor(int totalGoals, int totalMappedComponents, int readinessScore, int totalFindings) {
+        if (totalGoals == 0 || totalMappedComponents == 0) {
             return "NOT_STARTED";
         }
         if (totalFindings == 0 && readinessScore == 100) {
