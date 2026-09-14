@@ -380,7 +380,7 @@ public class GitHubIngestionService {
         return false;
     }
 
-    private String[] parseGitHubUrl(String url) {
+    public static String[] parseGitHubUrl(String url) {
         // Pattern: https://github.com/owner/repo or https://github.com/owner/repo/tree/branch
         Pattern pattern = Pattern.compile("github\\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?");
         Matcher matcher = pattern.matcher(url);
