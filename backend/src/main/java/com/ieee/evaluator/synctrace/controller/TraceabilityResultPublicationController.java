@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/synctrace/results")
@@ -72,6 +71,60 @@ public class TraceabilityResultPublicationController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to send traceability results: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/publish-all")
+    public ResponseEntity<?> publishAllResults(@RequestBody Map<String, List<String>> payload) {
+        try {
+            List<String> teamCodes = payload.getOrDefault("teamCodes", List.of());
+            if (teamCodes.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "teamCodes is required and cannot be empty"));
+            }
+
+            List<Map<String, Object>> results = new ArrayList<>();
+            int successCount = 0;
+
+            for (String rawTeamCode : teamCodes) {
+                if (rawTeamCode == null || rawTeamCode.isBlank()) {
+                    continue;
+                }
+                String normalizedTeamCode = rawTeamCode.trim();
+                try {
+                    TraceabilityResultPublication publication = repository
+                            .findByTeamCodeIgnoreCase(normalizedTeamCode)
+                            .orElseGet(TraceabilityResultPublication::new);
+
+                    publication.setTeamCode(normalizedTeamCode);
+                    publication.setPublishedAt(LocalDateTime.now());
+
+                    TraceabilityResultPublication saved = repository.save(publication);
+                    successCount++;
+
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("teamCode", saved.getTeamCode());
+                    result.put("published", true);
+                    result.put("publishedAt", saved.getPublishedAt());
+                    results.add(result);
+                } catch (Exception e) {
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("teamCode", normalizedTeamCode);
+                    result.put("published", false);
+                    result.put("error", e.getMessage());
+                    results.add(result);
+                }
+            }
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("message", "Published results for " + successCount + " of " + results.size() + " team(s).");
+            response.put("successCount", successCount);
+            response.put("totalCount", results.size());
+            response.put("results", results);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to send traceability results to all teams: " + e.getMessage()));
         }
     }
 }

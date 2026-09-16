@@ -69,7 +69,7 @@ public class GitHubController {
                 return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
             }
 
-            String[] parts = parseGitHubUrl(githubUrl);
+            String[] parts = GitHubIngestionService.parseGitHubUrl(githubUrl);
             if (parts == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid GitHub URL"));
             }
@@ -160,11 +160,14 @@ public class GitHubController {
             }
 
             List<TraceComponent> components = ingestionService.ingestRepository(githubUrl, teamCode, sessionId);
-            repositoryLinkRepository.findByOwnerAndRepo(parseGitHubUrl(githubUrl)[0], parseGitHubUrl(githubUrl)[1])
-                    .ifPresent(repository -> {
-                        repository.setLastIngestedAt(LocalDateTime.now());
-                        repositoryLinkRepository.save(repository);
-                    });
+            String[] parsedUrl = GitHubIngestionService.parseGitHubUrl(githubUrl);
+            if (parsedUrl != null) {
+                repositoryLinkRepository.findByOwnerAndRepo(parsedUrl[0], parsedUrl[1])
+                        .ifPresent(repository -> {
+                            repository.setLastIngestedAt(LocalDateTime.now());
+                            repositoryLinkRepository.save(repository);
+                        });
+            }
 
             List<TraceComponentSummaryDTO> summaries = components.stream()
                 .map(this::toSummaryDTO)
@@ -202,32 +205,5 @@ public class GitHubController {
 
     private static String normalizeRepositoryUrl(String owner, String repo) {
         return "https://github.com/" + owner.trim() + "/" + repo.trim();
-    }
-
-    private static String[] parseGitHubUrl(String githubUrl) {
-        if (githubUrl == null || githubUrl.isBlank()) {
-            return null;
-        }
-
-        String normalized = githubUrl.trim();
-        normalized = normalized.replace("https://github.com/", "")
-                .replace("http://github.com/", "")
-                .replace("https://www.github.com/", "")
-                .replace("http://www.github.com/", "");
-
-        if (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-
-        String[] segments = normalized.split("/");
-        if (segments.length < 2 || segments[0].isBlank() || segments[1].isBlank()) {
-            return null;
-        }
-
-        if (segments.length >= 3 && ("tree".equalsIgnoreCase(segments[2]) || "blob".equalsIgnoreCase(segments[2]))) {
-            return new String[] { segments[0], segments[1], segments[2] };
-        }
-
-        return new String[] { segments[0], segments[1], segments.length > 2 ? segments[2] : "main" };
     }
 }
