@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSmartGoals, getAllGoalComponents, getContinuityFindings, getDiagnosticRecommendations } from '../api';
-import { DOC_TYPES } from '../constants';
+import { DOC_TYPES, groupGoalsIntoClusters } from '../constants';
 import { buildAiIssues } from '../utils/gapIssues';
 
 export function useTraceabilityResultsData(teamCode, options = {}) {
@@ -45,20 +45,31 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   }, [loadResults]);
 
   const rows = useMemo(() => {
-    return goals.map((goal, gi) => {
-      const mapped = componentsByGoal[goal.id] || componentsByGoal[String(goal.id)] || [];
+    return groupGoalsIntoClusters(goals).map((cluster, clusterIndex) => {
+      const memberGoalIds = [cluster.primary.id, ...cluster.children.map((child) => child.id)];
+      const mappedById = new Map();
+      memberGoalIds.forEach((goalId) => {
+        const mapped = componentsByGoal[goalId] || componentsByGoal[String(goalId)] || [];
+        mapped.forEach((component) => {
+          mappedById.set(component.id ?? `${component.docType}:${component.name}`, component);
+        });
+      });
       const cells = {};
-      DOC_TYPES.forEach((dt) => { cells[dt] = mapped.filter((c) => c.docType === dt); });
+      DOC_TYPES.forEach((dt) => {
+        cells[dt] = [...mappedById.values()].filter((component) => component.docType === dt);
+      });
       const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
       return {
-        goalId: goal.id,
-        code: `G${gi + 1}`,
-        description: goal.description,
-        teamCode: goal.teamCode || '',
+        goalId: cluster.id,
+        memberGoalIds,
+        code: `G${clusterIndex + 1}`,
+        description: cluster.primary.description,
+        specificDescriptions: cluster.children.map((child) => child.description),
+        teamCode: cluster.primary.teamCode || '',
         cells,
         coveredTypes,
         aligned: coveredTypes === DOC_TYPES.length,
-        createdAt: goal.createdAt,
+        createdAt: cluster.primary.createdAt,
       };
     });
   }, [componentsByGoal, goals]);
@@ -92,10 +103,13 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
     };
   }, [rows]);
 
-  const goalCodeById = useMemo(
-    () => new Map(rows.map((r) => [r.goalId, r.code])),
-    [rows],
-  );
+  const goalCodeById = useMemo(() => {
+    const codeById = new Map();
+    rows.forEach((row) => {
+      row.memberGoalIds.forEach((goalId) => codeById.set(goalId, row.code));
+    });
+    return codeById;
+  }, [rows]);
 
   const aiIssues = useMemo(
     () => buildAiIssues(aiFindings, aiRecommendations, goalCodeById),

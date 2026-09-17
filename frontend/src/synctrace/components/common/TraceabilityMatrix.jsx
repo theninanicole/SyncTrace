@@ -32,6 +32,7 @@ function TraceabilityMatrix({
       const haystack = [
         row.code,
         row.description,
+        ...(row.specificDescriptions || []),
         ...visibleDocColumns.flatMap((col) => (row.cells[col.key] || []).map((c) => componentLabel(c))),
       ].join(' ').toLowerCase();
       return haystack.includes(q);
@@ -97,8 +98,20 @@ function TraceabilityMatrix({
             return (
               <div className="trm-row" key={row.goalId}>
                 <div className="trm-cell trm-cell--goal">
-                  <span className="trm-goal-code">{row.code}</span>
-                  <span className="trm-goal-desc">{row.description}</span>
+                  <div className="trm-goal-primary">
+                    <span className="trm-goal-kind trm-goal-kind--general">GEN</span>
+                    <span className="trm-goal-desc">{row.description}</span>
+                  </div>
+                  {row.specificDescriptions?.length > 0 && (
+                    <ul className="trm-goal-specifics">
+                      {row.specificDescriptions.map((description) => (
+                        <li key={description}>
+                          <span className="trm-goal-kind trm-goal-kind--specific">SPEC</span>
+                          <span>{description}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 {visibleDocColumns.map((col) => {
