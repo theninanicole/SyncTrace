@@ -20,6 +20,11 @@ function TraceabilityMatrix({
 }) {
   const [search, setSearch] = useState('');
 
+  const visibleDocColumns = useMemo(
+    () => DOC_COLUMNS.filter((col) => rows.some((row) => (row.cells[col.key] || []).length > 0)),
+    [rows],
+  );
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -27,16 +32,24 @@ function TraceabilityMatrix({
       const haystack = [
         row.code,
         row.description,
-        ...DOC_COLUMNS.flatMap((col) => (row.cells[col.key] || []).map((c) => componentLabel(c))),
+        ...visibleDocColumns.flatMap((col) => (row.cells[col.key] || []).map((c) => componentLabel(c))),
       ].join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [rows, search]);
+  }, [rows, search, visibleDocColumns]);
 
   if (rows.length === 0) {
     return (
       <div className="empty-state">
         <p>{emptyMessage}</p>
+      </div>
+    );
+  }
+
+  if (visibleDocColumns.length === 0) {
+    return (
+      <div className="empty-state">
+        <p>No mapped documents to display.</p>
       </div>
     );
   }
@@ -55,11 +68,18 @@ function TraceabilityMatrix({
       </label>
 
       <div className="trm-table-wrap">
-        <div className="trm-table">
+        <div
+          className="trm-table"
+          style={{
+            gridTemplateColumns: visibleDocColumns.length > 0
+              ? `260px repeat(${visibleDocColumns.length}, minmax(160px, 1fr)) 140px`
+              : '260px 140px',
+          }}
+        >
           <div className="trm-th trm-th--goal">
             <span>SMART Goal</span>
           </div>
-          {DOC_COLUMNS.map((col) => (
+          {visibleDocColumns.map((col) => (
             <div className="trm-th" key={col.key}>
               <span>{col.label}</span>
             </div>
@@ -73,7 +93,7 @@ function TraceabilityMatrix({
           )}
 
           {filteredRows.map((row) => {
-            const complete = DOC_COLUMNS.every((col) => (row.cells[col.key] || []).length > 0);
+            const complete = visibleDocColumns.every((col) => (row.cells[col.key] || []).length > 0);
             return (
               <div className="trm-row" key={row.goalId}>
                 <div className="trm-cell trm-cell--goal">
@@ -81,7 +101,7 @@ function TraceabilityMatrix({
                   <span className="trm-goal-desc">{row.description}</span>
                 </div>
 
-                {DOC_COLUMNS.map((col) => {
+                {visibleDocColumns.map((col) => {
                   const components = row.cells[col.key] || [];
                   return (
                     <div className="trm-cell" key={col.key}>
