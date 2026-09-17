@@ -123,13 +123,33 @@
   justify-content: center;
 }
 
-.trm-goal-code {
+.trm-goal-primary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.trm-goal-kind {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
   font-weight: 800;
-  font-size: 0.92rem;
-  color: var(--text-main);
+  letter-spacing: 0.04em;
+}
+
+.trm-goal-kind--general {
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+  color: var(--brand);
+}
+
+.trm-goal-kind--specific {
+  background: color-mix(in srgb, var(--spmp) 16%, transparent);
+  color: var(--spmp);
 }
 
 .trm-cell--status {
@@ -161,6 +181,25 @@
   font-size: 0.82rem;
   color: var(--text-muted);
   line-height: 1.35;
+}
+
+.trm-goal-specifics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  margin: 0.15rem 0 0;
+  padding: 0 0 0 0.1rem;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.trm-goal-specifics li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
 }
 
 .trm-chip-stack {

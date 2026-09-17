@@ -5,6 +5,7 @@ import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
 import { groupStatus } from './useGroupOverview';
 import { buildAiIssues } from '../utils/gapIssues';
+import { groupGoalsIntoClusters } from '../constants';
 
 const EMPTY_STATE = {
   loading: true,
@@ -58,7 +59,7 @@ export function useGroupTraceability(teamCode, showToast) {
     setGroupState((s) => ({ ...s, loading: true }));
     try {
       const [goalList, roster, history, componentsByGoal, summary, findingsData, recommendationsData] = await Promise.all([
-        getSmartGoals(),
+        getSmartGoals(teamCode),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
         getAllGoalComponents().catch(() => ({})),
@@ -75,24 +76,29 @@ export function useGroupTraceability(teamCode, showToast) {
 
       const section = roster.find((s) => s.groupCode?.toUpperCase() === teamCode.toUpperCase())?.section || '';
 
-      const orderedGoals = goalList;
-      const perGoalComponents = orderedGoals.map((g) =>
-        componentsByGoal[g.id] || componentsByGoal[String(g.id)] || []
-      );
+      const clusters = groupGoalsIntoClusters(goalList);
 
       let lastTraceability = null;
       let coveredCount = 0;
 
-      const rows = orderedGoals.map((goal, gi) => {
+      const rows = clusters.map((cluster, clusterIndex) => {
         const cells = {};
         DOC_TYPES.forEach((dt) => { cells[dt] = []; });
+        const componentById = new Map();
+        const memberIds = [cluster.primary.id, ...cluster.children.map((child) => child.id)];
 
-        (perGoalComponents[gi] || []).forEach((c) => {
-          const componentTeam = resolveComponentTeamCode(c, historyTeamMap);
-          if (componentTeam?.toUpperCase() !== teamCode.toUpperCase()) return;
-          cells[c.docType].push(c);
-          if (c.createdAt && (!lastTraceability || new Date(c.createdAt) > new Date(lastTraceability))) {
-            lastTraceability = c.createdAt;
+        memberIds.forEach((memberId) => {
+          (componentsByGoal[memberId] || componentsByGoal[String(memberId)] || []).forEach((component) => {
+            const componentTeam = resolveComponentTeamCode(component, historyTeamMap);
+            if (componentTeam?.toUpperCase() !== teamCode.toUpperCase()) return;
+            componentById.set(component.id ?? `${component.docType}:${component.name}`, component);
+          });
+        });
+
+        componentById.forEach((component) => {
+          if (cells[component.docType]) cells[component.docType].push(component);
+          if (component.createdAt && (!lastTraceability || new Date(component.createdAt) > new Date(lastTraceability))) {
+            lastTraceability = component.createdAt;
           }
         });
 
@@ -100,23 +106,23 @@ export function useGroupTraceability(teamCode, showToast) {
         coveredCount += coveredTypes;
 
         return {
-          goalId: goal.id,
-          code: `G${gi + 1}`,
-          description: goal.description,
-          teamCode: goal.teamCode || '',
+          goalId: cluster.id,
+          memberGoalIds: memberIds,
+          code: `G${clusterIndex + 1}`,
+          description: cluster.primary.description,
+          specificDescriptions: cluster.children.map((child) => child.description),
+          teamCode: cluster.primary.teamCode || '',
           cells,
           aligned: coveredTypes === DOC_TYPES.length,
-          createdAt: goal.createdAt,
+          createdAt: cluster.primary.createdAt,
         };
       });
 
-      const summaryCoveredCount = summary
-        ? summary.goalSummaries.reduce((sum, goalSummary) => sum + goalSummary.coveredDocTypes.length, 0)
-        : coveredCount;
-      const totalCells = summary ? summary.totalGoals * DOC_TYPES.length : goalList.length * DOC_TYPES.length;
-      const percent = totalCells > 0 ? Math.round((summaryCoveredCount / totalCells) * 100) : 0;
+      const totalCells = rows.length * DOC_TYPES.length;
+      const percent = totalCells > 0 ? Math.round((coveredCount / totalCells) * 100) : 0;
 
       const goalCodeById = new Map(rows.map((r) => [r.goalId, r.code]));
+      rows.forEach((row) => row.memberGoalIds.forEach((memberId) => goalCodeById.set(memberId, row.code)));
       const aiIssues = buildAiIssues(
         findingsData.findings || [],
         recommendationsData.recommendations || [],
@@ -129,10 +135,10 @@ export function useGroupTraceability(teamCode, showToast) {
         rows,
         percent,
         status: summary ? mapBackendStatus(summary.status) : groupStatus(coveredCount, totalCells),
-        coveredCount: summaryCoveredCount,
+        coveredCount,
         totalCells,
         lastTraceability,
-        readinessScore: summary?.readinessScore ?? percent,
+        readinessScore: percent,
         readinessStatus: summary?.status ?? null,
         findingCount: summary?.totalFindings ?? 0,
         aiIssues,
