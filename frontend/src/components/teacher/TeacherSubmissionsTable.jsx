@@ -15,7 +15,10 @@ function TeacherSubmissionsTable({ files, loading, isSyncing, analyzedFileIds, o
         <tbody>
           {loading || isSyncing ? (
             <tr>
-              <td colSpan="4" className="muted">Loading submissions...</td>
+              <td colSpan="4" className="muted teacher-submissions__loading" aria-live="polite">
+                <span className="teacher-submissions__spinner" aria-hidden="true" />
+                {isSyncing ? 'Syncing submissions...' : 'Loading submissions...'}
+              </td>
             </tr>
           ) : files.length === 0 ? (
             <tr>

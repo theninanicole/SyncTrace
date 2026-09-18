@@ -31,19 +31,85 @@ public class GoogleDocsService {
     private static final String PLAIN_TEXT_MIME  = "text/plain";
 
     private final Drive driveService;
+    private final Drive serviceAccountDriveService;
     private final PdfImageExtractor pdfImageExtractor;
     private final GoogleCredential googleCredential;
 
     public GoogleDocsService(
-            Drive driveService,
+            @Qualifier("driveService") Drive driveService,
+            @Qualifier("serviceAccountDriveService") Drive serviceAccountDriveService,
             PdfImageExtractor pdfImageExtractor,
             @Qualifier("googleCredential") GoogleCredential googleCredential) {
         this.driveService      = driveService;
+        this.serviceAccountDriveService = serviceAccountDriveService;
         this.pdfImageExtractor = pdfImageExtractor;
         this.googleCredential  = googleCredential;
     }
 
     public record DocumentData(String text, List<String> images) {}
+
+    /** Loads only document text for metadata extraction workflows. */
+    public String extractDocumentText(String fileId) throws Exception {
+        if (fileId == null || fileId.isEmpty()) {
+            throw new IllegalArgumentException("File ID cannot be null or empty");
+        }
+
+        try {
+            File fileInfo = serviceAccountDriveService.files().get(fileId).setFields("id,name,mimeType").execute();
+            String mimeType = fileInfo.getMimeType();
+            if (GOOGLE_DOC_MIME.equals(mimeType)) {
+                try (InputStream is = serviceAccountDriveService.files().export(fileId, PLAIN_TEXT_MIME)
+                        .executeMediaAsInputStream()) {
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            if (PDF_MIME.equals(mimeType)) {
+                return extractTextWithTika(new ByteArrayInputStream(downloadBlobBytesWith(serviceAccountDriveService, fileId)));
+            }
+            if (DOCX_MIME.equals(mimeType)) {
+                return extractTextWithTika(new ByteArrayInputStream(downloadBlobBytesViaHttp(fileId)));
+            }
+            if (PLAIN_TEXT_MIME.equals(mimeType)) {
+                return new String(downloadBlobBytesViaHttp(fileId), StandardCharsets.UTF_8);
+            }
+            throw new Exception("Unsupported file format: " + fileInfo.getName() + " (" + mimeType + ")");
+        } catch (GoogleJsonResponseException e) {
+            String publicText = tryPublicGoogleDocText(fileId);
+            if (publicText != null) return publicText;
+            throw toFriendlyDriveException(e);
+        } catch (IOException e) {
+            String publicText = tryPublicGoogleDocText(fileId);
+            if (publicText != null) return publicText;
+            throw new Exception("Download failed: " + e.getMessage(), e);
+        } catch (Exception e) {
+            String publicText = tryPublicGoogleDocText(fileId);
+            if (publicText != null) return publicText;
+            throw e;
+        }
+    }
+
+    private String tryPublicGoogleDocText(String fileId) {
+        try {
+            URL exportUrl = new URL("https://docs.google.com/document/d/" + fileId + "/export?format=txt");
+            HttpURLConnection connection = (HttpURLConnection) exportUrl.openConnection();
+            connection.setConnectTimeout(20_000);
+            connection.setReadTimeout(60_000);
+            connection.setRequestMethod("GET");
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return null;
+            try (InputStream input = connection.getInputStream()) {
+                String text = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                return text.isBlank() ? null : text;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private byte[] downloadBlobBytesWith(Drive service, String fileId) throws IOException {
+        try (InputStream is = service.files().get(fileId).setAlt("media").executeMediaAsInputStream()) {
+            return is.readAllBytes();
+        }
+    }
 
     // ── Overload without progress (keeps existing callers working) ────────────
 

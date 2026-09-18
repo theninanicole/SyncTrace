@@ -97,8 +97,9 @@ export function useGroupTraceability(teamCode, showToast) {
 
         componentById.forEach((component) => {
           if (cells[component.docType]) cells[component.docType].push(component);
-          if (component.createdAt && (!lastTraceability || new Date(component.createdAt) > new Date(lastTraceability))) {
-            lastTraceability = component.createdAt;
+          const traceabilityUpdatedAt = component.mappingCreatedAt || component.createdAt;
+          if (traceabilityUpdatedAt && (!lastTraceability || new Date(traceabilityUpdatedAt) > new Date(lastTraceability))) {
+            lastTraceability = traceabilityUpdatedAt;
           }
         });
 

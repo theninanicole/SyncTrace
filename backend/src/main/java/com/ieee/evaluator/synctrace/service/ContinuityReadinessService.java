@@ -144,7 +144,7 @@ public class ContinuityReadinessService {
     }
 
     private List<SmartGoal> getTeamGoals(String teamCode) {
-        return goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(teamCode.trim());
+        return goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(teamCode.trim());
     }
 
     private Set<DocType> getCoveredDocTypes(Long goalId, String teamCode) {

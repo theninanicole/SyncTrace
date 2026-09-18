@@ -1,6 +1,6 @@
 package com.ieee.evaluator.synctrace.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
 import com.ieee.evaluator.synctrace.model.SmartGoal;

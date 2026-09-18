@@ -5,6 +5,7 @@ import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
 import com.ieee.evaluator.service.AiService;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -56,9 +57,15 @@ public class AiController {
     // ── GET /api/ai/history ───────────────────────────────────────────────────
 
     @GetMapping("/history")
-    public ResponseEntity<?> getHistory() {
+    public ResponseEntity<?> getHistory(
+            @RequestParam(required = false) String fileId,
+            @RequestParam(defaultValue = "25") Integer limit) {
         try {
-            return ResponseEntity.ok(historyRepository.findAllSummaries());
+            int pageSize = Math.max(1, Math.min(limit == null ? 25 : limit, 100));
+            String normalizedFileId = (fileId == null || fileId.isBlank()) ? null : fileId.trim();
+            return ResponseEntity.ok(
+                historyRepository.findSummaries(normalizedFileId, PageRequest.of(0, pageSize)).getContent()
+            );
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

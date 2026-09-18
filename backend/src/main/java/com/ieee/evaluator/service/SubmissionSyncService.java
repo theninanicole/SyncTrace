@@ -1,6 +1,5 @@
 package com.ieee.evaluator.service;
 
-import com.google.api.services.drive.Drive;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.ieee.evaluator.model.DriveFile;
@@ -24,19 +23,15 @@ public class SubmissionSyncService {
     private final Sheets sheetsService;
     private final GoogleSheetsService configLoader;
     private final DynamicConfigService configService;
-    private final Drive driveService;
-
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("M/d/yyyy H:mm:ss");
 
     public SubmissionSyncService(
             Sheets sheetsService,
             GoogleSheetsService configLoader,
-            DynamicConfigService configService,
-            Drive driveService) {
+            DynamicConfigService configService) {
         this.sheetsService = sheetsService;
         this.configLoader  = configLoader;
         this.configService = configService;
-        this.driveService  = driveService;
     }
 
     public List<DriveFile> getLatestSubmissions() throws IOException {
@@ -155,18 +150,6 @@ public class SubmissionSyncService {
             }
         }
 
-        // Fetch the real mimeType from Drive instead of hardcoding it
-        String mimeType;
-        try {
-            com.google.api.services.drive.model.File fileInfo = driveService
-                    .files().get(fileId).setFields("mimeType").execute();
-            mimeType = fileInfo.getMimeType() != null ? fileInfo.getMimeType() : "application/vnd.google-apps.document";
-        } catch (Exception e) {
-            // CRITICAL FIX: If the file is deleted or inaccessible, DO NOT add it to the map.
-            System.err.println("Skipping inaccessible fileId=" + fileId + ": " + e.getMessage());
-            return; // Exit the method so it isn't added to submissionMap
-        }
-
         DriveFile file = new DriveFile();
         file.setId(fileId);
         file.setWebViewLink(url);
@@ -174,7 +157,7 @@ public class SubmissionSyncService {
         String statusPrefix = isLate ? "[LATE] " : "";
         file.setName(statusPrefix + "[" + docType + "] " + section + " - " + teamCode + " | " + studentName);
         file.setSubmittedAt(timestampStr);
-        file.setMimeType(mimeType);
+        file.setMimeType("application/vnd.google-apps.document");
 
         submissionMap.put(fileId + "_" + docType, file);
     }

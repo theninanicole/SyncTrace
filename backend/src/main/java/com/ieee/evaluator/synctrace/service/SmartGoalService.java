@@ -36,8 +36,8 @@ public class SmartGoalService {
 
     public List<Map<String, Object>> getAllGoalsWithCategoryStatus(String teamCode) {
         List<SmartGoal> goals = (teamCode != null && !teamCode.isBlank())
-            ? goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(teamCode.trim())
-            : goalRepository.findAllByOrderByCreatedAtDesc();
+            ? goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(teamCode.trim())
+            : goalRepository.findAllByOrderByCreatedAtAsc();
 
         List<Long> goalIds = goals.stream().map(SmartGoal::getId).toList();
         Map<Long, List<DocType>> goalDocTypes = new HashMap<>();
@@ -136,7 +136,7 @@ public class SmartGoalService {
 
     @Transactional
     public void deleteGoal(Long goalId) {
-        List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtDesc(goalId);
+        List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtAsc(goalId);
         for (SmartGoal child : children) {
             mappingRepository.deleteByGoalId(child.getId());
             goalRepository.deleteById(child.getId());

@@ -37,4 +37,16 @@ public class GoogleDriveConfig {
                 .setApplicationName("IEEE Docs Evaluator")
                 .build();
     }
+
+    @Bean(name = "serviceAccountDriveService")
+    public Drive serviceAccountDriveService(
+            @Qualifier("googleCredential") com.google.api.client.googleapis.auth.oauth2.GoogleCredential googleCredential)
+            throws IOException, GeneralSecurityException {
+        return new Drive.Builder(
+                GoogleNetHttpTransport.newTrustedTransport(),
+                GsonFactory.getDefaultInstance(),
+                googleCredential)
+                .setApplicationName("IEEE Docs Evaluator")
+                .build();
+    }
 }

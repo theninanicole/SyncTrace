@@ -13,6 +13,14 @@ import {
   pathToView,
 } from './synctrace/routes';
 
+const LEGACY_WORKSPACE_KEYS = [
+  'synctrace-adviser-selected-project',
+  'synctrace-artifacts',
+  'synctrace-project',
+  'synctrace-user-role',
+  'synctrace-workspace-initialized',
+];
+
 function App() {
   const [studentData, setStudentData]   = useState(null);
   const [authError, setAuthError]       = useState('');
@@ -22,6 +30,10 @@ function App() {
 
   const isVerifiedRef  = useRef(false);
   const pendingErrorRef = useRef('');
+
+  useEffect(() => {
+    LEGACY_WORKSPACE_KEYS.forEach((key) => localStorage.removeItem(key));
+  }, []);
 
   async function verifySession(currentSession) {
     if (!currentSession) return;
