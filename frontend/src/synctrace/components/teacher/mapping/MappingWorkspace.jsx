@@ -22,10 +22,12 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
     sourceItems,
     targetItems,
     selectedSourceId,
-    selectedTargetId,
+    selectedTargetIds,
     selectSource,
     selectTarget,
     mappingsForStage,
+    componentGroups,
+    documentGroups,
     establishMapping,
     removeMapping,
   } = tm;
@@ -37,7 +39,7 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
     mappingsForStage.filter((m) => m.sourceId === selectedSourceId).map((m) => m.targetId)
   );
   const linkedSourceIds = new Set(
-    mappingsForStage.filter((m) => m.targetId === selectedTargetId).map((m) => m.sourceId)
+    mappingsForStage.filter((m) => selectedTargetIds.has(m.targetId)).map((m) => m.sourceId)
   );
 
   const isProposalStage = stage.sourceType === 'PROPOSAL';
@@ -71,6 +73,8 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
             selectedId={selectedSourceId}
             linkedIds={linkedSourceIds}
             mappedCounts={mappedSourceCounts}
+            groupLabelsByItem={componentGroups}
+            documentGroupsByItem={documentGroups}
             onSelect={selectSource}
             onAdd={() => onAddComponentClick(stage.sourceType)}
             onPreview={onPreviewComponentClick}
@@ -85,7 +89,7 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
         sourceItems={sourceItems}
         targetItems={targetItems}
         selectedSourceId={selectedSourceId}
-        selectedTargetId={selectedTargetId}
+        selectedTargetIds={selectedTargetIds}
         mappingsForStage={mappingsForStage}
         onEstablish={establishMapping}
         onRemoveMapping={removeMapping}
@@ -97,9 +101,11 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
           docType={stage.targetType}
           items={targetItems}
           loading={loadingComponents}
-          selectedId={selectedTargetId}
+          selectedIds={selectedTargetIds}
           linkedIds={linkedTargetIds}
           mappedCounts={mappedTargetCounts}
+          groupLabelsByItem={componentGroups}
+          documentGroupsByItem={documentGroups}
           onSelect={selectTarget}
           onAdd={() => onAddComponentClick(stage.targetType)}
           onPreview={onPreviewComponentClick}

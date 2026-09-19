@@ -95,7 +95,7 @@ function computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage 
 export function useStagedTraceability(showToast, teamCode) {
   const [selectedStage, setSelectedStageState] = useState(STAGES[0].key);
   const [selectedSourceId, setSelectedSourceId] = useState(null);
-  const [selectedTargetId, setSelectedTargetId] = useState(null);
+  const [selectedTargetIds, setSelectedTargetIds] = useState(() => new Set());
 
   const [smartGoals, setSmartGoals] = useState([]);
   const [loadingGoals, setLoadingGoals] = useState(false);
@@ -209,7 +209,7 @@ export function useStagedTraceability(showToast, teamCode) {
   function setSelectedStage(key) {
     setSelectedStageState(key);
     setSelectedSourceId(null);
-    setSelectedTargetId(null);
+    setSelectedTargetIds(new Set());
   }
 
   function selectSource(id) {
@@ -217,24 +217,30 @@ export function useStagedTraceability(showToast, teamCode) {
   }
 
   function selectTarget(id) {
-    setSelectedTargetId((prev) => (prev === id ? null : id));
+    setSelectedTargetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function establishMapping() {
-    if (!selectedSourceId || !selectedTargetId) return;
-    const alreadyMapped = mappingsForStage.some(
-      (m) => m.sourceId === selectedSourceId && m.targetId === selectedTargetId
-    );
-    if (alreadyMapped) {
+    if (!selectedSourceId || selectedTargetIds.size === 0) return;
+    const newMappings = [...selectedTargetIds]
+      .filter((targetId) => !mappingsForStage.some(
+        (m) => m.sourceId === selectedSourceId && m.targetId === targetId
+      ))
+      .map((targetId) => ({
+        id: nextLocalMappingId(), stage: selectedStage, sourceId: selectedSourceId, targetId,
+      }));
+    if (newMappings.length === 0) {
       showToast?.('These components are already mapped.', 'info');
       return;
     }
-    setMappings((prev) => [
-      ...prev,
-      { id: nextLocalMappingId(), stage: selectedStage, sourceId: selectedSourceId, targetId: selectedTargetId },
-    ]);
-    setSelectedTargetId(null);
-    showToast?.('Mapping established.', 'success');
+    setMappings((prev) => [...prev, ...newMappings]);
+    setSelectedTargetIds(new Set());
+    showToast?.(`${newMappings.length} mapping${newMappings.length === 1 ? '' : 's'} established.`, 'success');
   }
 
   function removeMapping(mappingId) {
@@ -250,7 +256,13 @@ export function useStagedTraceability(showToast, teamCode) {
       }));
       setMappings((prev) => prev.filter((m) => m.sourceId !== componentId && m.targetId !== componentId));
       if (selectedSourceId === componentId) setSelectedSourceId(null);
-      if (selectedTargetId === componentId) setSelectedTargetId(null);
+      if (selectedTargetIds.has(componentId)) {
+        setSelectedTargetIds((prev) => {
+          const next = new Set(prev);
+          next.delete(componentId);
+          return next;
+        });
+      }
     } catch (err) {
       showToast?.(err.message || 'Failed to remove component.', 'error');
     }
@@ -424,7 +436,7 @@ export function useStagedTraceability(showToast, teamCode) {
     sourceItems,
     targetItems,
     selectedSourceId,
-    selectedTargetId,
+    selectedTargetIds,
     selectSource,
     selectTarget,
 

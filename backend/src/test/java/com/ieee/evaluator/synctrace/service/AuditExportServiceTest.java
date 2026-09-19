@@ -1,8 +1,8 @@
 package com.ieee.evaluator.synctrace.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
 import com.ieee.evaluator.synctrace.model.*;
@@ -45,7 +45,7 @@ class AuditExportServiceTest {
 
     @BeforeEach
     void setUp() {
-        objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        ObjectMapper mapper = JsonMapper.builder().build();
         teamComponentResolver = new TeamComponentResolverService(componentRepository, historyRepository);
         auditExportService = new AuditExportService(
                 goalRepository, componentRepository, findingRepository,

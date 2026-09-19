@@ -1227,6 +1227,26 @@
   padding-right: 0.15rem;
 }
 
+.stm-component-groups {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.stm-component-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.stm-component-group__title {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-left: 3px solid var(--brand);
+  background: var(--brand-soft);
+  color: var(--text-main);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .stm-component-card {
   display: flex;
   align-items: stretch;

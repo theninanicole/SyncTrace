@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getSmartGoals, getAllGoalComponents, getContinuitySummary } from '../api';
-import { fetchClassRoster, fetchTeacherHistory, fetchTeacherSubmissions } from '../../services/dashboardService';
+import { getSmartGoals, getAllGoalComponents } from '../api';
+import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
 
@@ -31,21 +31,6 @@ function resolveComponentTeamCode(component, historyTeamMap) {
   return null;
 }
 
-function mapBackendStatus(status) {
-  switch (status) {
-    case 'READY':
-      return 'ready';
-    case 'ON_TRACK':
-    case 'NOT_STARTED':
-      return 'revision';
-    case 'AT_RISK':
-    case 'BLOCKED':
-      return 'critical';
-    default:
-      return 'critical';
-  }
-}
-
 export function useGroupOverview(showToast) {
   const [goals, setGoals] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -54,12 +39,11 @@ export function useGroupOverview(showToast) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [goalList, roster, history, componentsByGoal, submissions] = await Promise.all([
+      const [goalList, roster, history, componentsByGoal] = await Promise.all([
         getSmartGoals(),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
         getAllGoalComponents().catch(() => ({})),
-        fetchTeacherSubmissions().catch(() => []),
       ]);
       setGoals(goalList);
 
@@ -82,17 +66,6 @@ export function useGroupOverview(showToast) {
         if (s.section && !teamSectionMap.has(key)) teamSectionMap.set(key, s.section);
       });
       
-      // Add teams from submissions as well
-      submissions.forEach((s) => {
-        const meta = extractSubmissionMeta(s.name);
-        if (meta.teamCode) {
-          const key = meta.teamCode.toUpperCase();
-          teamKeys.add(key);
-          if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, meta.teamCode);
-          if (meta.section && !teamSectionMap.has(key)) teamSectionMap.set(key, meta.section);
-        }
-      });
-
       const perGoalComponents = goalList.map((g) => componentsByGoal[g.id] || []);
 
       const coverageByTeam = new Map();
@@ -107,10 +80,11 @@ export function useGroupOverview(showToast) {
           if (!coverageByTeam.has(key)) coverageByTeam.set(key, new Set());
           coverageByTeam.get(key).add(`${goal.id}:${c.docType}`);
 
-          if (c.createdAt) {
+          const traceabilityUpdatedAt = c.mappingCreatedAt || c.createdAt;
+          if (traceabilityUpdatedAt) {
             const prev = lastTraceabilityByTeam.get(key);
-            if (!prev || new Date(c.createdAt) > new Date(prev)) {
-              lastTraceabilityByTeam.set(key, c.createdAt);
+            if (!prev || new Date(traceabilityUpdatedAt) > new Date(prev)) {
+              lastTraceabilityByTeam.set(key, traceabilityUpdatedAt);
             }
           }
         });
@@ -118,45 +92,30 @@ export function useGroupOverview(showToast) {
 
       const totalCells = goalList.length * DOC_TYPES.length;
 
-      const summariesByKey = new Map();
-      await Promise.all([...teamKeys].map(async (key) => {
-        try {
-          const teamCode = displayCodeByKey.get(key) || key;
-          const summary = await getContinuitySummary(teamCode);
-          summariesByKey.set(key, summary);
-        } catch {
-          // Keep local fallback if summary is temporarily unavailable.
-        }
-      }));
-
       const groupList = [...teamKeys].sort((a, b) => a.localeCompare(b)).map((key) => {
         const teamCode = displayCodeByKey.get(key) || key;
         const covered = coverageByTeam.get(key) || new Set();
-        const summary = summariesByKey.get(key);
         const perGoal = goalList.map((goal, gi) => {
           const docTypeStatus = {};
           DOC_TYPES.forEach((dt) => { docTypeStatus[dt] = covered.has(`${goal.id}:${dt}`); });
           const coveredCount = DOC_TYPES.filter((dt) => docTypeStatus[dt]).length;
           return { goalId: goal.id, index: gi, description: goal.description, docTypeStatus, coveredCount };
         });
-        const coveredCount = summary
-          ? summary.goalSummaries.reduce((sum, goalSummary) => sum + goalSummary.coveredDocTypes.length, 0)
-          : perGoal.reduce((sum, g) => sum + g.coveredCount, 0);
-        const summaryTotalCells = summary ? summary.totalGoals * DOC_TYPES.length : totalCells;
-        const percent = summaryTotalCells > 0 ? Math.round((coveredCount / summaryTotalCells) * 100) : 0;
+        const coveredCount = perGoal.reduce((sum, g) => sum + g.coveredCount, 0);
+        const percent = totalCells > 0 ? Math.round((coveredCount / totalCells) * 100) : 0;
 
         return {
           teamCode,
           section: teamSectionMap.get(key) || '',
           percent,
           coveredCount,
-          totalCells: summaryTotalCells,
-          status: summary ? mapBackendStatus(summary.status) : groupStatus(coveredCount, totalCells),
+          totalCells,
+          status: groupStatus(coveredCount, totalCells),
           lastTraceability: lastTraceabilityByTeam.get(key) || null,
           perGoal,
-          readinessScore: summary?.readinessScore ?? percent,
-          readinessStatus: summary?.status ?? null,
-          findingCount: summary?.totalFindings ?? 0,
+          readinessScore: percent,
+          readinessStatus: null,
+          findingCount: null,
         };
       });
 

@@ -131,6 +131,14 @@ public final class ComponentCodeHelper {
         return base;
     }
 
+    public static String extractModuleHeading(String text) {
+        if (text == null || text.isBlank()) return null;
+        Matcher matcher = Pattern.compile(
+            "(?im)^[\\s>*#-]*(module\\s*\\d+\\s*[:\\-–—].*)$"
+        ).matcher(text);
+        return matcher.find() ? matcher.group(1).trim().replaceAll("\\s+", " ") : null;
+    }
+
     private static void parseElementTokens(String segment, Map<String, CodedElement> found) {
         if (segment == null || segment.isBlank()) return;
         Matcher m = ELEMENT_TOKEN.matcher(segment);

@@ -95,23 +95,23 @@ function TraceabilityMatrix({
 
           {filteredRows.map((row) => {
             const complete = visibleDocColumns.every((col) => (row.cells[col.key] || []).length > 0);
+            const goalDetails = [
+              row.description,
+              ...(row.specificDescriptions?.length
+                ? ['', 'Specific objectives:', ...row.specificDescriptions.map((description) => `- ${description}`)]
+                : []),
+            ].join('\n');
             return (
               <div className="trm-row" key={row.goalId}>
-                <div className="trm-cell trm-cell--goal">
+                <div
+                  className="trm-cell trm-cell--goal"
+                  title={goalDetails}
+                  aria-label={goalDetails}
+                >
                   <div className="trm-goal-primary">
                     <span className="trm-goal-kind trm-goal-kind--general">GEN</span>
                     <span className="trm-goal-desc">{row.description}</span>
                   </div>
-                  {row.specificDescriptions?.length > 0 && (
-                    <ul className="trm-goal-specifics">
-                      {row.specificDescriptions.map((description) => (
-                        <li key={description}>
-                          <span className="trm-goal-kind trm-goal-kind--specific">SPEC</span>
-                          <span>{description}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
 
                 {visibleDocColumns.map((col) => {

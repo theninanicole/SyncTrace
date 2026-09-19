@@ -10,8 +10,8 @@ import java.util.Optional;
 @Repository
 public interface SmartGoalRepository extends JpaRepository<SmartGoal, Long> {
     Optional<SmartGoal> findByDescriptionIgnoreCase(String description);
-    List<SmartGoal> findAllByOrderByCreatedAtDesc();
-    List<SmartGoal> findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(String teamCode);
-    List<SmartGoal> findByGoalKindOrderByCreatedAtDesc(SmartGoal.GoalKind goalKind);
-    List<SmartGoal> findByParentGoalIdOrderByCreatedAtDesc(Long parentGoalId);
+    List<SmartGoal> findAllByOrderByCreatedAtAsc();
+    List<SmartGoal> findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(String teamCode);
+    List<SmartGoal> findByGoalKindOrderByCreatedAtAsc(SmartGoal.GoalKind goalKind);
+    List<SmartGoal> findByParentGoalIdOrderByCreatedAtAsc(Long parentGoalId);
 }

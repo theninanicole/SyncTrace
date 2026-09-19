@@ -248,11 +248,11 @@ export function useTeacherDashboard(showToast) {
     }
   }
 
-  async function loadHistory() {
+  async function loadHistory(fileId = null, requestedLimit = 25) {
     try {
       setLoadingHistory(true);
       setError('');
-      const data = await fetchTeacherHistory();
+      const data = await fetchTeacherHistory(fileId, requestedLimit);
       setHistoryLogs(data);
     } catch (err) {
       setError(`Failed to load history: ${err.message}`);
@@ -300,7 +300,7 @@ export function useTeacherDashboard(showToast) {
   }, []);
 
   useEffect(() => {
-      if (currentView === 'reports')  loadHistory();
+      if (currentView === 'reports')  loadHistory(null, 25);
       if (currentView === 'settings') loadSettings();
   }, [currentView]);
 
@@ -629,7 +629,7 @@ export function useTeacherDashboard(showToast) {
       });
 
       try {
-          // 2. Fetch the data AND enforce a minimum 1-second loading screen to prevent UI flickering
+          // 2. Fetch only the selected item's full details; avoid preloading the whole history set.
           const [full] = await Promise.all([
               fetchHistoryItem(item.id),
               new Promise(resolve => setTimeout(resolve, 1000)),

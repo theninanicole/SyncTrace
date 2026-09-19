@@ -5,13 +5,13 @@ function itemLabel(item) {
   return item.name ? componentLabel(item) : item.description;
 }
 
-function MappingControls({ stage, sourceItems, targetItems, selectedSourceId, selectedTargetId, mappingsForStage, onEstablish, onRemoveMapping }) {
+function MappingControls({ stage, sourceItems, targetItems, selectedSourceId, selectedTargetIds, mappingsForStage, onEstablish, onRemoveMapping }) {
   const sourceById = new Map(sourceItems.map((i) => [i.id, i]));
   const targetById = new Map(targetItems.map((i) => [i.id, i]));
 
   const selectedSource = selectedSourceId ? sourceById.get(selectedSourceId) : null;
-  const selectedTarget = selectedTargetId ? targetById.get(selectedTargetId) : null;
-  const canEstablish = Boolean(selectedSourceId && selectedTargetId);
+  const selectedTargets = [...selectedTargetIds].map((id) => targetById.get(id)).filter(Boolean);
+  const canEstablish = Boolean(selectedSourceId && selectedTargets.length > 0);
 
   return (
     <div className="stm-controls">
@@ -21,9 +21,13 @@ function MappingControls({ stage, sourceItems, targetItems, selectedSourceId, se
           <span className="stm-controls__slot-value">{itemLabel(selectedSource) || 'Select a source component'}</span>
         </div>
         <span className="stm-controls__arrow">to</span>
-        <div className={`stm-controls__slot ${selectedTarget ? 'stm-controls__slot--filled' : ''}`}>
+        <div className={`stm-controls__slot ${selectedTargets.length > 0 ? 'stm-controls__slot--filled' : ''}`}>
           <span className="stm-controls__slot-label">Target</span>
-          <span className="stm-controls__slot-value">{itemLabel(selectedTarget) || 'Select a target component'}</span>
+          <span className="stm-controls__slot-value">
+            {selectedTargets.length > 0
+              ? selectedTargets.map(itemLabel).join(', ')
+              : 'Select one or more target components'}
+          </span>
         </div>
       </div>
 

@@ -2,6 +2,8 @@ package com.ieee.evaluator.repository;
 
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.model.EvaluationHistorySummaryDTO;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -18,8 +20,13 @@ public interface EvaluationHistoryRepository extends JpaRepository<EvaluationHis
            "h.id, h.fileId, h.fileName, h.modelUsed, h.evaluatedAt, h.isSent, h.version, h.evaluationResult) " +
            "FROM EvaluationHistory h " +
            "WHERE h.isDeleted = false " +
+           "AND (:fileId IS NULL OR h.fileId = :fileId) " +
            "ORDER BY h.evaluatedAt DESC")
-    List<EvaluationHistorySummaryDTO> findAllSummaries();
+    Page<EvaluationHistorySummaryDTO> findSummaries(@Param("fileId") String fileId, Pageable pageable);
+
+    default List<EvaluationHistorySummaryDTO> findAllSummaries() {
+        return findSummaries(null, Pageable.unpaged()).getContent();
+    }
 
     // Only returns non-deleted sent records for a given group code — includes version and evaluationResult
     @Query("SELECT new com.ieee.evaluator.model.EvaluationHistorySummaryDTO(" +

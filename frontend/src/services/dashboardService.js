@@ -34,8 +34,14 @@ export async function fetchTeacherSubmissions() {
   return Array.from(new Map(data.map((item) => [item.id, item])).values());
 }
 
-export async function fetchTeacherHistory() {
-  return getEvaluationHistory();
+export async function fetchTeacherHistory(fileId = null, limit = 25) {
+  const params = new URLSearchParams();
+  if (fileId) params.set('fileId', fileId);
+  params.set('limit', String(Math.max(1, Math.min(Number(limit) || 25, 100))));
+  const url = `${API_BASE_URL}/ai/history${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch history.');
+  return response.json();
 }
 
 export async function fetchTeacherSettings() {
