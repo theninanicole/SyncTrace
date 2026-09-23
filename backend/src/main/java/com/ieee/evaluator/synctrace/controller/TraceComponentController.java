@@ -6,7 +6,10 @@ import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.service.ComponentCodeHelper;
+import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.service.TeamComponentResolverService;
 import com.ieee.evaluator.synctrace.service.TraceComponentService;
+import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,20 +29,46 @@ public class TraceComponentController {
 
     private final TraceComponentService componentService;
     private final EvaluationHistoryRepository historyRepository;
+    private final TraceComponentRepository componentRepository;
+    private final TeamComponentResolverService teamComponentResolver;
+    private final SyncTraceAccessGuard accessGuard;
 
     public TraceComponentController(
             TraceComponentService componentService,
-            EvaluationHistoryRepository historyRepository) {
+            EvaluationHistoryRepository historyRepository,
+            TraceComponentRepository componentRepository,
+            TeamComponentResolverService teamComponentResolver,
+            SyncTraceAccessGuard accessGuard) {
         this.componentService = componentService;
         this.historyRepository = historyRepository;
+        this.componentRepository = componentRepository;
+        this.teamComponentResolver = teamComponentResolver;
+        this.accessGuard = accessGuard;
     }
 
     @GetMapping
     public ResponseEntity<?> getTraceComponents(
             @RequestParam(required = false) DocType docType,
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String teamCode) {
         try {
-            return ResponseEntity.ok(componentService.getComponents(docType, search));
+            String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
+            if (effectiveTeamCode != null) {
+                accessGuard.requirePublishedIfStudent(effectiveTeamCode);
+            }
+            var summaries = componentService.getComponents(docType, search);
+            if (effectiveTeamCode == null) {
+                return ResponseEntity.ok(summaries);
+            }
+            var allowedIds = componentRepository.findAllById(summaries.stream()
+                    .map(summary -> summary.id())
+                    .toList()).stream()
+                    .filter(component -> teamComponentResolver.belongsToTeam(component, effectiveTeamCode))
+                    .map(TraceComponent::getId)
+                    .collect(java.util.stream.Collectors.toSet());
+            return ResponseEntity.ok(summaries.stream().filter(summary -> allowedIds.contains(summary.id())).toList());
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch components: " + e.getMessage()));
@@ -51,11 +80,23 @@ public class TraceComponentController {
         try {
             Optional<TraceComponent> componentOpt = componentService.getComponentById(id);
             if (componentOpt.isPresent()) {
-                return ResponseEntity.ok(componentOpt.get());
+                TraceComponent component = componentOpt.get();
+                String componentTeamCode = teamComponentResolver.resolveTeamCode(component).orElse(null);
+                String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(componentTeamCode);
+                if (effectiveTeamCode != null) {
+                    accessGuard.requirePublishedIfStudent(effectiveTeamCode);
+                }
+                if (accessGuard.isStudent()
+                        && (componentTeamCode == null || !effectiveTeamCode.equalsIgnoreCase(componentTeamCode))) {
+                    throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to access this component.");
+                }
+                return ResponseEntity.ok(component);
             } else {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", "Component not found"));
             }
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch component: " + e.getMessage()));

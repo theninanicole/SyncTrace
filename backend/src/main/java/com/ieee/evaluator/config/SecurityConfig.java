@@ -37,8 +37,11 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/ai/**").permitAll()
                 .requestMatchers("/error").permitAll()
-                
-                // All other endpoints - permit for now (non-SyncTrace controllers untouched per requirements)
+
+                // SyncTrace requires authentication; per-team/publication scoping happens in the controllers
+                .requestMatchers("/api/synctrace/**").authenticated()
+
+                // All other endpoints - unchanged
                 .anyRequest().permitAll()
             )
             .addFilterBefore(new JwtAuthenticationFilter(jwtValidator, allowlistService), 

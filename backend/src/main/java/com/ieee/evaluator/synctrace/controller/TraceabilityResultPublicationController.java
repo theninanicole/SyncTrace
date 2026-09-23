@@ -2,6 +2,7 @@ package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.synctrace.model.TraceabilityResultPublication;
 import com.ieee.evaluator.synctrace.repository.TraceabilityResultPublicationRepository;
+import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,9 +18,12 @@ import java.util.Map;
 public class TraceabilityResultPublicationController {
 
     private final TraceabilityResultPublicationRepository repository;
+    private final SyncTraceAccessGuard accessGuard;
 
-    public TraceabilityResultPublicationController(TraceabilityResultPublicationRepository repository) {
+    public TraceabilityResultPublicationController(TraceabilityResultPublicationRepository repository,
+            SyncTraceAccessGuard accessGuard) {
         this.repository = repository;
+        this.accessGuard = accessGuard;
     }
 
     @GetMapping("/{teamCode}/publication")
@@ -29,7 +33,8 @@ public class TraceabilityResultPublicationController {
                 return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
             }
 
-            return repository.findByTeamCodeIgnoreCase(teamCode.trim())
+            String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode.trim());
+            return repository.findByTeamCodeIgnoreCase(effectiveTeamCode)
                     .<ResponseEntity<?>>map((publication) -> ResponseEntity.ok(Map.of(
                             "published", true,
                             "teamCode", publication.getTeamCode(),
@@ -37,8 +42,10 @@ public class TraceabilityResultPublicationController {
                     )))
                     .orElseGet(() -> ResponseEntity.ok(Map.of(
                             "published", false,
-                            "teamCode", teamCode.trim()
+                            "teamCode", effectiveTeamCode
                     )));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch traceability result publication."));
@@ -48,6 +55,10 @@ public class TraceabilityResultPublicationController {
     @PostMapping("/{teamCode}/publication")
     public ResponseEntity<?> publishResults(@PathVariable String teamCode) {
         try {
+            if (accessGuard.isStudent()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "Students cannot publish traceability results."));
+            }
             if (teamCode == null || teamCode.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
             }
@@ -77,6 +88,10 @@ public class TraceabilityResultPublicationController {
     @PostMapping("/publish-all")
     public ResponseEntity<?> publishAllResults(@RequestBody Map<String, List<String>> payload) {
         try {
+            if (accessGuard.isStudent()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "Students cannot publish traceability results."));
+            }
             List<String> teamCodes = payload.getOrDefault("teamCodes", List.of());
             if (teamCodes.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "teamCodes is required and cannot be empty"));
