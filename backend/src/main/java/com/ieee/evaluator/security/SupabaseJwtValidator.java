@@ -32,7 +32,7 @@ public class SupabaseJwtValidator {
 
     public SupabaseJwtValidator(@Value("${app.supabase.project-url:}") String projectUrl) {
         // Supabase JWT issuer is the project's GoTrue endpoint
-        this.jwtIssuer = projectUrl.replaceAll("/+$", "") + "/auth/v1";
+        this.jwtIssuer = projectUrl.trim().replaceAll("/+$", "") + "/auth/v1";
         this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = new ObjectMapper();
     }

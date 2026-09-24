@@ -49,9 +49,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         
                         SecurityContextHolder.getContext().setAuthentication(authentication);
+                    } else {
+                        System.out.println("Allowlist miss for email: " + email); // TEMP
                     }
                 }
             } catch (Exception e) {
+                e.printStackTrace(); // TEMP
                 // Invalid token - continue without authentication
                 SecurityContextHolder.clearContext();
             }
