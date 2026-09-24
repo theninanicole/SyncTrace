@@ -4,6 +4,8 @@ import StudentReportModal from '../../components/student/StudentReportModal';
 import StudentReportsTable from '../../components/student/StudentReportsTable';
 import StudentSidebar from '../../components/student/StudentSidebar';
 import StudentTraceabilityResults from '../../components/student/StudentTraceabilityResults';
+import StudentAiTraceabilityCheck from '../../components/student/StudentAiTraceabilityCheck';
+import ToastMessage from '../../components/common/ToastMessage';
 import TutorialOverlay from '../../components/common/TutorialOverlay';
 import { useStudentReports } from '../../hooks/useStudentReports';
 import { useTutorial } from '../../hooks/useTutorial';
@@ -13,9 +15,11 @@ import '../../styles/pages/student-dashboard.css';
 import '../../styles/components/layout.css';
 import '../../styles/components/tutorial.css';
 import { getStudentReportById } from '../../api';
+import { useToast } from '../../hooks/useToast';
 
 function StudentDashboardPage({ studentData }) {
   const vm = useStudentReports(studentData.groupCode);
+  const { toast, showToast, hideToast } = useToast();
   const tutorial = useTutorial({
     tutorialType: TUTORIAL_TYPES.STUDENT,
     userKey: studentData?.email || studentData?.googleEmail || studentData?.studentName,
@@ -48,6 +52,7 @@ function StudentDashboardPage({ studentData }) {
 
   return (
     <div className="layout layout--student">
+      <ToastMessage toast={toast} onClose={hideToast} />
       <StudentSidebar
         studentData={studentData}
         teamMembers={vm.teamMembers}
@@ -129,6 +134,7 @@ function StudentDashboardPage({ studentData }) {
           />
         </div>
 
+        <StudentAiTraceabilityCheck teamCode={studentData.groupCode} showToast={showToast} />
         <StudentTraceabilityResults teamCode={studentData.groupCode} />
       </main>
 

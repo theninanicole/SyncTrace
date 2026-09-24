@@ -1,6 +1,7 @@
 package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ArtifactKind;
+import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
@@ -201,11 +202,17 @@ public class SmartGoalService {
 
     @Transactional
     public void addGoalComponents(Long goalId, List<Long> componentIds) {
+        addGoalComponents(goalId, componentIds, GoalComponentMapping.MappingSource.MANUAL);
+    }
+
+    @Transactional
+    public void addGoalComponents(Long goalId, List<Long> componentIds, GoalComponentMapping.MappingSource source) {
         for (Long componentId : componentIds) {
             if (mappingRepository.findByGoalIdAndComponentId(goalId, componentId).isEmpty()) {
-                var mapping = new com.ieee.evaluator.synctrace.model.GoalComponentMapping();
+                var mapping = new GoalComponentMapping();
                 mapping.setGoalId(goalId);
                 mapping.setComponentId(componentId);
+                mapping.setSource(source);
                 mapping.setCreatedAt(LocalDateTime.now());
                 mappingRepository.save(mapping);
             }

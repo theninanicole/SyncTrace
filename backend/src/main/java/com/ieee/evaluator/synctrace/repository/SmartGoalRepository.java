@@ -12,6 +12,7 @@ public interface SmartGoalRepository extends JpaRepository<SmartGoal, Long> {
     Optional<SmartGoal> findByDescriptionIgnoreCase(String description);
     List<SmartGoal> findAllByOrderByCreatedAtAsc();
     List<SmartGoal> findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(String teamCode);
+    List<SmartGoal> findByTeamCodeIgnoreCaseOrderByCreatedAtDesc(String teamCode);
     List<SmartGoal> findByGoalKindOrderByCreatedAtAsc(SmartGoal.GoalKind goalKind);
     List<SmartGoal> findByParentGoalIdOrderByCreatedAtAsc(Long parentGoalId);
 }

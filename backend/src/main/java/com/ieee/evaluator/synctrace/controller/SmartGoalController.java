@@ -2,7 +2,9 @@ package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
+import com.ieee.evaluator.synctrace.model.MappingStage;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
+import com.ieee.evaluator.synctrace.service.AiTraceabilityMappingService;
 import com.ieee.evaluator.synctrace.service.SmartGoalService;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
 import org.springframework.http.HttpStatus;
@@ -20,12 +22,43 @@ public class SmartGoalController {
     private final SmartGoalService goalService;
     private final SmartGoalRepository goalRepository;
     private final SyncTraceAccessGuard accessGuard;
+    private final AiTraceabilityMappingService aiTraceabilityMappingService;
 
     public SmartGoalController(SmartGoalService goalService, SmartGoalRepository goalRepository,
-            SyncTraceAccessGuard accessGuard) {
+            SyncTraceAccessGuard accessGuard, AiTraceabilityMappingService aiTraceabilityMappingService) {
         this.goalService = goalService;
         this.goalRepository = goalRepository;
         this.accessGuard = accessGuard;
+        this.aiTraceabilityMappingService = aiTraceabilityMappingService;
+    }
+
+    @PostMapping("/ai-mapping")
+    public ResponseEntity<?> generateAiMapping(
+            @RequestParam String teamCode,
+            @RequestParam String stage,
+            @RequestParam(required = false) String aiModel) {
+        try {
+            String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
+            if (effectiveTeamCode == null || effectiveTeamCode.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
+            }
+
+            MappingStage mappingStage;
+            try {
+                mappingStage = MappingStage.valueOf(stage);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Unknown stage: " + stage));
+            }
+
+            Map<String, Object> result = aiTraceabilityMappingService.generateMappings(
+                    effectiveTeamCode, mappingStage, aiModel, accessGuard.isStudent());
+            return ResponseEntity.ok(result);
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to generate AI traceability mapping: " + e.getMessage()));
+        }
     }
 
     @GetMapping

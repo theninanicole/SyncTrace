@@ -10,6 +10,7 @@ import ExtractSmartGoalsDialog from '../../components/teacher/mapping/ExtractSma
 import ExtractComponentsDialog from '../../components/teacher/mapping/ExtractComponentsDialog';
 import AddComponentDialog from '../../components/teacher/mapping/AddComponentDialog';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
+import { generateAiTraceabilityMapping } from '../../api';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import { useStagedTraceability } from '../../hooks/useStagedTraceability';
 import './TraceabilityMappingPage.css';
@@ -23,6 +24,7 @@ function TraceabilityMappingPage({ focusStep }) {
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
   const [addComponentDocType, setAddComponentDocType] = useState(null);
   const [previewComponent, setPreviewComponent] = useState(null);
+  const [isAiMapping, setIsAiMapping] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -39,6 +41,20 @@ function TraceabilityMappingPage({ focusStep }) {
     if (isSaving) return 'Saving mapping…';
     if (isVerifying) return 'Verifying traceability…';
     return 'Save Mapping';
+  }
+
+  async function handleAiMapping() {
+    if (!selectedTeam || isAiMapping) return;
+    setIsAiMapping(true);
+    try {
+      const result = await generateAiTraceabilityMapping(selectedTeam, tm.selectedStage);
+      showToast(`AI mapping complete: ${result.createdLinks || 0} link(s) created.`, 'success');
+      tm.refreshComponents();
+    } catch (error) {
+      showToast(error.message || 'Failed to generate AI traceability mapping.', 'error');
+    } finally {
+      setIsAiMapping(false);
+    }
   }
 
   const missingArtifact = tm.sourceItems.length === 0 || tm.targetItems.length === 0;
@@ -76,6 +92,9 @@ function TraceabilityMappingPage({ focusStep }) {
             </button>
             <button className="btn btn--primary" disabled={isBusy} onClick={tm.saveMapping}>
               {saveButtonLabel()}
+            </button>
+            <button className="btn btn--soft" disabled={isBusy || isAiMapping || !selectedTeam} onClick={handleAiMapping}>
+              {isAiMapping ? 'Mapping with AI...' : 'Auto-map with AI'}
             </button>
           </div>
         }
