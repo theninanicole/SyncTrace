@@ -148,17 +148,6 @@ export const addGoalComponents = async (goalId, componentIds, stage) => {
     return data;
 };
 
-export const generateAiTraceabilityMapping = async (teamCode, stage, aiModel) => {
-    const params = new URLSearchParams({ teamCode, stage });
-    if (aiModel) params.set('aiModel', aiModel);
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/ai-mapping?${params.toString()}`, {
-        method: 'POST',
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to generate AI traceability mapping.');
-    return data;
-};
-
 export const removeGoalComponent = async (goalId, componentId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
         method: 'DELETE',
