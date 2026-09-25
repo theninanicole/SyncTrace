@@ -201,6 +201,13 @@ export const getContinuityFindings = async (teamCode) => {
     return data;
 };
 
+export const getContinuityAnalysisStatus = async (teamCode) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/analysis-status/${encodeURIComponent(teamCode)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load continuity analysis status.');
+    return data;
+};
+
 export const generateDiagnosticRecommendations = async (teamCode, model, sessionId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/recommendations`, {
         method: 'POST',

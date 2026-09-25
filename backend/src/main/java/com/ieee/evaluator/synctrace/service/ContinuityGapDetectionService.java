@@ -1,11 +1,13 @@
 package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
+import com.ieee.evaluator.synctrace.model.ContinuityAnalysisRun;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding.Severity;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
+import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
@@ -23,6 +25,7 @@ public class ContinuityGapDetectionService {
     private final GoalComponentMappingRepository mappingRepository;
     private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
+    private final ContinuityAnalysisRunRepository analysisRunRepository;
     private final SmartGoalRepository goalRepository;
     private final TeamComponentResolverService teamComponentResolver;
 
@@ -30,11 +33,13 @@ public class ContinuityGapDetectionService {
             GoalComponentMappingRepository mappingRepository,
             TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
+            ContinuityAnalysisRunRepository analysisRunRepository,
             SmartGoalRepository goalRepository,
             TeamComponentResolverService teamComponentResolver) {
         this.mappingRepository = mappingRepository;
         this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
+        this.analysisRunRepository = analysisRunRepository;
         this.goalRepository = goalRepository;
         this.teamComponentResolver = teamComponentResolver;
     }
@@ -71,7 +76,16 @@ public class ContinuityGapDetectionService {
             checkGap(findings, teamCode, currentGoalId, DocType.SDD, DocType.IMPLEMENTATION, byDocType);
         }
 
-        return findingRepository.saveAll(findings);
+        List<ContinuityFinding> savedFindings = findingRepository.saveAll(findings);
+        if (teamCode != null && !teamCode.isBlank()) {
+            ContinuityAnalysisRun run = analysisRunRepository
+                .findByTeamCodeIgnoreCase(teamCode.trim())
+                .orElseGet(ContinuityAnalysisRun::new);
+            run.setTeamCode(teamCode.trim());
+            run.setLastAnalyzedAt(LocalDateTime.now());
+            analysisRunRepository.save(run);
+        }
+        return savedFindings;
     }
 
     private void checkMissingSrs(

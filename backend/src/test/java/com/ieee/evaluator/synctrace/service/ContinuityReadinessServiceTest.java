@@ -64,7 +64,7 @@ class ContinuityReadinessServiceTest {
         goal.setDescription("Unstarted Goal");
         goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
         when(mappingRepository.findByGoalId(goalId)).thenReturn(List.of());
 
@@ -84,7 +84,7 @@ class ContinuityReadinessServiceTest {
         goal.setDescription("Goal A");
         goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
         stubFullyCoveredGoal(goalId);
 
@@ -112,7 +112,7 @@ class ContinuityReadinessServiceTest {
         unstartedGoal.setDescription("Unstarted goal");
         unstartedGoal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE))
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE))
                 .thenReturn(List.of(coveredGoal, unstartedGoal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
         stubFullyCoveredGoal(coveredGoalId);
@@ -141,7 +141,7 @@ class ContinuityReadinessServiceTest {
         srsComponent.setId(50L);
         srsComponent.setDocType(DocType.SRS);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
         when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
         when(mappingRepository.findByGoalId(goalId)).thenReturn(List.of(mapping));
         when(componentRepository.findAllById(anyList())).thenReturn(List.of(srsComponent));
@@ -170,7 +170,7 @@ class ContinuityReadinessServiceTest {
         goal.setDescription("Goal C");
         goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
         stubFullyCoveredGoal(goalId);
 
         ContinuityFinding criticalFinding = new ContinuityFinding();

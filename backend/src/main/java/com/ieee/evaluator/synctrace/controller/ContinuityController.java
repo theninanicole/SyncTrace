@@ -1,8 +1,10 @@
 package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
+import com.ieee.evaluator.synctrace.model.ContinuityAnalysisRun;
 import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
+import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.service.ContinuityGapDetectionService;
 import com.ieee.evaluator.synctrace.service.ContinuityReadinessService;
 import com.ieee.evaluator.synctrace.service.DiagnosticRecommendationService;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 
 @RestController
 @RequestMapping("/api/synctrace/continuity")
@@ -23,18 +26,21 @@ public class ContinuityController {
     private final ContinuityReadinessService readinessService;
     private final DiagnosticRecommendationService recommendationService;
     private final ContinuityFindingRepository findingRepository;
+    private final ContinuityAnalysisRunRepository analysisRunRepository;
 
     public ContinuityController(
             SourceCodeAlignmentService alignmentService,
             ContinuityGapDetectionService gapDetectionService,
             ContinuityReadinessService readinessService,
             DiagnosticRecommendationService recommendationService,
-            ContinuityFindingRepository findingRepository) {
+            ContinuityFindingRepository findingRepository,
+            ContinuityAnalysisRunRepository analysisRunRepository) {
         this.alignmentService = alignmentService;
         this.gapDetectionService = gapDetectionService;
         this.readinessService = readinessService;
         this.recommendationService = recommendationService;
         this.findingRepository = findingRepository;
+        this.analysisRunRepository = analysisRunRepository;
     }
 
     @PostMapping("/align")
@@ -107,6 +113,23 @@ public class ContinuityController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch findings: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/analysis-status/{teamCode}")
+    public ResponseEntity<?> getAnalysisStatus(@PathVariable String teamCode) {
+        try {
+            if (teamCode == null || teamCode.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
+            }
+
+            return ResponseEntity.ok(analysisRunRepository.findByTeamCodeIgnoreCase(teamCode.trim())
+                    .map(ContinuityAnalysisRun::getLastAnalyzedAt)
+                    .map(lastAnalyzedAt -> Map.of("lastAnalyzedAt", lastAnalyzedAt))
+                    .orElseGet(() -> Collections.singletonMap("lastAnalyzedAt", null)));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch analysis status: " + e.getMessage()));
         }
     }
 

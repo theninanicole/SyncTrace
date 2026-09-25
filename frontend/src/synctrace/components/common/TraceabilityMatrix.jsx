@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CircleCheck, CircleX, Link2, Search } from 'lucide-react';
+import { CircleCheck, CircleDashed, CircleX, Link2, Search } from 'lucide-react';
 import { componentLabel } from '../../constants';
 import './TraceabilityMatrix.css';
 
@@ -17,6 +17,7 @@ function TraceabilityMatrix({
   onAddClick,
   emptyMessage = 'No SMART goals to display.',
   readOnly = false,
+  analysisStatus = null,
 }) {
   const [search, setSearch] = useState('');
 
@@ -94,7 +95,8 @@ function TraceabilityMatrix({
           )}
 
           {filteredRows.map((row) => {
-            const complete = visibleDocColumns.length > 0 && row.validationIssues?.length === 0;
+            const hasAnalysisRun = Boolean(analysisStatus?.lastAnalyzedAt);
+            const complete = hasAnalysisRun && visibleDocColumns.length > 0 && row.validationIssues?.length === 0;
             const goalDetails = [
               row.description,
               ...(row.specificDescriptions?.length
@@ -149,7 +151,11 @@ function TraceabilityMatrix({
                 })}
 
                 <div className="trm-cell trm-cell--last trm-cell--status">
-                  {complete ? (
+                  {!hasAnalysisRun ? (
+                    <span className="trm-status-badge trm-status-badge--neutral" title="Run AI Analysis to verify continuity.">
+                      <CircleDashed size={14} /> Not analyzed
+                    </span>
+                  ) : complete ? (
                     <span className="trm-status-badge trm-status-badge--pass" title="All required components have downstream coverage.">
                       <CircleCheck size={14} /> Passed
                     </span>

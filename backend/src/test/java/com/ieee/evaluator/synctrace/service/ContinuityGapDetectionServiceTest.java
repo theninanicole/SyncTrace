@@ -1,6 +1,8 @@
 package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
+import com.ieee.evaluator.synctrace.model.ContinuityAnalysisRun;
+import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
@@ -34,6 +36,7 @@ class ContinuityGapDetectionServiceTest {
     @Mock private GoalComponentMappingRepository mappingRepository;
     @Mock private TraceComponentRepository componentRepository;
     @Mock private ContinuityFindingRepository findingRepository;
+    @Mock private ContinuityAnalysisRunRepository analysisRunRepository;
     @Mock private SmartGoalRepository goalRepository;
     @Mock private TeamComponentResolverService teamComponentResolver;
 
@@ -44,7 +47,8 @@ class ContinuityGapDetectionServiceTest {
     @BeforeEach
     void setUp() {
         service = new ContinuityGapDetectionService(
-                mappingRepository, componentRepository, findingRepository, goalRepository, teamComponentResolver);
+            mappingRepository, componentRepository, findingRepository, analysisRunRepository,
+            goalRepository, teamComponentResolver);
     }
 
     @Test
@@ -75,6 +79,7 @@ class ContinuityGapDetectionServiceTest {
         assertTrue(findings.stream().noneMatch(f ->
             f.getDocTypeFrom() == DocType.SDD && f.getDocTypeTo() == DocType.IMPLEMENTATION));
         findings.forEach(f -> assertEquals(TEAM_CODE, f.getTeamCode()));
+        verify(analysisRunRepository).save(any(ContinuityAnalysisRun.class));
     }
 
     @Test

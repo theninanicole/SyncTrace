@@ -86,43 +86,20 @@
   gap:0.6rem;
 }
 
-/* Dark mode readability fix: redefine the text tokens the results page relies on
-   so mapped cell values (SRS/SDD/etc. text) stay legible instead of
-   inheriting a low-contrast ambient color. This does NOT touch --ok,
-   --danger-text, --warn, or --brand, so the Missing/Passed/Failed pills
-   keep their own colors untouched. Covers both a toggled ".dark" class
-   and the OS-level prefers-color-scheme setting — delete whichever
-   doesn't match how your app switches themes. */
-.dark .tp-root {
+/* Keep results-page text readable when the app's dark theme is selected. */
+[data-theme='dark'] .tp-root {
   --text-main: #f5f5f7;
   --text-muted: #b8bcc4;
 }
 
-.dark .tp-summary__text,
-.dark .tp-kpi__value,
-.dark .tp-kpi__label {
+[data-theme='dark'] .tp-summary__text,
+[data-theme='dark'] .tp-kpi__value,
+[data-theme='dark'] .tp-kpi__label {
   color:#f5f5f7;
 }
 
-.dark .tp-kpi__subtitle {
+[data-theme='dark'] .tp-kpi__subtitle {
   color:#b8bcc4;
-}
-
-@media (prefers-color-scheme: dark) {
-  .tp-root {
-    --text-main: #f5f5f7;
-    --text-muted: #b8bcc4;
-  }
-
-  .tp-summary__text,
-  .tp-kpi__value,
-  .tp-kpi__label {
-    color:#f5f5f7;
-  }
-
-  .tp-kpi__subtitle {
-    color:#b8bcc4;
-  }
 }
 
 @media (max-width: 1100px) {

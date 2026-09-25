@@ -26,6 +26,7 @@ function TraceabilityResultsPage({ onNavigate }) {
     rows,
     metrics,
     aiIssues,
+    analysisStatus,
     setAiFindings,
     setAiRecommendations,
     refresh: loadResults,
@@ -87,6 +88,7 @@ function TraceabilityResultsPage({ onNavigate }) {
       setAiProgress({ step: 'RECOMMENDING', message: 'Generating diagnostic recommendations...', percent: 60 });
       const recommendationsData = await generateDiagnosticRecommendations(selectedTeam, 'auto', sessionId);
       setAiRecommendations(recommendationsData.recommendations || []);
+      await loadResults();
 
       setAiProgress({ step: 'COMPLETE', message: 'AI analysis complete', percent: 100 });
 
@@ -185,6 +187,7 @@ function TraceabilityResultsPage({ onNavigate }) {
           focusDocType: docType,
         })}
         aiIssues={aiIssues}
+        analysisStatus={analysisStatus}
       />
 
       <ComponentDetailModal

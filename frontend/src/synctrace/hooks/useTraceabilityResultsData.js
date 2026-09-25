@@ -1,28 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getSmartGoals, getAllGoalComponents, getContinuityFindings, getDiagnosticRecommendations } from '../api';
+import {
+  getSmartGoals,
+  getAllGoalComponents,
+  getContinuityFindings,
+  getContinuityAnalysisStatus,
+  getDiagnosticRecommendations,
+} from '../api';
 import { DOC_TYPES, groupGoalsIntoClusters } from '../constants';
 import { buildAiIssues } from '../utils/gapIssues';
-
-function conceptTokens(component) {
-  return new Set(
-    `${component.name || ''} ${component.codeName || ''} ${component.content || ''}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(' ')
-      .filter((token) => token.length >= 4),
-  );
-}
-
-function semanticallyCorresponds(source, target) {
-  const sourceTokens = conceptTokens(source);
-  const targetTokens = conceptTokens(target);
-  if (sourceTokens.size === 0 || targetTokens.size === 0) return false;
-  let overlap = 0;
-  sourceTokens.forEach((token) => {
-    if (targetTokens.has(token)) overlap += 1;
-  });
-  return overlap >= Math.max(1, Math.ceil(Math.min(sourceTokens.size, targetTokens.size) * 0.2));
-}
 
 export function useTraceabilityResultsData(teamCode, options = {}) {
   const { showToast, enabled = true } = options;
@@ -31,6 +16,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   const [loading, setLoading] = useState(true);
   const [aiFindings, setAiFindings] = useState([]);
   const [aiRecommendations, setAiRecommendations] = useState([]);
+  const [analysisStatus, setAnalysisStatus] = useState(null);
 
   const loadResults = useCallback(async () => {
     if (!enabled) {
@@ -38,21 +24,24 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
       setComponentsByGoal({});
       setAiFindings([]);
       setAiRecommendations([]);
+      setAnalysisStatus(null);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      const [goalList, allGoalComponents, findingsData, recommendationsData] = await Promise.all([
+      const [goalList, allGoalComponents, findingsData, analysisStatusData, recommendationsData] = await Promise.all([
         getSmartGoals(teamCode || undefined),
         getAllGoalComponents(),
         teamCode ? getContinuityFindings(teamCode).catch(() => ({ findings: [] })) : { findings: [] },
+        teamCode ? getContinuityAnalysisStatus(teamCode).catch(() => null) : null,
         teamCode ? getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })) : { recommendations: [] },
       ]);
       setGoals(goalList);
       setComponentsByGoal(allGoalComponents);
       setAiFindings(findingsData.findings || []);
+      setAnalysisStatus(analysisStatusData);
       setAiRecommendations(recommendationsData.recommendations || []);
     } catch (err) {
       showToast?.(err.message, 'error');
@@ -66,7 +55,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   }, [loadResults]);
 
   const rows = useMemo(() => {
-    return groupGoalsIntoClusters(goals).map((cluster, clusterIndex) => {
+    return groupGoalsIntoClusters(goals).map((cluster) => {
       const memberGoalIds = [cluster.primary.id, ...cluster.children.map((child) => child.id)];
       const mappedById = new Map();
       memberGoalIds.forEach((goalId) => {
@@ -79,32 +68,16 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
       DOC_TYPES.forEach((dt) => {
         cells[dt] = [...mappedById.values()].filter((component) => component.docType === dt);
       });
-      const requiredSrsKinds = new Set(['USE_CASE', 'ACTIVITY', 'WIREFRAME']);
-      const srsKinds = new Set((cells.SRS || []).map((component) => component.artifactKind));
       const validationIssues = [];
-      requiredSrsKinds.forEach((kind) => {
-        if (!srsKinds.has(kind)) validationIssues.push(`Missing SRS ${kind} artifact`);
-      });
-      [
-        ['SRS', 'SDD'],
-        ['SRS', 'SPMP'],
-        ['SRS', 'STD'],
-        ['SDD', 'IMPLEMENTATION'],
-      ].forEach(([fromType, toType]) => {
-        // Only validate a downstream stage after that stage has been established.
-        if (cells[toType].length === 0) return;
-        const unmatchedSources = cells[fromType].filter(
-          (source) => !cells[toType].some((target) => semanticallyCorresponds(source, target)),
-        );
-        if (unmatchedSources.length > 0) {
-          validationIssues.push(`${unmatchedSources.length} ${fromType} component(s) lack semantic correspondence in ${toType}`);
-        }
-      });
+      const memberGoalIdSet = new Set(memberGoalIds);
+      aiFindings
+        .filter((finding) => memberGoalIdSet.has(finding.goalId))
+        .forEach((finding) => validationIssues.push(finding.description));
       const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
       return {
         goalId: cluster.id,
         memberGoalIds,
-        code: `G${clusterIndex + 1}`,
+        code: `G${cluster.primary.id}`,
         description: cluster.primary.description,
         specificDescriptions: cluster.children.map((child) => child.description),
         teamCode: cluster.primary.teamCode || '',
@@ -115,7 +88,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
         createdAt: cluster.primary.createdAt,
       };
     });
-  }, [componentsByGoal, goals]);
+  }, [aiFindings, componentsByGoal, goals]);
 
   const metrics = useMemo(() => {
     let missingCells = 0;
@@ -167,6 +140,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
     metrics,
     aiFindings,
     aiRecommendations,
+    analysisStatus,
     aiIssues,
     setAiFindings,
     setAiRecommendations,

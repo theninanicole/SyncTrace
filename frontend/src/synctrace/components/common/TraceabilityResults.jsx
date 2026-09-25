@@ -11,6 +11,7 @@ function TraceabilityResults({
   onComponentClick,
   onAddClick,
   aiIssues = [],
+  analysisStatus = null,
   issuesEmptyMessage = 'Run AI Analysis to detect continuity gaps.',
   readOnly = false,
 }) {
@@ -44,6 +45,7 @@ function TraceabilityResults({
             onAddClick={onAddClick}
             emptyMessage="No traceability data available."
             readOnly={readOnly}
+            analysisStatus={analysisStatus}
           />
 
           {enrichedRows.length > 0 && (

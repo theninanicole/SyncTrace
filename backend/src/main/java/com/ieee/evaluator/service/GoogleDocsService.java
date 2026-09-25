@@ -89,7 +89,7 @@ public class GoogleDocsService {
             else if (PDF_MIME.equals(mimeType)) {
                 progress(emitter, sessionId, "EXTRACTING",
                     "Downloading PDF document", 15);
-                byte[] pdfBytes = downloadBlobBytes(fileId);
+                byte[] pdfBytes = downloadBlobBytesViaHttp(fileId);
 
                 progress(emitter, sessionId, "EXTRACTING",
                     "Extracting text content from PDF", 22);
@@ -155,7 +155,7 @@ public class GoogleDocsService {
             String mimeType = fileInfo.getMimeType();
 
             if (GOOGLE_DOC_MIME.equals(mimeType)) return exportGoogleDocAsPdf(fileId);
-            if (PDF_MIME.equals(mimeType))        return downloadBlobBytes(fileId);
+            if (PDF_MIME.equals(mimeType))        return downloadBlobBytesViaHttp(fileId);
             if (DOCX_MIME.equals(mimeType)) {
                 byte[] docxBytes = downloadBlobBytesViaHttp(fileId);
                 return convertDocxToTemporaryGoogleDocAndExportPdf(fileInfo, docxBytes);
@@ -239,13 +239,6 @@ public class GoogleDocsService {
 
     private byte[] exportGoogleDocAsPdf(String fileId) throws Exception {
         try (InputStream is = driveService.files().export(fileId, PDF_MIME).executeMediaAsInputStream()) {
-            return is.readAllBytes();
-        }
-    }
-
-    // Kept for PDF which still works fine via the Drive API
-    private byte[] downloadBlobBytes(String fileId) throws Exception {
-        try (InputStream is = driveService.files().get(fileId).setAlt("media").executeMediaAsInputStream()) {
             return is.readAllBytes();
         }
     }

@@ -177,6 +177,11 @@
   color: #ef4444;
 }
 
+.trm-status-badge--neutral {
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  color: var(--text-muted);
+}
+
 .trm-goal-desc {
   font-size: 0.82rem;
   color: var(--text-muted);
