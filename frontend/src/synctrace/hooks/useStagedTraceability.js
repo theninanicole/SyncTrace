@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getSmartGoals,
+  getLatestMappingActivity,
   extractSmartGoalsFromProposal,
   getTraceComponents,
   extractTraceComponents,
@@ -110,6 +111,19 @@ export function useStagedTraceability(showToast, teamCode) {
   const [saveState, setSaveState] = useState('idle'); // idle | saving | verifying
   const [verification, setVerification] = useState({ status: 'idle', message: null, verifiedAt: null });
   const [lastError, setLastError] = useState(null);
+  const [mappingActivity, setMappingActivity] = useState(null);
+
+  const loadMappingActivity = useCallback(async () => {
+    if (!teamCode) {
+      setMappingActivity(null);
+      return;
+    }
+    try {
+      setMappingActivity(await getLatestMappingActivity(teamCode));
+    } catch {
+      setMappingActivity(null);
+    }
+  }, [teamCode]);
 
   const loadSmartGoals = useCallback(async () => {
     setLoadingGoals(true);
@@ -127,7 +141,7 @@ export function useStagedTraceability(showToast, teamCode) {
     setLoadingComponents(true);
     try {
       const [allComponents, history] = await Promise.all([
-        getTraceComponents(),
+        getTraceComponents(undefined, undefined, teamCode),
         getEvaluationHistory().catch(() => []),
       ]);
       const historyTeamMap = new Map(
@@ -160,6 +174,7 @@ export function useStagedTraceability(showToast, teamCode) {
   useEffect(() => {
     loadSmartGoals();
     loadComponents();
+    loadMappingActivity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamCode]);
 
@@ -369,10 +384,12 @@ export function useStagedTraceability(showToast, teamCode) {
 
       const persistResults = await Promise.allSettled(
         [...goalComponentPairs.entries()].map(([goalId, componentIds]) =>
-          addGoalComponents(goalId, [...componentIds])
+          addGoalComponents(goalId, [...componentIds], selectedStage)
         )
       );
       const persistFailures = persistResults.filter((r) => r.status === 'rejected').length;
+
+      if (persistFailures === 0) await loadMappingActivity();
 
       setSaveState('verifying');
 
@@ -449,6 +466,7 @@ export function useStagedTraceability(showToast, teamCode) {
     saveState,
     verification,
     lastError,
+    mappingActivity,
     saveMapping,
   };
 }

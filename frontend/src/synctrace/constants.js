@@ -16,6 +16,10 @@ export const STAGES = [
   { key: 'SDD_IMPLEMENTATION', label: 'SDD → Implementation', sourceType: 'SDD', targetType: 'IMPLEMENTATION' },
 ];
 
+export function mappingStageLabel(stageKey) {
+  return STAGES.find((stage) => stage.key === stageKey)?.label || stageKey;
+}
+
 export const DOC_TYPE_LABELS = {
   PROPOSAL: 'Proposal',
   SRS: 'SRS',

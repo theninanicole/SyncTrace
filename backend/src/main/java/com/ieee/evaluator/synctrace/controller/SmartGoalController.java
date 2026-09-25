@@ -2,11 +2,16 @@ package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
+import com.ieee.evaluator.synctrace.model.TraceComponent;
+import com.ieee.evaluator.synctrace.model.TraceabilityMappingActivity;
 import com.ieee.evaluator.synctrace.model.MappingStage;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.service.AiTraceabilityMappingService;
 import com.ieee.evaluator.synctrace.service.SmartGoalService;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.service.TeamComponentResolverService;
+import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
+import com.ieee.evaluator.synctrace.repository.TraceabilityMappingActivityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,13 +28,21 @@ public class SmartGoalController {
     private final SmartGoalRepository goalRepository;
     private final SyncTraceAccessGuard accessGuard;
     private final AiTraceabilityMappingService aiTraceabilityMappingService;
+    private final TraceComponentRepository componentRepository;
+    private final TeamComponentResolverService teamComponentResolver;
+        private final TraceabilityMappingActivityRepository mappingActivityRepository;
 
     public SmartGoalController(SmartGoalService goalService, SmartGoalRepository goalRepository,
-            SyncTraceAccessGuard accessGuard, AiTraceabilityMappingService aiTraceabilityMappingService) {
+            SyncTraceAccessGuard accessGuard, AiTraceabilityMappingService aiTraceabilityMappingService,
+            TraceComponentRepository componentRepository, TeamComponentResolverService teamComponentResolver,
+            TraceabilityMappingActivityRepository mappingActivityRepository) {
         this.goalService = goalService;
         this.goalRepository = goalRepository;
         this.accessGuard = accessGuard;
         this.aiTraceabilityMappingService = aiTraceabilityMappingService;
+        this.componentRepository = componentRepository;
+        this.teamComponentResolver = teamComponentResolver;
+        this.mappingActivityRepository = mappingActivityRepository;
     }
 
     @PostMapping("/ai-mapping")
@@ -65,9 +78,6 @@ public class SmartGoalController {
     public ResponseEntity<?> getSmartGoals(@RequestParam(required = false) String teamCode) {
         try {
             String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
-            if (effectiveTeamCode != null) {
-                accessGuard.requirePublishedIfStudent(effectiveTeamCode);
-            }
             return ResponseEntity.ok(goalService.getAllGoalsWithCategoryStatus(effectiveTeamCode));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
@@ -84,8 +94,6 @@ public class SmartGoalController {
             if (effectiveTeamCode == null) {
                 return ResponseEntity.ok(goalService.getAllGoalComponentsMap());
             }
-            accessGuard.requirePublishedIfStudent(effectiveTeamCode);
-
             Set<Long> goalIds = goalService.getAllGoalsWithCategoryStatus(effectiveTeamCode).stream()
                     .map(goal -> ((Number) goal.get("id")).longValue())
                     .collect(java.util.stream.Collectors.toSet());
@@ -154,9 +162,6 @@ public class SmartGoalController {
                     .orElseThrow(() -> new SyncTraceAccessGuard.AccessDeniedException("Goal not found"));
             String goalTeamCode = goal.getTeamCode();
             String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(goalTeamCode);
-            if (effectiveTeamCode != null) {
-                accessGuard.requirePublishedIfStudent(effectiveTeamCode);
-            }
             if (accessGuard.isStudent() && (goalTeamCode == null || !effectiveTeamCode.equalsIgnoreCase(goalTeamCode))) {
                 throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to access this goal.");
             }
@@ -171,17 +176,57 @@ public class SmartGoalController {
     }
 
     @PostMapping("/{goalId}/components")
-    public ResponseEntity<?> addGoalComponents(@PathVariable Long goalId, @RequestBody Map<String, List<Long>> payload) {
+    public ResponseEntity<?> addGoalComponents(@PathVariable Long goalId, @RequestBody Map<String, Object> payload) {
         try {
-            List<Long> componentIds = payload.get("componentIds");
-            if (componentIds == null || componentIds.isEmpty()) {
+            Object rawComponentIds = payload.get("componentIds");
+            if (!(rawComponentIds instanceof List<?> rawIds) || rawIds.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "componentIds is required"));
             }
+            List<Long> componentIds = rawIds.stream()
+                    .map(value -> ((Number) value).longValue())
+                    .toList();
+            SmartGoal goal = goalRepository.findById(goalId)
+                    .orElseThrow(() -> new SyncTraceAccessGuard.AccessDeniedException("Goal not found"));
+            String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(goal.getTeamCode());
+            if (accessGuard.isStudent()
+                    && (goal.getTeamCode() == null || !effectiveTeamCode.equalsIgnoreCase(goal.getTeamCode()))) {
+                throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to update this goal.");
+            }
+            List<TraceComponent> components = componentRepository.findAllById(componentIds);
+            if (components.size() != new java.util.HashSet<>(componentIds).size()
+                    || (accessGuard.isStudent() && components.stream()
+                    .anyMatch(component -> !teamComponentResolver.belongsToTeam(component, effectiveTeamCode)))) {
+                throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to map one or more components.");
+            }
             goalService.addGoalComponents(goalId, componentIds);
+            TraceabilityMappingActivity activity = new TraceabilityMappingActivity();
+            activity.setTeamCode(effectiveTeamCode);
+            activity.setStage(payload.get("stage") != null ? String.valueOf(payload.get("stage")) : null);
+            activity.setPerformedBy(accessGuard.currentUserEmail());
+            activity.setMappingCount(componentIds.size());
+            activity.setPerformedAt(java.time.LocalDateTime.now());
+            mappingActivityRepository.save(activity);
             return ResponseEntity.ok(Map.of("message", "Components added successfully"));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to add components: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/activity")
+    public ResponseEntity<?> getLatestMappingActivity(@RequestParam String teamCode) {
+        try {
+            String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
+            return ResponseEntity.ok(mappingActivityRepository
+                    .findTopByTeamCodeIgnoreCaseOrderByPerformedAtDesc(effectiveTeamCode)
+                    .orElse(null));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch mapping activity: " + e.getMessage()));
         }
     }
 

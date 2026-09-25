@@ -11,7 +11,7 @@ function countBy(mappingsForStage, key) {
   return counts;
 }
 
-function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPreviewComponentClick, onRemoveComponentClick }) {
+function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPreviewComponentClick, onRemoveComponentClick, readOnly = false }) {
   const {
     stage,
     smartGoalsExtracted,
@@ -62,6 +62,7 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
               mappedCounts={mappedSourceCounts}
               onSelect={selectSource}
               onExtractClick={onExtractGoalsClick}
+              readOnly={readOnly}
             />
           </div>
         ) : (
@@ -76,9 +77,9 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
             groupLabelsByItem={componentGroups}
             documentGroupsByItem={documentGroups}
             onSelect={selectSource}
-            onAdd={() => onAddComponentClick(stage.sourceType)}
+              onAdd={readOnly ? undefined : () => onAddComponentClick(stage.sourceType)}
             onPreview={onPreviewComponentClick}
-            onRemove={(id) => onRemoveComponentClick(stage.sourceType, id)}
+              onRemove={readOnly ? undefined : (id) => onRemoveComponentClick(stage.sourceType, id)}
             emptyHint={`Extract or add ${DOC_TYPE_LABELS[stage.sourceType]} components before establishing ${stage.label} mappings.`}
           />
         )}
@@ -96,7 +97,7 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
       />
 
       <section className="stm-column-wrap">
-        <ComponentLibraryColumn
+          <ComponentLibraryColumn
           heading={`${DOC_TYPE_LABELS[stage.targetType]} Components (Target)`}
           docType={stage.targetType}
           items={targetItems}
@@ -107,9 +108,9 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
           groupLabelsByItem={componentGroups}
           documentGroupsByItem={documentGroups}
           onSelect={selectTarget}
-          onAdd={() => onAddComponentClick(stage.targetType)}
+          onAdd={readOnly ? undefined : () => onAddComponentClick(stage.targetType)}
           onPreview={onPreviewComponentClick}
-          onRemove={(id) => onRemoveComponentClick(stage.targetType, id)}
+          onRemove={readOnly ? undefined : (id) => onRemoveComponentClick(stage.targetType, id)}
           emptyHint={`No ${DOC_TYPE_LABELS[stage.targetType]} components are currently available. Extract or add components before establishing ${stage.label} mappings.`}
         />
       </section>

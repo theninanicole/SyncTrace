@@ -13,6 +13,8 @@ import ComponentDetailModal from '../../components/teacher/ComponentDetailModal'
 import { generateAiTraceabilityMapping } from '../../api';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import { useStagedTraceability } from '../../hooks/useStagedTraceability';
+import { formatDateTime } from '../../../utils/dashboardUtils';
+import { mappingStageLabel } from '../../constants';
 import './TraceabilityMappingPage.css';
 
 function TraceabilityMappingPage({ focusStep }) {
@@ -27,7 +29,6 @@ function TraceabilityMappingPage({ focusStep }) {
   const [isAiMapping, setIsAiMapping] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (focusStep === 'goals') setIsExtractGoalsOpen(true);
     if (focusStep === 'library') setIsExtractComponentsOpen(true);
   }, [focusStep]);
@@ -105,6 +106,13 @@ function TraceabilityMappingPage({ focusStep }) {
         <MappingStageSelector stages={tm.stages} selectedStage={tm.selectedStage} onChange={tm.setSelectedStage} />
         <MappingStatusBadge status={tm.stageStatus} />
       </div>
+
+      {tm.mappingActivity && (
+        <p className="tm-muted stm-mapping-activity">
+          Last mapping: {formatDateTime(tm.mappingActivity.performedAt)} by {tm.mappingActivity.performedBy}
+          {tm.mappingActivity.stage ? ` (${mappingStageLabel(tm.mappingActivity.stage)})` : ''}
+        </p>
+      )}
 
       {missingWarning && (
         <div className="stm-warning-banner">

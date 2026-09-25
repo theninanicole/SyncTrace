@@ -191,6 +191,7 @@ public class GitHubController {
                 ? component.getArtifactKind()
                 : com.ieee.evaluator.synctrace.model.ArtifactKind.UNSPECIFIED,
             component.getName(),
+            component.getContent(),
             ComponentCodeHelper.resolveDisplayCode(
                 component.getCodeName(), component.getName(), component.getContent()),
             component.getAiExtracted(),

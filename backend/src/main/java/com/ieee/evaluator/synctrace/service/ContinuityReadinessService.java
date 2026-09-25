@@ -1,6 +1,7 @@
 package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
+import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -76,6 +78,7 @@ public class ContinuityReadinessService {
         int totalGoals = teamGoals.size();
         int readyGoals = 0;
         int totalMappedComponents = 0;
+        int strictReadyGoals = 0;
         double totalCoverageFraction = 0;
         List<Map<String, Object>> goalSummaries = new ArrayList<>();
 
@@ -85,9 +88,9 @@ public class ContinuityReadinessService {
                 .filter(finding -> Objects.equals(goal.getId(), finding.getGoalId()))
                 .count();
 
-            if (goalFindingCount == 0 && coveredTypes.containsAll(REQUIRED_DOC_TYPES)) {
-                readyGoals++;
-            }
+            boolean strictCoverage = hasStrictComponentCoverage(goal.getId(), teamCode);
+            if (goalFindingCount == 0 && coveredTypes.containsAll(REQUIRED_DOC_TYPES)) readyGoals++;
+            if (goalFindingCount == 0 && strictCoverage) strictReadyGoals++;
 
             totalMappedComponents += coveredTypes.size();
             totalCoverageFraction += (double) coveredTypes.size() / REQUIRED_DOC_TYPES.size();
@@ -129,12 +132,12 @@ public class ContinuityReadinessService {
             : Math.max(0, Math.min(100, averageCoveragePercent - findingsPenalty));
 
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("teamCode", teamCode);
-        summary.put("status", statusFor(totalGoals, totalMappedComponents, readinessScore, totalFindings));
+        summary.put("status", statusFor(totalGoals, totalMappedComponents, readinessScore, totalFindings, strictReadyGoals));
         summary.put("readinessScore", readinessScore);
         summary.put("averageCoveragePercent", averageCoveragePercent);
         summary.put("totalGoals", totalGoals);
         summary.put("readyGoals", readyGoals);
+        summary.put("strictReadyGoals", strictReadyGoals);
         summary.put("totalFindings", totalFindings);
         summary.put("findingsWithRecommendations", resolvedFindingCount);
         summary.put("totalMappedComponents", totalMappedComponents);
@@ -169,13 +172,54 @@ public class ContinuityReadinessService {
             if (component == null) {
                 continue;
             }
-            if (!teamComponentResolver.belongsToTeam(component, teamCode)) {
-                continue;
-            }
+            if (!teamComponentResolver.belongsToTeam(component, teamCode)) continue;
             coveredTypes.add(component.getDocType());
         }
-
         return coveredTypes;
+    }
+
+    private boolean hasStrictComponentCoverage(Long goalId, String teamCode) {
+        Map<DocType, List<TraceComponent>> byType = new EnumMap<>(DocType.class);
+        for (TraceComponent component : getTeamComponents(goalId, teamCode)) {
+            byType.computeIfAbsent(component.getDocType(), ignored -> new ArrayList<>()).add(component);
+        }
+        Set<ArtifactKind> requiredSrsKinds = Set.of(ArtifactKind.USE_CASE, ArtifactKind.ACTIVITY, ArtifactKind.WIREFRAME);
+        Set<ArtifactKind> presentSrsKinds = byType.getOrDefault(DocType.SRS, List.of()).stream()
+                .map(TraceComponent::getArtifactKind).collect(java.util.stream.Collectors.toSet());
+        if (!presentSrsKinds.containsAll(requiredSrsKinds)) return false;
+        return hasSemanticCoverage(byType, DocType.SRS, DocType.SDD)
+                && hasSemanticCoverage(byType, DocType.SRS, DocType.SPMP)
+                && hasSemanticCoverage(byType, DocType.SRS, DocType.STD)
+                && hasSemanticCoverage(byType, DocType.SDD, DocType.IMPLEMENTATION);
+    }
+
+    private List<TraceComponent> getTeamComponents(Long goalId, String teamCode) {
+        List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(goalId);
+        if (mappings.isEmpty()) return List.of();
+        List<Long> componentIds = mappings.stream()
+            .map(GoalComponentMapping::getComponentId)
+            .filter(Objects::nonNull)
+            .toList();
+        return componentRepository.findAllById(componentIds).stream()
+            .filter(component -> teamComponentResolver.belongsToTeam(component, teamCode))
+            .toList();
+    }
+
+    private boolean hasSemanticCoverage(Map<DocType, List<TraceComponent>> byType, DocType from, DocType to) {
+        List<TraceComponent> targets = byType.getOrDefault(to, List.of());
+        return !byType.getOrDefault(from, List.of()).isEmpty()
+                && byType.get(from).stream().allMatch(source -> targets.stream()
+                .anyMatch(target -> semanticTokens(source).stream().anyMatch(semanticTokens(target)::contains)));
+    }
+
+    private Set<String> semanticTokens(TraceComponent component) {
+        Set<String> tokens = new HashSet<>();
+        String text = (Objects.toString(component.getName(), "") + " "
+                + Objects.toString(component.getCodeName(), "") + " "
+                + Objects.toString(component.getContent(), ""))
+                .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ");
+        for (String token : text.split(" ")) if (token.length() >= 4) tokens.add(token);
+        return tokens;
     }
 
     private Map<Long, List<DiagnosticRecommendation>> getRecommendationsByFinding(List<ContinuityFinding> findings) {
@@ -205,11 +249,12 @@ public class ContinuityReadinessService {
             + severityCounts.getOrDefault("LOW", 0) * PENALTY_LOW;
     }
 
-    private String statusFor(int totalGoals, int totalMappedComponents, int readinessScore, int totalFindings) {
+        private String statusFor(int totalGoals, int totalMappedComponents, int readinessScore,
+            int totalFindings, int strictReadyGoals) {
         if (totalGoals == 0 || totalMappedComponents == 0) {
             return "NOT_STARTED";
         }
-        if (totalFindings == 0 && readinessScore == 100) {
+        if (totalFindings == 0 && readinessScore == 100 && strictReadyGoals == totalGoals) {
             return "READY";
         }
         if (readinessScore >= 75) {

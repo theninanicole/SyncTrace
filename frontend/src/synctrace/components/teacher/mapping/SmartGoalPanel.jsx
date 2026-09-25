@@ -10,6 +10,7 @@ function SmartGoalPanel({
   mappedCounts,
   onSelect,
   onExtractClick,
+  readOnly = false,
 }) {
   const clusters = groupGoalsIntoClusters(smartGoals);
 
@@ -34,9 +35,7 @@ function SmartGoalPanel({
       <div className="stm-column-empty">
         <p>No SMART Goals available yet.</p>
         <p className="tm-muted">Extract the structured General and Specific objectives from the evaluated proposal to begin Proposal → SRS mapping.</p>
-        <button className="btn btn--primary" onClick={onExtractClick}>
-          Extract SMART Goals
-        </button>
+        {!readOnly && <button className="btn btn--primary" onClick={onExtractClick}>Extract SMART Goals</button>}
       </div>
     );
   }
@@ -45,9 +44,7 @@ function SmartGoalPanel({
     return (
       <div className="stm-column-empty">
         <p>The proposal did not yield any SMART goals.</p>
-        <button className="btn btn--soft" onClick={onExtractClick}>
-          Re-extract SMART Goals
-        </button>
+        {!readOnly && <button className="btn btn--soft" onClick={onExtractClick}>Re-extract SMART Goals</button>}
       </div>
     );
   }

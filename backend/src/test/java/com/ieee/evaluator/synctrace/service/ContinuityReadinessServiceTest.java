@@ -93,7 +93,8 @@ class ContinuityReadinessServiceTest {
         assertEquals(1, summary.get("totalGoals"));
         assertEquals(1, summary.get("readyGoals"));
         assertEquals(100, summary.get("readinessScore"));
-        assertEquals("READY", summary.get("status"));
+        assertEquals("ON_TRACK", summary.get("status"));
+        assertEquals(0, summary.get("strictReadyGoals"));
     }
 
     @Test

@@ -9,8 +9,10 @@ import com.ieee.evaluator.synctrace.model.GoalComponentMapping.MappingSource;
 import com.ieee.evaluator.synctrace.model.MappingStage;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
+import com.ieee.evaluator.synctrace.model.TraceabilityMappingActivity;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
+import com.ieee.evaluator.synctrace.repository.TraceabilityMappingActivityRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,8 @@ public class AiTraceabilityMappingService {
     private final EvaluationHistoryRepository evaluationHistoryRepository;
     private final TeamComponentResolverService teamComponentResolver;
     private final SmartGoalService goalService;
+    private final TraceabilityMappingActivityRepository mappingActivityRepository;
+    private final SyncTraceAccessGuard accessGuard;
     private final Map<String, AiProvider> providers;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -37,12 +41,16 @@ public class AiTraceabilityMappingService {
             EvaluationHistoryRepository evaluationHistoryRepository,
             TeamComponentResolverService teamComponentResolver,
             SmartGoalService goalService,
+            TraceabilityMappingActivityRepository mappingActivityRepository,
+            SyncTraceAccessGuard accessGuard,
             List<AiProvider> providerList) {
         this.goalRepository = goalRepository;
         this.componentRepository = componentRepository;
         this.evaluationHistoryRepository = evaluationHistoryRepository;
         this.teamComponentResolver = teamComponentResolver;
         this.goalService = goalService;
+        this.mappingActivityRepository = mappingActivityRepository;
+        this.accessGuard = accessGuard;
         this.providers = providerList.stream()
                 .collect(Collectors.toMap(p -> p.getProviderName().toLowerCase(), Function.identity()));
     }
@@ -73,7 +81,7 @@ public class AiTraceabilityMappingService {
         }
 
         String response = provider.complete(buildPrompt(goals, candidates, stage));
-        return applyMappings(response, goals, candidates);
+        return applyMappings(response, goals, candidates, teamCode, stage);
     }
 
     private List<TraceComponent> filterToSentComponents(List<TraceComponent> components) {
@@ -124,7 +132,8 @@ public class AiTraceabilityMappingService {
 
     @Transactional
     private Map<String, Object> applyMappings(
-            String aiResponse, List<SmartGoal> goals, List<TraceComponent> candidates) throws Exception {
+            String aiResponse, List<SmartGoal> goals, List<TraceComponent> candidates,
+            String teamCode, MappingStage stage) throws Exception {
         Set<Long> validGoalIds = goals.stream().map(SmartGoal::getId).collect(Collectors.toSet());
         Set<Long> validComponentIds = candidates.stream().map(TraceComponent::getId).collect(Collectors.toSet());
 
@@ -157,6 +166,16 @@ public class AiTraceabilityMappingService {
             goalService.addGoalComponents(goalId, componentIds, MappingSource.AI_SUGGESTED);
             createdLinks += componentIds.size();
             goalsTouched++;
+        }
+
+        if (createdLinks > 0) {
+            TraceabilityMappingActivity activity = new TraceabilityMappingActivity();
+            activity.setTeamCode(teamCode);
+            activity.setStage(stage.name());
+            activity.setPerformedBy(accessGuard.currentUserEmail());
+            activity.setMappingCount(createdLinks);
+            activity.setPerformedAt(java.time.LocalDateTime.now());
+            mappingActivityRepository.save(activity);
         }
 
         return Map.of("createdLinks", createdLinks, "goalsTouched", goalsTouched);

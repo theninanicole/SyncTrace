@@ -53,9 +53,6 @@ public class TraceComponentController {
             @RequestParam(required = false) String teamCode) {
         try {
             String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
-            if (effectiveTeamCode != null) {
-                accessGuard.requirePublishedIfStudent(effectiveTeamCode);
-            }
             var summaries = componentService.getComponents(docType, search);
             if (effectiveTeamCode == null) {
                 return ResponseEntity.ok(summaries);
@@ -83,9 +80,6 @@ public class TraceComponentController {
                 TraceComponent component = componentOpt.get();
                 String componentTeamCode = teamComponentResolver.resolveTeamCode(component).orElse(null);
                 String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(componentTeamCode);
-                if (effectiveTeamCode != null) {
-                    accessGuard.requirePublishedIfStudent(effectiveTeamCode);
-                }
                 if (accessGuard.isStudent()
                         && (componentTeamCode == null || !effectiveTeamCode.equalsIgnoreCase(componentTeamCode))) {
                     throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to access this component.");

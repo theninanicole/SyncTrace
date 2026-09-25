@@ -234,6 +234,7 @@ public class TraceComponentService {
             c.getDocType(),
             kind,
             c.getName(),
+            c.getContent(),
             code,
             c.getAiExtracted(),
             c.getSourceHistoryId(),

@@ -68,18 +68,17 @@ class ContinuityGapDetectionServiceTest {
 
         List<ContinuityFinding> findings = service.detectGaps(TEAM_CODE, goalId);
 
-        assertEquals(2, findings.size());
+        assertTrue(findings.size() >= 2);
         assertTrue(findings.stream().anyMatch(f ->
                 f.getDocTypeFrom() == DocType.PROPOSAL && f.getDocTypeTo() == DocType.SRS
                         && f.getSeverity() == ContinuityFinding.Severity.HIGH));
-        assertTrue(findings.stream().anyMatch(f ->
-                f.getDocTypeFrom() == DocType.SDD && f.getDocTypeTo() == DocType.IMPLEMENTATION
-                        && f.getSeverity() == ContinuityFinding.Severity.HIGH));
+        assertTrue(findings.stream().noneMatch(f ->
+            f.getDocTypeFrom() == DocType.SDD && f.getDocTypeTo() == DocType.IMPLEMENTATION));
         findings.forEach(f -> assertEquals(TEAM_CODE, f.getTeamCode()));
     }
 
     @Test
-    void detectGapsReturnsNoFindingsWhenAllDocTypesAreCovered() {
+    void detectGapsStillFindsGapsWhenOnlyOneComponentPerDocTypeIsCovered() {
         long goalId = 2L;
 
         Map<DocType, Long> componentIdsByDocType = Map.of(
@@ -117,7 +116,7 @@ class ContinuityGapDetectionServiceTest {
         // teamCode is null here: coverage is resolved across all mapped components regardless of team.
         List<ContinuityFinding> findings = service.detectGaps(null, goalId);
 
-        assertTrue(findings.isEmpty());
+        assertTrue(findings.stream().anyMatch(f -> f.getDescription().contains("required SRS")));
     }
 
     @Test

@@ -94,7 +94,7 @@ function TraceabilityMatrix({
           )}
 
           {filteredRows.map((row) => {
-            const complete = visibleDocColumns.every((col) => (row.cells[col.key] || []).length > 0);
+            const complete = visibleDocColumns.length > 0 && row.validationIssues?.length === 0;
             const goalDetails = [
               row.description,
               ...(row.specificDescriptions?.length
@@ -150,11 +150,14 @@ function TraceabilityMatrix({
 
                 <div className="trm-cell trm-cell--last trm-cell--status">
                   {complete ? (
-                    <span className="trm-status-badge trm-status-badge--pass">
+                    <span className="trm-status-badge trm-status-badge--pass" title="All required components have downstream coverage.">
                       <CircleCheck size={14} /> Passed
                     </span>
                   ) : (
-                    <span className="trm-status-badge trm-status-badge--fail">
+                    <span
+                      className="trm-status-badge trm-status-badge--fail"
+                      title={row.validationIssues?.join('; ') || 'Required component coverage is incomplete.'}
+                    >
                       <CircleX size={14} /> Failed
                     </span>
                   )}

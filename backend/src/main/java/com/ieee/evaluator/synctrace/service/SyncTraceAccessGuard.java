@@ -32,6 +32,10 @@ public class SyncTraceAccessGuard {
         return currentUser().isStudent();
     }
 
+    public String currentUserEmail() {
+        return currentUser().email();
+    }
+
     public String resolveEffectiveTeamCode(String requestedTeamCode) {
         AuthenticatedUser user = currentUser();
 

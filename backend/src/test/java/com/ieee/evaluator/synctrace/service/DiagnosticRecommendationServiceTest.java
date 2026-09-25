@@ -73,7 +73,7 @@ class DiagnosticRecommendationServiceTest {
 
         when(findingRepository.findByTeamCode(TEAM_CODE)).thenReturn(List.of(finding));
         when(openAiProvider.complete(anyString())).thenReturn(
-                "[{\"rootCause\":\"No design doc mapped\",\"recommendation\":\"Add an SDD component\",\"priority\":\"HIGH\"}]");
+                "[{\"findingId\":5,\"rootCause\":\"No design doc mapped\",\"recommendation\":\"Add an SDD component\",\"priority\":\"HIGH\"}]");
         when(recommendationRepository.save(any(DiagnosticRecommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -116,7 +116,7 @@ class DiagnosticRecommendationServiceTest {
 
         when(findingRepository.findByTeamCode(TEAM_CODE)).thenReturn(List.of(finding));
         when(openAiProvider.complete(anyString())).thenReturn(
-                "```json\n[{\"rootCause\":\"No design doc\",\"recommendation\":\"Add SDD\",\"priority\":\"HIGH\"}]\n```");
+                "```json\n[{\"findingId\":9,\"rootCause\":\"No design doc\",\"recommendation\":\"Add SDD\",\"priority\":\"HIGH\"}]\n```");
         when(recommendationRepository.save(any(DiagnosticRecommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 

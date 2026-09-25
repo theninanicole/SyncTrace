@@ -22,6 +22,14 @@ export const getSmartGoals = async (teamCode) => {
     return data;
 };
 
+export const getLatestMappingActivity = async (teamCode) => {
+    const params = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/activity?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch mapping activity.');
+    return data;
+};
+
 export const createSmartGoal = async (description, options = {}) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals`, {
         method: 'POST',
@@ -47,10 +55,11 @@ export const deleteSmartGoal = async (goalId) => {
     return data;
 };
 
-export const getTraceComponents = async (docType, search) => {
+export const getTraceComponents = async (docType, search, teamCode) => {
     const params = new URLSearchParams();
     if (docType) params.set('docType', docType);
     if (search) params.set('search', search);
+    if (teamCode) params.set('teamCode', teamCode);
     const query = params.toString();
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components${query ? `?${query}` : ''}`);
     const data = await response.json();
@@ -128,11 +137,11 @@ export const getTraceComponent = async (componentId) => {
     return data;
 };
 
-export const addGoalComponents = async (goalId, componentIds) => {
+export const addGoalComponents = async (goalId, componentIds, stage) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ componentIds }),
+        body: JSON.stringify({ componentIds, stage }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to add components.');

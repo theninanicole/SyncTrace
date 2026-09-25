@@ -3,6 +3,27 @@ import { getSmartGoals, getAllGoalComponents, getContinuityFindings, getDiagnost
 import { DOC_TYPES, groupGoalsIntoClusters } from '../constants';
 import { buildAiIssues } from '../utils/gapIssues';
 
+function conceptTokens(component) {
+  return new Set(
+    `${component.name || ''} ${component.codeName || ''} ${component.content || ''}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(' ')
+      .filter((token) => token.length >= 4),
+  );
+}
+
+function semanticallyCorresponds(source, target) {
+  const sourceTokens = conceptTokens(source);
+  const targetTokens = conceptTokens(target);
+  if (sourceTokens.size === 0 || targetTokens.size === 0) return false;
+  let overlap = 0;
+  sourceTokens.forEach((token) => {
+    if (targetTokens.has(token)) overlap += 1;
+  });
+  return overlap >= Math.max(1, Math.ceil(Math.min(sourceTokens.size, targetTokens.size) * 0.2));
+}
+
 export function useTraceabilityResultsData(teamCode, options = {}) {
   const { showToast, enabled = true } = options;
   const [goals, setGoals] = useState([]);
@@ -58,6 +79,27 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
       DOC_TYPES.forEach((dt) => {
         cells[dt] = [...mappedById.values()].filter((component) => component.docType === dt);
       });
+      const requiredSrsKinds = new Set(['USE_CASE', 'ACTIVITY', 'WIREFRAME']);
+      const srsKinds = new Set((cells.SRS || []).map((component) => component.artifactKind));
+      const validationIssues = [];
+      requiredSrsKinds.forEach((kind) => {
+        if (!srsKinds.has(kind)) validationIssues.push(`Missing SRS ${kind} artifact`);
+      });
+      [
+        ['SRS', 'SDD'],
+        ['SRS', 'SPMP'],
+        ['SRS', 'STD'],
+        ['SDD', 'IMPLEMENTATION'],
+      ].forEach(([fromType, toType]) => {
+        // Only validate a downstream stage after that stage has been established.
+        if (cells[toType].length === 0) return;
+        const unmatchedSources = cells[fromType].filter(
+          (source) => !cells[toType].some((target) => semanticallyCorresponds(source, target)),
+        );
+        if (unmatchedSources.length > 0) {
+          validationIssues.push(`${unmatchedSources.length} ${fromType} component(s) lack semantic correspondence in ${toType}`);
+        }
+      });
       const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
       return {
         goalId: cluster.id,
@@ -68,7 +110,8 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
         teamCode: cluster.primary.teamCode || '',
         cells,
         coveredTypes,
-        aligned: coveredTypes === DOC_TYPES.length,
+        aligned: validationIssues.length === 0,
+        validationIssues,
         createdAt: cluster.primary.createdAt,
       };
     });

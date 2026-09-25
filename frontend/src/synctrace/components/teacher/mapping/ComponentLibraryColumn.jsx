@@ -46,9 +46,7 @@ function ComponentLibraryColumn({
     <div className="stm-column">
       <div className="stm-column__header">
         <span>{heading}</span>
-        <button className="stm-mini-btn" onClick={onAdd}>
-          Add
-        </button>
+        {onAdd && <button className="stm-mini-btn" onClick={onAdd}>Add</button>}
       </div>
 
       <label className="stm-search">
@@ -68,9 +66,7 @@ function ComponentLibraryColumn({
         <div className="stm-column-empty">
           <p>No {docType} components are currently available.</p>
           <p className="tm-muted">{emptyHint}</p>
-          <button className="btn btn--soft" onClick={onAdd}>
-            Add Component
-          </button>
+          {onAdd && <button className="btn btn--soft" onClick={onAdd}>Add Component</button>}
         </div>
       ) : filtered.length === 0 ? (
         <p className="tm-muted stm-column-noresults">No components match “{query}”.</p>

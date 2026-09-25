@@ -4,6 +4,7 @@ import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding.Severity;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
+import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
@@ -57,7 +58,7 @@ public class ContinuityGapDetectionService {
             if (!goalRepository.existsById(currentGoalId)) continue;
 
             List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(currentGoalId);
-            Map<DocType, List<GoalComponentMapping>> byDocType = mapTeamScopedComponentsByDocType(mappings, teamCode);
+            Map<DocType, List<com.ieee.evaluator.synctrace.model.TraceComponent>> byDocType = mapTeamScopedComponentsByDocType(mappings, teamCode);
 
             if (teamCode != null && !teamCode.isBlank() && byDocType.isEmpty()) {
                 continue;
@@ -75,16 +76,25 @@ public class ContinuityGapDetectionService {
 
     private void checkMissingSrs(
             List<ContinuityFinding> findings, String teamCode, Long goalId,
-            Map<DocType, List<GoalComponentMapping>> byDocType) {
-        boolean hasSrs = byDocType.containsKey(DocType.SRS) && !byDocType.get(DocType.SRS).isEmpty();
-        if (!hasSrs) {
+            Map<DocType, List<com.ieee.evaluator.synctrace.model.TraceComponent>> componentsByDocType) {
+        Set<ArtifactKind> requiredKinds = Set.of(ArtifactKind.USE_CASE, ArtifactKind.ACTIVITY, ArtifactKind.WIREFRAME);
+        Set<ArtifactKind> presentKinds = componentsByDocType.getOrDefault(DocType.SRS, List.of()).stream()
+                .map(com.ieee.evaluator.synctrace.model.TraceComponent::getArtifactKind)
+                .collect(java.util.stream.Collectors.toSet());
+        for (ArtifactKind requiredKind : requiredKinds) {
+            if (!presentKinds.contains(requiredKind)) {
+                addFinding(findings, teamCode, goalId, DocType.PROPOSAL, DocType.SRS, Severity.HIGH,
+                        "SMART Goal is missing required SRS " + requiredKind + " component.");
+            }
+        }
+        if (!componentsByDocType.containsKey(DocType.SRS)) {
             ContinuityFinding finding = new ContinuityFinding();
             finding.setTeamCode(teamCode);
             finding.setGoalId(goalId);
             finding.setDocTypeFrom(DocType.PROPOSAL);
             finding.setDocTypeTo(DocType.SRS);
             finding.setSeverity(Severity.HIGH);
-            finding.setDescription("Goal has no mapped SRS component. This represents a continuity gap.");
+            finding.setDescription("SMART Goal has no mapped SRS component.");
             finding.setDetectedAt(LocalDateTime.now());
             findings.add(finding);
         }
@@ -96,30 +106,25 @@ public class ContinuityGapDetectionService {
             Long goalId,
             DocType fromType,
             DocType toType,
-            Map<DocType, List<GoalComponentMapping>> byDocType) {
-
-        boolean hasFrom = byDocType.containsKey(fromType) && !byDocType.get(fromType).isEmpty();
-        boolean hasTo = byDocType.containsKey(toType) && !byDocType.get(toType).isEmpty();
-
-        if (hasFrom && !hasTo) {
-            ContinuityFinding finding = new ContinuityFinding();
-            finding.setTeamCode(teamCode);
-            finding.setGoalId(goalId);
-            finding.setDocTypeFrom(fromType);
-            finding.setDocTypeTo(toType);
-            finding.setSeverity(Severity.HIGH);
-            finding.setDescription(String.format(
-                "Goal has components in %s but no mapped components in %s. This represents a continuity gap.",
-                fromType, toType));
-            finding.setDetectedAt(LocalDateTime.now());
-            findings.add(finding);
+            Map<DocType, List<com.ieee.evaluator.synctrace.model.TraceComponent>> componentsByDocType) {
+        List<com.ieee.evaluator.synctrace.model.TraceComponent> sources = componentsByDocType.getOrDefault(fromType, List.of());
+        List<com.ieee.evaluator.synctrace.model.TraceComponent> targets = componentsByDocType.getOrDefault(toType, List.of());
+        // A missing target means this downstream stage has not been established yet;
+        // do not report it as an issue until the stage contains mapped components.
+        if (sources.isEmpty() || targets.isEmpty()) return;
+        for (com.ieee.evaluator.synctrace.model.TraceComponent source : sources) {
+            boolean matched = targets.stream().anyMatch(target -> semanticallyCorresponds(source, target));
+            if (!matched) {
+                addFinding(findings, teamCode, goalId, fromType, toType, Severity.HIGH,
+                        "Component '" + source.getName() + "' has no semantically corresponding " + toType + " component.");
+            }
         }
     }
 
-    private Map<DocType, List<GoalComponentMapping>> mapTeamScopedComponentsByDocType(
+    private Map<DocType, List<com.ieee.evaluator.synctrace.model.TraceComponent>> mapTeamScopedComponentsByDocType(
             List<GoalComponentMapping> mappings,
             String teamCode) {
-        Map<DocType, List<GoalComponentMapping>> byDocType = new HashMap<>();
+        Map<DocType, List<com.ieee.evaluator.synctrace.model.TraceComponent>> byDocType = new HashMap<>();
 
         if (mappings.isEmpty()) {
             return byDocType;
@@ -143,11 +148,46 @@ public class ContinuityGapDetectionService {
                 continue;
             }
 
-            byDocType.computeIfAbsent(component.getDocType(), ignored -> new ArrayList<>())
-                .add(mapping);
+            byDocType.computeIfAbsent(component.getDocType(), ignored -> new ArrayList<>()).add(component);
         }
 
         return byDocType;
+    }
+
+    private boolean semanticallyCorresponds(
+            com.ieee.evaluator.synctrace.model.TraceComponent source,
+            com.ieee.evaluator.synctrace.model.TraceComponent target) {
+        Set<String> sourceTokens = conceptTokens(source);
+        Set<String> targetTokens = conceptTokens(target);
+        sourceTokens.retainAll(targetTokens);
+        return !sourceTokens.isEmpty();
+    }
+
+    private Set<String> conceptTokens(com.ieee.evaluator.synctrace.model.TraceComponent component) {
+        String text = String.join(" ",
+                Objects.toString(component.getName(), ""),
+                Objects.toString(component.getCodeName(), ""),
+                Objects.toString(component.getContent(), ""))
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ");
+        Set<String> tokens = new HashSet<>();
+        for (String token : text.split(" ")) {
+            if (token.length() >= 4) tokens.add(token);
+        }
+        return tokens;
+    }
+
+    private void addFinding(List<ContinuityFinding> findings, String teamCode, Long goalId,
+            DocType fromType, DocType toType, Severity severity, String description) {
+        ContinuityFinding finding = new ContinuityFinding();
+        finding.setTeamCode(teamCode);
+        finding.setGoalId(goalId);
+        finding.setDocTypeFrom(fromType);
+        finding.setDocTypeTo(toType);
+        finding.setSeverity(severity);
+        finding.setDescription(description);
+        finding.setDetectedAt(LocalDateTime.now());
+        findings.add(finding);
     }
 
     private List<Long> getAllGoalIds() {

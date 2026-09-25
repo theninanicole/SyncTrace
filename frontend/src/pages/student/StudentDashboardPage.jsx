@@ -4,7 +4,7 @@ import StudentReportModal from '../../components/student/StudentReportModal';
 import StudentReportsTable from '../../components/student/StudentReportsTable';
 import StudentSidebar from '../../components/student/StudentSidebar';
 import StudentTraceabilityResults from '../../components/student/StudentTraceabilityResults';
-import StudentAiTraceabilityCheck from '../../components/student/StudentAiTraceabilityCheck';
+import StudentTraceabilityMapping from '../../components/student/StudentTraceabilityMapping';
 import ToastMessage from '../../components/common/ToastMessage';
 import TutorialOverlay from '../../components/common/TutorialOverlay';
 import { useStudentReports } from '../../hooks/useStudentReports';
@@ -134,7 +134,11 @@ function StudentDashboardPage({ studentData }) {
           />
         </div>
 
-        <StudentAiTraceabilityCheck teamCode={studentData.groupCode} showToast={showToast} />
+        <StudentTraceabilityMapping
+          teamCode={studentData.groupCode}
+          showToast={showToast}
+          hasEvaluatedDocument={vm.allReportCount > 0}
+        />
         <StudentTraceabilityResults teamCode={studentData.groupCode} />
       </main>
 

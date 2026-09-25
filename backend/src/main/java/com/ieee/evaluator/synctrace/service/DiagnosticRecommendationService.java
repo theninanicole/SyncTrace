@@ -192,7 +192,7 @@ public class DiagnosticRecommendationService {
 
     private String buildDiagnosticPrompt(List<ContinuityFinding> findings) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Analyze the following continuity findings and provide root cause analysis and recommendations.\n\n");
+        sb.append("Analyze the following continuity findings and provide a short, clear explanation and fix.\n\n");
         
         sb.append("FINDINGS:\n");
         for (ContinuityFinding finding : findings) {
@@ -204,10 +204,10 @@ public class DiagnosticRecommendationService {
         }
         
         sb.append("\nReturn your response as a raw JSON array of objects. Each object should have:\n");
-        sb.append("- \"rootCause\": Analysis of why this issue occurred\n");
-        sb.append("- \"recommendation\": Specific actionable steps to fix the issue\n");
+        sb.append("- \"rootCause\": One short sentence in plain English explaining why the issue happened. Start with \"This happened because\". Use sentence case.\n");
+        sb.append("- \"recommendation\": One or two short, direct sentences in plain English telling the user what to do. Start with an action verb such as \"Add\", \"Map\", \"Link\", or \"Review\". Use sentence case.\n");
         sb.append("- \"priority\": One of \"HIGH\", \"MEDIUM\", or \"LOW\"\n");
-        sb.append("Do not include markdown code fences, just the raw JSON array.\n");
+        sb.append("Do not use headings, bullet points, all-caps wording, filler, or technical jargon. Do not include markdown code fences, just the raw JSON array.\n");
         
         return sb.toString();
     }
@@ -226,8 +226,8 @@ public class DiagnosticRecommendationService {
                 JsonNode node = root.get(i);
                 ContinuityFinding finding = findings.get(i);
                 
-                String rootCause = node.path("rootCause").asText();
-                String recommendationText = node.path("recommendation").asText();
+                String rootCause = cleanDiagnosticText(node.path("rootCause").asText());
+                String recommendationText = cleanDiagnosticText(node.path("recommendation").asText());
                 String priority = node.path("priority").asText("MEDIUM").toUpperCase();
 
                 DiagnosticRecommendation rec = new DiagnosticRecommendation();
@@ -259,6 +259,12 @@ public class DiagnosticRecommendationService {
         String withoutOpeningFence = firstNewline != -1 ? trimmed.substring(firstNewline + 1) : trimmed;
         int lastFence = withoutOpeningFence.lastIndexOf("```");
         return (lastFence != -1 ? withoutOpeningFence.substring(0, lastFence) : withoutOpeningFence).trim();
+    }
+
+    private static String cleanDiagnosticText(String value) {
+        String cleaned = value == null ? "" : value.trim().replaceAll("\\s+", " ");
+        if (cleaned.isEmpty()) return cleaned;
+        return Character.toUpperCase(cleaned.charAt(0)) + cleaned.substring(1);
     }
 
     private void emit(String sessionId, String step, String message, int percent) {
