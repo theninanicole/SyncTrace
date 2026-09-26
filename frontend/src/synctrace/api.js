@@ -149,6 +149,47 @@ export const addGoalComponents = async (goalId, componentIds, stage) => {
     return data;
 };
 
+// ── SyncTrace: Shared staged mapping workspace ────────────────────────────────
+export const getStagedMappings = async (teamCode) => {
+    const params = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load the mapping workspace.');
+    return data;
+};
+
+export const addStagedMappings = async (teamCode, mappings) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, mappings }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to add mappings.');
+    return data;
+};
+
+export const removeStagedMapping = async (teamCode, mappingId) => {
+    const params = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings/${mappingId}?${params.toString()}`, {
+        method: 'DELETE',
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to remove mapping.');
+    return data;
+};
+
+export const syncStagedMappings = async (teamCode, stage) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, stage }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to save mapping.');
+    return data;
+};
+
 export const removeGoalComponent = async (goalId, componentId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
         method: 'DELETE',
@@ -231,34 +272,6 @@ export const getContinuitySummary = async (teamCode) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/summary/${encodeURIComponent(teamCode)}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to load continuity summary.');
-    return data;
-};
-
-export const getTraceabilityResultPublication = async (teamCode) => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/results/${encodeURIComponent(teamCode)}/publication`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to load traceability result status.');
-    return data;
-};
-
-export const publishTraceabilityResults = async (teamCode) => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/results/${encodeURIComponent(teamCode)}/publication`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results.');
-    return data;
-};
-
-export const publishAllTraceabilityResults = async (teamCodes) => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/results/publish-all`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamCodes }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results to all teams.');
     return data;
 };
 

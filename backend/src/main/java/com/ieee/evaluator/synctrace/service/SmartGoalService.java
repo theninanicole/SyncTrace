@@ -9,6 +9,7 @@ import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.model.TraceComponentSummaryDTO;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
+import com.ieee.evaluator.synctrace.repository.StagedTraceMappingRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,14 +26,17 @@ public class SmartGoalService {
     private final SmartGoalRepository goalRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final TraceComponentRepository componentRepository;
+    private final StagedTraceMappingRepository stagedMappingRepository;
 
     public SmartGoalService(
             SmartGoalRepository goalRepository,
             GoalComponentMappingRepository mappingRepository,
-            TraceComponentRepository componentRepository) {
+            TraceComponentRepository componentRepository,
+            StagedTraceMappingRepository stagedMappingRepository) {
         this.goalRepository = goalRepository;
         this.mappingRepository = mappingRepository;
         this.componentRepository = componentRepository;
+        this.stagedMappingRepository = stagedMappingRepository;
     }
 
     public List<Map<String, Object>> getAllGoalsWithCategoryStatus(String teamCode) {
@@ -139,11 +143,16 @@ public class SmartGoalService {
     public void deleteGoal(Long goalId) {
         List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtAscIdAsc(goalId);
         for (SmartGoal child : children) {
-            mappingRepository.deleteByGoalId(child.getId());
+            deleteGoalLinks(child.getId());
             goalRepository.deleteById(child.getId());
         }
-        mappingRepository.deleteByGoalId(goalId);
+        deleteGoalLinks(goalId);
         goalRepository.deleteById(goalId);
+    }
+
+    private void deleteGoalLinks(Long goalId) {
+        mappingRepository.deleteByGoalId(goalId);
+        stagedMappingRepository.deleteGoalReferences(goalId);
     }
 
     public List<TraceComponentSummaryDTO> getGoalComponents(Long goalId) {

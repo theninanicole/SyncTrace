@@ -6,29 +6,47 @@ import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.model.TraceComponentSummaryDTO;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
+import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
+import com.ieee.evaluator.synctrace.repository.StagedTraceMappingRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class TraceComponentService {
 
+    private static final Pattern NUMBERED_CODE = Pattern.compile("^([A-Z]+)-(\\d{1,3})$");
+
     private final TraceComponentRepository componentRepository;
     private final GoalComponentMappingRepository mappingRepository;
+    private final StagedTraceMappingRepository stagedMappingRepository;
+    private final SmartGoalRepository goalRepository;
+    private final ContinuityAnalysisResetService analysisResetService;
 
     public TraceComponentService(
             TraceComponentRepository componentRepository,
-            GoalComponentMappingRepository mappingRepository) {
+            GoalComponentMappingRepository mappingRepository,
+            StagedTraceMappingRepository stagedMappingRepository,
+            SmartGoalRepository goalRepository,
+            ContinuityAnalysisResetService analysisResetService) {
         this.componentRepository = componentRepository;
         this.mappingRepository = mappingRepository;
+        this.stagedMappingRepository = stagedMappingRepository;
+        this.goalRepository = goalRepository;
+        this.analysisResetService = analysisResetService;
     }
 
     public List<TraceComponentSummaryDTO> getComponents(DocType docType, String search) {
@@ -132,35 +150,43 @@ public class TraceComponentService {
     public TraceComponent updateCodeName(Long componentId, String codeName) {
         TraceComponent component = componentRepository.findById(componentId)
             .orElseThrow(() -> new RuntimeException("Component not found"));
-        // Document artifact codes (UC-01, TC-14, ...) are conventionally uppercase, but
-        // implementation components are file names, which are case-sensitive and must
-        // not be forced through the same uppercasing normalization.
-        String normalized = component.getDocType() == DocType.IMPLEMENTATION
-            ? codeName.trim()
-            : ComponentCodeHelper.normalizeCode(codeName);
-        component.setCodeName(normalized);
+        // A user-chosen code is saved exactly as typed; only auto-extracted codes are normalized.
+        String trimmed = codeName.trim();
+        if (trimmed.length() > 64) {
+            throw new IllegalArgumentException("Component name must be 64 characters or fewer.");
+        }
+        component.setCodeName(trimmed);
         return componentRepository.save(component);
     }
 
     @Transactional
     public void deleteComponent(Long componentId) {
+        // Removing a linked component changes those goals' links, so their teams' analysis is stale.
+        Set<Long> linkedGoalIds = new HashSet<>();
+        mappingRepository.findByComponentId(componentId).forEach(m -> linkedGoalIds.add(m.getGoalId()));
+        Set<String> affectedTeams = new HashSet<>();
+        goalRepository.findAllById(linkedGoalIds).forEach(goal -> {
+            if (goal.getTeamCode() != null) affectedTeams.add(goal.getTeamCode());
+        });
+
         mappingRepository.deleteByComponentId(componentId);
+        stagedMappingRepository.deleteComponentReferences(componentId);
         componentRepository.deleteById(componentId);
+        affectedTeams.forEach(analysisResetService::resetTeam);
     }
 
     /**
-     * Persists AI-extracted components into the library, deduping by (docType, codeName) or (docType, name).
+     * Persists AI-extracted components into the library. A diagram that was already extracted
+     * from the same evaluation is recognised by its finding text rather than its code: codes
+     * are auto-numbered per extraction and can be renamed, so after diagrams are added to the
+     * evaluation a new diagram can land on a code an older one already holds.
      */
     @Transactional
     public List<TraceComponent> persistExtractedComponents(List<TraceComponent> extracted) {
         List<TraceComponent> saved = new ArrayList<>();
-        // Distinct diagrams found within the SAME extraction call must never merge with
-        // each other just because they coincidentally land on the same fallback code or
-        // name — they are always separate components. Tracking IDs saved during this
-        // batch lets us restrict merging to components that already existed beforehand
-        // (e.g. a genuine re-extraction of the same document), so siblings from this
-        // batch are never mistaken for duplicates of one another.
-        Set<Long> createdThisBatch = new HashSet<>();
+        // Components already matched or created in this batch; each can back only one candidate.
+        Set<Long> claimed = new HashSet<>();
+        Map<Long, List<TraceComponent>> historyComponents = new HashMap<>();
         for (TraceComponent candidate : extracted) {
             if (candidate.getName() == null || candidate.getName().isBlank() || candidate.getDocType() == null) {
                 continue;
@@ -172,31 +198,18 @@ public class TraceComponentService {
                 candidate.getCodeName(), candidate.getName(), candidate.getContent());
             candidate.setCodeName(code);
 
-            // Auto-generated fallback codes (UC-01, AD-01, ...) restart from 1 on every
-            // extraction, so they can coincidentally match a code already used by a
-            // different evaluation's diagrams — multiple components can legitimately
-            // share a (docType, codeName) pair as long as they come from different
-            // evaluations. Only treat it as the same component when it's unowned
-            // (manually created) or belongs to this same evaluation history — otherwise
-            // this diagram would get silently merged into an unrelated document's
-            // component instead of being extracted for this one.
-            Optional<TraceComponent> existing = Optional.empty();
-            if (code != null) {
-                existing = componentRepository
-                    .findAllByDocTypeAndCodeNameIgnoreCase(candidate.getDocType(), code)
-                    .stream()
-                    .filter(c -> !createdThisBatch.contains(c.getId()))
-                    .filter(c -> belongsToSameSource(c, candidate))
-                    .findFirst();
-            }
-            if (existing.isEmpty()) {
-                existing = componentRepository.findByDocTypeAndNameIgnoreCase(
-                    candidate.getDocType(), safeName)
-                    .filter(c -> !createdThisBatch.contains(c.getId()))
-                    .filter(c -> belongsToSameSource(c, candidate));
-            }
+            List<TraceComponent> sameHistory = candidate.getSourceHistoryId() == null
+                ? new ArrayList<>()
+                : historyComponents.computeIfAbsent(candidate.getSourceHistoryId(),
+                    id -> new ArrayList<>(componentRepository.findAllBySourceHistoryId(id)));
+
+            // Only a previous extraction of this same evaluation counts as the same diagram.
+            // Manually added components aren't tied to a team or evaluation, so merging into one
+            // on a shared code made extracted diagrams silently disappear.
+            Optional<TraceComponent> existing = matchPreviousExtraction(candidate, sameHistory, claimed);
             if (existing.isPresent()) {
                 TraceComponent found = existing.get();
+                claimed.add(found.getId());
                 boolean dirty = false;
                 if ((found.getCodeName() == null || found.getCodeName().isBlank()) && code != null) {
                     found.setCodeName(code);
@@ -212,6 +225,7 @@ public class TraceComponentService {
                 saved.add(found);
                 continue;
             }
+            candidate.setCodeName(uniqueCode(code, candidate.getDocType(), sameHistory));
             if (candidate.getArtifactKind() == null) {
                 candidate.setArtifactKind(ArtifactKind.defaultFor(candidate.getDocType()));
             }
@@ -220,10 +234,56 @@ public class TraceComponentService {
             }
             candidate.setAiExtracted(true);
             TraceComponent persisted = componentRepository.save(candidate);
-            createdThisBatch.add(persisted.getId());
+            claimed.add(persisted.getId());
+            sameHistory.add(persisted);
             saved.add(persisted);
         }
         return saved;
+    }
+
+    private static Optional<TraceComponent> matchPreviousExtraction(
+            TraceComponent candidate, List<TraceComponent> sameHistory, Set<Long> claimed) {
+        String content = normalizeText(candidate.getContent());
+        List<TraceComponent> sameDiagram = sameHistory.stream()
+            .filter(c -> !claimed.contains(c.getId()))
+            .filter(c -> c.getDocType() == candidate.getDocType())
+            .filter(c -> normalizeText(c.getContent()).equals(content))
+            .toList();
+        if (sameDiagram.size() <= 1) return sameDiagram.stream().findFirst();
+        // One diagram that lists several elements (UC-01, UC-02, ...) yields one component per element.
+        return sameDiagram.stream()
+            .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(candidate.getName()))
+            .findFirst()
+            .or(() -> sameDiagram.stream()
+                .filter(c -> candidate.getCodeName() != null && candidate.getCodeName().equalsIgnoreCase(c.getCodeName()))
+                .findFirst())
+            .or(() -> Optional.of(sameDiagram.get(0)));
+    }
+
+    /** Moves an auto-numbered code (AD-01) past the numbers this evaluation's components already use. */
+    private static String uniqueCode(String code, DocType docType, List<TraceComponent> sameHistory) {
+        if (code == null) return null;
+        Set<String> taken = new HashSet<>();
+        for (TraceComponent c : sameHistory) {
+            if (c.getDocType() == docType && c.getCodeName() != null) {
+                taken.add(c.getCodeName().toUpperCase(Locale.ROOT));
+            }
+        }
+        if (!taken.contains(code.toUpperCase(Locale.ROOT))) return code;
+        Matcher m = NUMBERED_CODE.matcher(code);
+        if (!m.matches()) return code;
+        String prefix = m.group(1);
+        int next = Integer.parseInt(m.group(2));
+        String candidate;
+        do {
+            next++;
+            candidate = prefix + "-" + String.format(Locale.ROOT, "%02d", next);
+        } while (taken.contains(candidate));
+        return candidate;
+    }
+
+    private static String normalizeText(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ");
     }
 
     public TraceComponentSummaryDTO toSummary(TraceComponent c) {
@@ -244,11 +304,6 @@ public class TraceComponentService {
             c.getSourceCapturedAt(),
             c.getCreatedAt()
         );
-    }
-
-    private static boolean belongsToSameSource(TraceComponent existing, TraceComponent candidate) {
-        return existing.getSourceHistoryId() == null
-            || existing.getSourceHistoryId().equals(candidate.getSourceHistoryId());
     }
 
     private static String truncate(String value, int maxLen) {

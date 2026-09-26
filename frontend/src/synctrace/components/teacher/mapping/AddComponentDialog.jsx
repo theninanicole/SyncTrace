@@ -104,6 +104,7 @@ function AddComponentDialog({ isOpen, onClose, docType, onAdd }) {
         <input
           className="tm-input"
           placeholder="e.g. UC-04"
+          maxLength={64}
           value={form.codeName}
           onChange={(e) => handleChange('codeName', e.target.value)}
         />

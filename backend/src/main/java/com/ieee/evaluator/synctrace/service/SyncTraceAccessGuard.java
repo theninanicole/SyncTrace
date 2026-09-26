@@ -1,18 +1,11 @@
 package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.security.AuthenticatedUser;
-import com.ieee.evaluator.synctrace.repository.TraceabilityResultPublicationRepository;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class SyncTraceAccessGuard {
-
-    private final TraceabilityResultPublicationRepository publicationRepository;
-
-    public SyncTraceAccessGuard(TraceabilityResultPublicationRepository publicationRepository) {
-        this.publicationRepository = publicationRepository;
-    }
 
     public static class AccessDeniedException extends RuntimeException {
         public AccessDeniedException(String message) {
@@ -51,18 +44,5 @@ public class SyncTraceAccessGuard {
         }
 
         throw new AccessDeniedException("Unrecognized role.");
-    }
-
-    public void requirePublishedIfStudent(String teamCode) {
-        AuthenticatedUser user = currentUser();
-        if (!user.isStudent()) {
-            return;
-        }
-        boolean published = publicationRepository.findByTeamCodeIgnoreCase(teamCode)
-                .map(publication -> publication.getPublishedAt() != null)
-                .orElse(false);
-        if (!published) {
-            throw new AccessDeniedException("Traceability results have not been published for this team yet.");
-        }
     }
 }

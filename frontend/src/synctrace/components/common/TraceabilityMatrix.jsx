@@ -129,19 +129,21 @@ function TraceabilityMatrix({
                         </span>
                       ) : (
                         <div className="trm-chip-stack">
-                          {components.map((c) => {
+                          {components.map((c, i) => {
                             const label = componentLabel(c);
                             return (
-                              <button
-                                type="button"
-                                key={c.id}
-                                className={`trm-chip ${col.key === 'IMPLEMENTATION' ? 'trm-chip--impl' : 'trm-chip--doc'}`}
-                                onClick={() => onComponentClick?.(c)}
-                                title={c.name || label}
-                              >
-                                {col.key === 'IMPLEMENTATION' && <Link2 size={12} />}
-                                <span className="trm-chip__label">{label}</span>
-                              </button>
+                              <span className="trm-chip-item" key={c.id}>
+                                <button
+                                  type="button"
+                                  className={`trm-chip ${col.key === 'IMPLEMENTATION' ? 'trm-chip--impl' : 'trm-chip--doc'}`}
+                                  onClick={() => onComponentClick?.(c)}
+                                  title={c.name || label}
+                                >
+                                  {col.key === 'IMPLEMENTATION' && <Link2 size={12} />}
+                                  <span className="trm-chip__label">{label}</span>
+                                </button>
+                                {i < components.length - 1 && <span className="trm-chip-sep" aria-hidden="true">,</span>}
+                              </span>
                             );
                           })}
                         </div>

@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getSmartGoals, getAllGoalComponents, getContinuitySummary, getContinuityFindings, getDiagnosticRecommendations } from '../api';
+import {
+  getSmartGoals,
+  getAllGoalComponents,
+  getContinuitySummary,
+  getContinuityFindings,
+  getDiagnosticRecommendations,
+  getContinuityAnalysisStatus,
+  getLatestMappingActivity,
+} from '../api';
+import { isAnalysisStale } from './useTraceabilityResultsData';
 import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { DOC_TYPES } from './useTraceability';
 import { groupStatus } from './useGroupOverview';
 import { buildAiIssues } from '../utils/gapIssues';
 import { groupGoalsIntoClusters } from '../constants';
+import { useMappingsChangedRefresh } from '../utils/mappingEvents';
 
 const EMPTY_STATE = {
   loading: true,
@@ -54,11 +64,11 @@ function mapBackendStatus(status) {
 export function useGroupTraceability(teamCode, showToast) {
   const [state, setGroupState] = useState(EMPTY_STATE);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!teamCode) return;
-    setGroupState((s) => ({ ...s, loading: true }));
+    if (!silent) setGroupState((s) => ({ ...s, loading: true }));
     try {
-      const [goalList, roster, history, componentsByGoal, summary, findingsData, recommendationsData] = await Promise.all([
+      const [goalList, roster, history, componentsByGoal, summary, findingsData, recommendationsData, analysisStatus, activity] = await Promise.all([
         getSmartGoals(teamCode),
         fetchClassRoster().catch(() => []),
         fetchTeacherHistory().catch(() => []),
@@ -66,6 +76,8 @@ export function useGroupTraceability(teamCode, showToast) {
         getContinuitySummary(teamCode).catch(() => null),
         getContinuityFindings(teamCode).catch(() => ({ findings: [] })),
         getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })),
+        getContinuityAnalysisStatus(teamCode).catch(() => null),
+        getLatestMappingActivity(teamCode).catch(() => null),
       ]);
 
       const historyTeamMap = new Map();
@@ -124,11 +136,10 @@ export function useGroupTraceability(teamCode, showToast) {
 
       const goalCodeById = new Map(rows.map((r) => [r.goalId, r.code]));
       rows.forEach((row) => row.memberGoalIds.forEach((memberId) => goalCodeById.set(memberId, row.code)));
-      const aiIssues = buildAiIssues(
-        findingsData.findings || [],
-        recommendationsData.recommendations || [],
-        goalCodeById,
-      );
+      // An analysis made before the mapping last changed no longer describes it.
+      const aiIssues = isAnalysisStale(analysisStatus, activity)
+        ? []
+        : buildAiIssues(findingsData.findings || [], recommendationsData.recommendations || [], goalCodeById);
 
       setGroupState((s) => ({
         ...s,
@@ -145,9 +156,9 @@ export function useGroupTraceability(teamCode, showToast) {
         aiIssues,
       }));
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (!silent) showToast?.(err.message, 'error');
     } finally {
-      setGroupState((s) => ({ ...s, loading: false }));
+      if (!silent) setGroupState((s) => ({ ...s, loading: false }));
     }
   }, [teamCode, showToast]);
 
@@ -155,5 +166,8 @@ export function useGroupTraceability(teamCode, showToast) {
     load();
   }, [load]);
 
-  return { ...state, reload: load };
+  const reloadSilently = useCallback(() => load({ silent: true }), [load]);
+  useMappingsChangedRefresh(teamCode, reloadSilently);
+
+  return { ...state, reload: () => load() };
 }

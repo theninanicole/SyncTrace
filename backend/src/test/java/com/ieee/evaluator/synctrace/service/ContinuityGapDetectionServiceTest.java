@@ -4,6 +4,7 @@ import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.ContinuityAnalysisRun;
 import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
+import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
@@ -140,5 +141,29 @@ class ContinuityGapDetectionServiceTest {
 
         verify(findingRepository).delete(staleFinding);
         assertTrue(findings.isEmpty());
+    }
+
+    @Test
+    void teamGoalWithNoMappedComponentsFailsInsteadOfBeingSkipped() {
+        SmartGoal general = new SmartGoal();
+        general.setId(1L);
+        general.setTeamCode(TEAM_CODE);
+        SmartGoal specific = new SmartGoal();
+        specific.setId(2L);
+        specific.setTeamCode(TEAM_CODE);
+        specific.setParentGoalId(1L);
+
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE))
+            .thenReturn(List.of(general, specific));
+        when(goalRepository.existsById(1L)).thenReturn(true);
+        when(mappingRepository.findByGoalId(any())).thenReturn(List.of());
+        when(findingRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ContinuityFinding> findings = service.detectGaps(TEAM_CODE, null);
+
+        // One finding for the GENERAL goal's cluster; the SPECIFIC child isn't checked on its own.
+        assertEquals(1, findings.size());
+        assertEquals(1L, findings.get(0).getGoalId());
+        assertEquals("SMART Goal has no mapped components.", findings.get(0).getDescription());
     }
 }

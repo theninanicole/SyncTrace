@@ -9,6 +9,7 @@ import java.util.List;
 @Repository
 public interface ContinuityFindingRepository extends JpaRepository<ContinuityFinding, Long> {
     List<ContinuityFinding> findByTeamCode(String teamCode);
+    List<ContinuityFinding> findByTeamCodeIgnoreCase(String teamCode);
     List<ContinuityFinding> findByTeamCodeOrderByDetectedAtDesc(String teamCode);
     List<ContinuityFinding> findByGoalId(Long goalId);
     void deleteByTeamCode(String teamCode);

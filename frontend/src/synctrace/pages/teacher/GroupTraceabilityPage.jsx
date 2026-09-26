@@ -8,7 +8,6 @@ import { useGroupTraceability } from '../../hooks/useGroupTraceability';
 import { STATUS_META } from '../../hooks/useGroupOverview';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import TraceabilityResults from '../../components/common/TraceabilityResults';
-import SendButton from '../../components/common/SendButton';
 import ExportReportButton from '../../components/common/ExportReportButton';
 import './TraceabilityMappingPage.css';
 import './GroupTraceabilityPage.css';
@@ -40,7 +39,6 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
         subtitle={section || 'Group traceability results'}
         actions={
           <div className="teacher-header-actions">
-            <SendButton showToast={showToast} teamCode={teamCode} />
             <ExportReportButton showToast={showToast} teamCode={teamCode} />
           </div>
         }

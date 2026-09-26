@@ -91,7 +91,7 @@ export function componentLabel(component) {
   const name = (component.name || '').trim();
   if (!name) return 'Component';
   const match = name.match(
-    /\b((?:UC|TC|FR|NFR|CL|CD|SQ|AD|DFD|CTX|MS|TK|DL|TD|TL|WF|UI|ER)[-\s_]?\d{1,3})\b/i,
+    /\b((?:UC|TC|FR|NFR|CL|CD|SQ|AD|DFD|CTX|MS|TK|DL|TD|TL|WF|UI|ER)[-\s_]?\d{1,3}(?:\.\d{1,3})*)\b/i,
   );
   if (match) {
     return match[1].toUpperCase().replace(/[\s_]+/g, '-').replace(/([A-Z]+)(\d)/, '$1-$2');

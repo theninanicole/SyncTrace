@@ -15,4 +15,5 @@ public interface TraceComponentRepository extends JpaRepository<TraceComponent, 
     List<TraceComponent> findAllByDocTypeAndCodeNameIgnoreCase(DocType docType, String codeName);
     List<TraceComponent> findByDocTypeAndNameContainingIgnoreCase(DocType docType, String search);
     List<TraceComponent> findByNameContainingIgnoreCase(String search);
+    List<TraceComponent> findAllBySourceHistoryId(Long sourceHistoryId);
 }

@@ -22,10 +22,13 @@ function ComponentLibraryColumn({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
+    const matches = !q ? items : items.filter(
       (c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q)
     );
+    // Alphabetical by the label shown on the card; numeric-aware so UC-2 precedes UC-10.
+    return [...matches].sort((a, b) => componentLabel(a).localeCompare(
+      componentLabel(b), undefined, { numeric: true, sensitivity: 'base' },
+    ));
   }, [items, query]);
 
   const groupedItems = useMemo(() => {
@@ -97,7 +100,6 @@ function ComponentLibraryColumn({
                           {count > 0 && <span className="stm-mapped-count">{count}</span>}
                         </div>
                         <span className="stm-component-card__type">{c.type}</span>
-                        {c.description && <p className="stm-component-card__desc">{c.description}</p>}
                       </button>
                       <div className="stm-component-card__actions">
                         {onPreview && (

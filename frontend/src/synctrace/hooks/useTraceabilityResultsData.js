@@ -5,9 +5,17 @@ import {
   getContinuityFindings,
   getContinuityAnalysisStatus,
   getDiagnosticRecommendations,
+  getLatestMappingActivity,
 } from '../api';
 import { DOC_TYPES, groupGoalsIntoClusters } from '../constants';
 import { buildAiIssues } from '../utils/gapIssues';
+import { useMappingsChangedRefresh } from '../utils/mappingEvents';
+
+export function isAnalysisStale(analysisStatus, mappingActivity) {
+  const analyzedAt = analysisStatus?.lastAnalyzedAt;
+  const changedAt = mappingActivity?.performedAt;
+  return Boolean(analyzedAt && changedAt && new Date(changedAt) > new Date(analyzedAt));
+}
 
 export function useTraceabilityResultsData(teamCode, options = {}) {
   const { showToast, enabled = true } = options;
@@ -17,8 +25,10 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   const [aiFindings, setAiFindings] = useState([]);
   const [aiRecommendations, setAiRecommendations] = useState([]);
   const [analysisStatus, setAnalysisStatus] = useState(null);
+  const [mappingActivity, setMappingActivity] = useState(null);
 
-  const loadResults = useCallback(async () => {
+  // silent: background refreshes keep the current matrix on screen instead of a loading state.
+  const loadResults = useCallback(async ({ silent = false } = {}) => {
     if (!enabled) {
       setGoals([]);
       setComponentsByGoal({});
@@ -29,24 +39,26 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
-      const [goalList, allGoalComponents, findingsData, analysisStatusData, recommendationsData] = await Promise.all([
+      const [goalList, allGoalComponents, findingsData, analysisStatusData, recommendationsData, activity] = await Promise.all([
         getSmartGoals(teamCode || undefined),
         getAllGoalComponents(teamCode || undefined),
         teamCode ? getContinuityFindings(teamCode).catch(() => ({ findings: [] })) : { findings: [] },
         teamCode ? getContinuityAnalysisStatus(teamCode).catch(() => null) : null,
         teamCode ? getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })) : { recommendations: [] },
+        teamCode ? getLatestMappingActivity(teamCode).catch(() => null) : null,
       ]);
       setGoals(goalList);
       setComponentsByGoal(allGoalComponents);
       setAiFindings(findingsData.findings || []);
       setAnalysisStatus(analysisStatusData);
       setAiRecommendations(recommendationsData.recommendations || []);
+      setMappingActivity(activity);
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (!silent) showToast?.(err.message, 'error');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [enabled, showToast, teamCode]);
 
@@ -54,8 +66,22 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
     loadResults();
   }, [loadResults]);
 
+  const refreshSilently = useCallback(() => {
+    if (enabled) loadResults({ silent: true });
+  }, [enabled, loadResults]);
+  useMappingsChangedRefresh(teamCode, refreshSilently, { pollMs: 30000 });
+
+  // An analysis describes the mapping as it was when it ran; once the mapping has been saved
+  // or changed since, it no longer applies and is hidden until the analysis is run again.
+  const analysisCurrent = !isAnalysisStale(analysisStatus, mappingActivity);
+  const currentFindings = useMemo(() => (analysisCurrent ? aiFindings : []), [analysisCurrent, aiFindings]);
+  const currentRecommendations = useMemo(
+    () => (analysisCurrent ? aiRecommendations : []),
+    [analysisCurrent, aiRecommendations],
+  );
+
   const rows = useMemo(() => {
-    return groupGoalsIntoClusters(goals).map((cluster) => {
+    return groupGoalsIntoClusters(goals).map((cluster, clusterIndex) => {
       const memberGoalIds = [cluster.primary.id, ...cluster.children.map((child) => child.id)];
       const mappedById = new Map();
       memberGoalIds.forEach((goalId) => {
@@ -70,14 +96,15 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
       });
       const validationIssues = [];
       const memberGoalIdSet = new Set(memberGoalIds);
-      aiFindings
+      currentFindings
         .filter((finding) => memberGoalIdSet.has(finding.goalId))
         .forEach((finding) => validationIssues.push(finding.description));
       const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
       return {
         goalId: cluster.id,
         memberGoalIds,
-        code: `G${cluster.primary.id}`,
+        // Numbered by position within the team (G1, G2, …), matching the group view.
+        code: `G${clusterIndex + 1}`,
         description: cluster.primary.description,
         specificDescriptions: cluster.children.map((child) => child.description),
         teamCode: cluster.primary.teamCode || '',
@@ -88,7 +115,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
         createdAt: cluster.primary.createdAt,
       };
     });
-  }, [aiFindings, componentsByGoal, goals]);
+  }, [currentFindings, componentsByGoal, goals]);
 
   const metrics = useMemo(() => {
     let missingCells = 0;
@@ -128,8 +155,8 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   }, [rows]);
 
   const aiIssues = useMemo(
-    () => buildAiIssues(aiFindings, aiRecommendations, goalCodeById),
-    [aiFindings, aiRecommendations, goalCodeById],
+    () => buildAiIssues(currentFindings, currentRecommendations, goalCodeById),
+    [currentFindings, currentRecommendations, goalCodeById],
   );
 
   return {
@@ -138,12 +165,12 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
     loading,
     rows,
     metrics,
-    aiFindings,
-    aiRecommendations,
-    analysisStatus,
+    aiFindings: currentFindings,
+    aiRecommendations: currentRecommendations,
+    analysisStatus: analysisCurrent ? analysisStatus : null,
     aiIssues,
     setAiFindings,
     setAiRecommendations,
-    refresh: loadResults,
+    refresh: () => loadResults(),
   };
 }

@@ -2,13 +2,11 @@ import { useState } from 'react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
-import { detectContinuityGaps, generateDiagnosticRecommendations } from '../../api';
-import { API_BASE_URL } from '../../../api';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import { useTraceabilityResultsData } from '../../hooks/useTraceabilityResultsData';
+import { useAiContinuityAnalysis } from '../../hooks/useAiContinuityAnalysis';
 import TraceabilityResults from '../../components/common/TraceabilityResults';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
-import SendButton from '../../components/common/SendButton';
 import ExportReportButton from '../../components/common/ExportReportButton';
 import TeamSelect from '../../components/common/TeamSelect';
 import './SourceCodePage.css';
@@ -19,8 +17,6 @@ function TraceabilityResultsPage({ onNavigate }) {
   const [selectedTeam, setSelectedTeam] = useSelectedTeam();
   const [previewComponent, setPreviewComponent] = useState(null);
 
-  const [runningAiAnalysis, setRunningAiAnalysis] = useState(false);
-  const [aiProgress, setAiProgress] = useState({ step: '', message: '', percent: 0 });
   const {
     loading,
     rows,
@@ -32,78 +28,11 @@ function TraceabilityResultsPage({ onNavigate }) {
     refresh: loadResults,
   } = useTraceabilityResultsData(selectedTeam, { showToast });
 
-  function generateSessionId() {
-    return crypto.randomUUID
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2) + Date.now().toString(36);
-  }
-
-  async function handleRunAiAnalysis() {
-    if (!selectedTeam) {
-      showToast('Select a team above to run AI analysis.', 'error');
-      return;
-    }
-
-    const sessionId = generateSessionId();
-    setRunningAiAnalysis(true);
-    setAiProgress({ step: 'RECEIVED', message: 'Starting AI continuity analysis...', percent: 0 });
-    setAiFindings([]);
-    setAiRecommendations([]);
-
-    const es = new EventSource(`${API_BASE_URL}/ai/progress/${sessionId}`);
-
-    es.addEventListener('progress', (e) => {
-      try {
-        const { step, message, percent } = JSON.parse(e.data);
-        setAiProgress({ step, message, percent });
-      } catch { /* ignore parse errors */ }
-    });
-
-    es.addEventListener('done', () => {
-      es.close();
-    });
-
-    es.addEventListener('error', (e) => {
-      try {
-        const { error: msg } = JSON.parse(e.data || '{}');
-        if (msg) showToast(`AI analysis error: ${msg}`, 'error');
-      } catch { /* ignore */ }
-      es.close();
-    });
-
-    es.onerror = () => {
-      es.close();
-    };
-
-    try {
-      // Both detectContinuityGaps and generateDiagnosticRecommendations are scoped to a
-      // single team on the backend: gap detection only counts components/mappings that
-      // belong to teamCode (goals with none are skipped), and recommendations are generated
-      // only from findings already tagged with that teamCode. Always analyze the team
-      // selected above, not some other team the teacher isn't looking at.
-      setAiProgress({ step: 'DETECTING', message: 'Detecting continuity gaps...', percent: 30 });
-      const gapsData = await detectContinuityGaps(selectedTeam, null);
-      setAiFindings(gapsData.findings || []);
-
-      setAiProgress({ step: 'RECOMMENDING', message: 'Generating diagnostic recommendations...', percent: 60 });
-      const recommendationsData = await generateDiagnosticRecommendations(selectedTeam, 'auto', sessionId);
-      setAiRecommendations(recommendationsData.recommendations || []);
-      await loadResults();
-
-      setAiProgress({ step: 'COMPLETE', message: 'AI analysis complete', percent: 100 });
-
-      if (gapsData.findings.length === 0 && recommendationsData.recommendations.length === 0) {
-        showToast('AI analysis complete. No continuity gaps or recommendations found.', 'success');
-      } else {
-        showToast(`AI analysis complete. Found ${gapsData.count} gap(s) and ${recommendationsData.count} recommendation(s).`, 'success');
-      }
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setRunningAiAnalysis(false);
-      es.close();
-    }
-  }
+  const {
+    running: runningAiAnalysis,
+    progress: aiProgress,
+    run: handleRunAiAnalysis,
+  } = useAiContinuityAnalysis(selectedTeam, { showToast, setAiFindings, setAiRecommendations, onComplete: loadResults });
 
   return (
     <div className="tp-root">
@@ -123,7 +52,6 @@ function TraceabilityResultsPage({ onNavigate }) {
             >
               {runningAiAnalysis ? 'Analyzing...' : 'Run AI Analysis'}
             </button>
-            <SendButton showToast={showToast} teamCode={selectedTeam} />
             <ExportReportButton showToast={showToast} teamCode={selectedTeam} />
           </div>
         }

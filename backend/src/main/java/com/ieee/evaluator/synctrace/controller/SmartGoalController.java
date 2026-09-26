@@ -190,8 +190,19 @@ public class SmartGoalController {
     @DeleteMapping("/{goalId}/components/{componentId}")
     public ResponseEntity<?> removeGoalComponent(@PathVariable Long goalId, @PathVariable Long componentId) {
         try {
+            // Same team scoping as adding: students may only unlink their own team's goals.
+            SmartGoal goal = goalRepository.findById(goalId)
+                    .orElseThrow(() -> new SyncTraceAccessGuard.AccessDeniedException("Goal not found"));
+            String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(goal.getTeamCode());
+            if (accessGuard.isStudent()
+                    && (goal.getTeamCode() == null || !effectiveTeamCode.equalsIgnoreCase(goal.getTeamCode()))) {
+                throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to update this goal.");
+            }
             goalService.removeGoalComponent(goalId, componentId);
             return ResponseEntity.ok(Map.of("message", "Component removed successfully"));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            HttpStatus status = "Goal not found".equals(e.getMessage()) ? HttpStatus.NOT_FOUND : HttpStatus.FORBIDDEN;
+            return ResponseEntity.status(status).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to remove component: " + e.getMessage()));

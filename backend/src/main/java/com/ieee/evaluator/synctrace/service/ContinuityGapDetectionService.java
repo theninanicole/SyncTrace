@@ -4,6 +4,7 @@ import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.ContinuityAnalysisRun;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding.Severity;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
+import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
@@ -57,15 +58,25 @@ public class ContinuityGapDetectionService {
         }
 
         List<ContinuityFinding> findings = new ArrayList<>();
-        List<Long> goalIds = goalId != null ? List.of(goalId) : getAllGoalIds();
+        boolean teamScoped = teamCode != null && !teamCode.isBlank();
+        // A team's GENERAL goal and its SPECIFIC children form one SMART goal row, so a team
+        // analysis checks each cluster once, over the links of all its member goals.
+        Map<Long, List<Long>> memberIdsByGoal = goalId != null
+            ? Map.of(goalId, List.of(goalId))
+            : teamScoped ? teamGoalClusters(teamCode.trim()) : allGoalsIndividually();
 
-        for (Long currentGoalId : goalIds) {
+        for (Map.Entry<Long, List<Long>> cluster : memberIdsByGoal.entrySet()) {
+            Long currentGoalId = cluster.getKey();
             if (!goalRepository.existsById(currentGoalId)) continue;
 
-            List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(currentGoalId);
+            List<GoalComponentMapping> mappings = new ArrayList<>();
+            cluster.getValue().forEach(memberId -> mappings.addAll(mappingRepository.findByGoalId(memberId)));
             Map<DocType, List<com.ieee.evaluator.synctrace.model.TraceComponent>> byDocType = mapTeamScopedComponentsByDocType(mappings, teamCode);
 
-            if (teamCode != null && !teamCode.isBlank() && byDocType.isEmpty()) {
+            // A goal with nothing mapped has no traceability at all; it must fail, not pass.
+            if (byDocType.isEmpty()) {
+                addFinding(findings, teamCode, currentGoalId, DocType.PROPOSAL, DocType.SRS, Severity.HIGH,
+                        "SMART Goal has no mapped components.");
                 continue;
             }
 
@@ -204,9 +215,31 @@ public class ContinuityGapDetectionService {
         findings.add(finding);
     }
 
-    private List<Long> getAllGoalIds() {
-        List<Long> goalIds = new ArrayList<>();
-        goalRepository.findAll().forEach(goal -> goalIds.add(goal.getId()));
-        return goalIds;
+    private Map<Long, List<Long>> allGoalsIndividually() {
+        Map<Long, List<Long>> clusters = new LinkedHashMap<>();
+        goalRepository.findAll().forEach(goal -> clusters.put(goal.getId(), List.of(goal.getId())));
+        return clusters;
+    }
+
+    /** Cluster primary (GENERAL goal or orphan SPECIFIC goal) → ids of all its member goals. */
+    private Map<Long, List<Long>> teamGoalClusters(String teamCode) {
+        List<SmartGoal> goals = goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(teamCode);
+        Set<Long> teamGoalIds = new HashSet<>();
+        goals.forEach(goal -> teamGoalIds.add(goal.getId()));
+
+        Map<Long, List<Long>> clusters = new LinkedHashMap<>();
+        for (SmartGoal goal : goals) {
+            Long parentId = goal.getParentGoalId();
+            if (parentId == null || !teamGoalIds.contains(parentId)) {
+                clusters.computeIfAbsent(goal.getId(), id -> new ArrayList<>()).add(goal.getId());
+            }
+        }
+        for (SmartGoal goal : goals) {
+            Long parentId = goal.getParentGoalId();
+            if (parentId != null && clusters.containsKey(parentId)) {
+                clusters.get(parentId).add(goal.getId());
+            }
+        }
+        return clusters;
     }
 }

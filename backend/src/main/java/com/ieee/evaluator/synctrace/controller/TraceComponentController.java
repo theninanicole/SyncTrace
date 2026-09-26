@@ -150,6 +150,8 @@ public class TraceComponentController {
                 updated = componentService.updateCodeName(componentId, codeName);
             }
             return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
             if (e.getMessage().contains("already has that name")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
@@ -204,43 +206,55 @@ public class TraceComponentController {
         }
     }
 
+    // Same leniency as the report view: [IMG-5], [img-5], [IMG 5], [IMG5].
+    private static final Pattern IMG_TAG =
+        Pattern.compile("\\[\\s*IMG\\s*-?\\s*(\\d+)\\s*\\]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DIAGRAM_HEADER_LINE =
+        Pattern.compile("(?i)^(?:#{1,3}\\s*)?(?:\\*\\*)?Diagram Analysis(?:\\*\\*)?\\s*:?\\s*(?:\\*\\*)?$");
+
     private List<TraceComponent> extractComponentsFromEvaluation(
             String evaluationResult, Long historyId, List<String> extractedImages) {
         
         List<TraceComponent> components = new ArrayList<>();
         Map<String, Integer> codeCounters = new HashMap<>();
         
-        // Look for "Diagram Analysis" section
-        int diagramSectionStart = findSectionStart(evaluationResult, "Diagram Analysis");
-        if (diagramSectionStart == -1) {
+        // Every "Diagram Analysis" section counts — diagrams added by hand may sit in a
+        // second one rather than in the section the AI wrote.
+        StringBuilder diagramSections = new StringBuilder();
+        int searchFrom = 0;
+        int diagramSectionStart;
+        while ((diagramSectionStart = findSectionStart(evaluationResult, "Diagram Analysis", searchFrom)) != -1) {
+            int headerLineEnd = evaluationResult.indexOf('\n', diagramSectionStart);
+            if (headerLineEnd == -1) headerLineEnd = evaluationResult.length();
+            int diagramSectionEnd = findNextSectionStart(evaluationResult, headerLineEnd);
+            if (diagramSectionEnd == -1) diagramSectionEnd = evaluationResult.length();
+            diagramSections.append(evaluationResult, diagramSectionStart, diagramSectionEnd).append('\n');
+            searchFrom = diagramSectionEnd;
+        }
+        if (diagramSections.length() == 0) {
             return components;
         }
 
-        int diagramSectionEnd = findNextSectionStart(evaluationResult, diagramSectionStart + 14);
-        String diagramSection = diagramSectionEnd == -1 
-            ? evaluationResult.substring(diagramSectionStart).trim()
-            : evaluationResult.substring(diagramSectionStart, diagramSectionEnd).trim();
-
         // Parse individual diagram findings
-        String[] lines = diagramSection.split("\n");
+        String[] lines = diagramSections.toString().split("\n");
+        List<String[]> findings = new ArrayList<>();
         StringBuilder currentFinding = new StringBuilder();
         String currentImageRef = null;
         
         for (String line : lines) {
             line = line.trim();
             if (line.isBlank() || line.equalsIgnoreCase("None detected.")
-                || line.toLowerCase().startsWith("diagram analysis")) {
+                || DIAGRAM_HEADER_LINE.matcher(line).matches()) {
                 continue;
             }
 
-            boolean startsWithImage = line.matches(".*\\[IMG-\\d+\\].*");
+            boolean startsWithImage = IMG_TAG.matcher(line).find();
             boolean nestedField = line.matches(
                 "(?i)^[-*]\\s*(notation observed|correctness|issues|alignment|elements)\\s*:.*");
 
             if (startsWithImage && !nestedField) {
                 if (currentFinding.length() > 0) {
-                    components.addAll(createComponentsFromFinding(
-                        currentFinding.toString(), historyId, currentImageRef, extractedImages, codeCounters));
+                    findings.add(new String[] { currentFinding.toString(), currentImageRef });
                 }
                 currentImageRef = extractImageRef(line);
                 currentFinding = new StringBuilder(line);
@@ -257,8 +271,20 @@ public class TraceComponentController {
 
         // Don't forget the last finding
         if (currentFinding.length() > 0) {
+            findings.add(new String[] { currentFinding.toString(), currentImageRef });
+        }
+
+        // Reserve every code the document declares before numbering the uncoded diagrams,
+        // so a fallback like UC-01 never duplicates a later diagram's explicit UC-01.
+        for (String[] finding : findings) {
+            ArtifactKind kind = determineArtifactKindFromFinding(finding[0]);
+            for (ComponentCodeHelper.CodedElement element : ComponentCodeHelper.extractOwnElements(finding[0], kind)) {
+                ComponentCodeHelper.reserveCode(element.codeName(), codeCounters);
+            }
+        }
+        for (String[] finding : findings) {
             components.addAll(createComponentsFromFinding(
-                currentFinding.toString(), historyId, currentImageRef, extractedImages, codeCounters));
+                finding[0], historyId, finding[1], extractedImages, codeCounters));
         }
 
         return components;
@@ -285,7 +311,7 @@ public class TraceComponentController {
         }
 
         List<ComponentCodeHelper.CodedElement> elements =
-            ComponentCodeHelper.extractElements(findingText, artifactKind);
+            ComponentCodeHelper.extractOwnElements(findingText, artifactKind);
 
         List<TraceComponent> created = new ArrayList<>();
         if (!elements.isEmpty()) {
@@ -338,8 +364,20 @@ public class TraceComponentController {
         return cleaned;
     }
 
+    // The heading ("[IMG-28] - Use Case Diagram:") names the diagram's type; the body can
+    // mention other kinds ("...supports the checkout use case"), so it is only a fallback.
     private ArtifactKind determineArtifactKindFromFinding(String findingText) {
-        String lower = findingText.toLowerCase();
+        String heading = findingText.lines().findFirst().orElse("")
+            .replaceAll("(?i)\\[\\s*IMG\\s*-?\\s*\\d+\\s*\\]", "");
+        int colon = heading.indexOf(':');
+        if (colon >= 0) heading = heading.substring(0, colon);
+        ArtifactKind fromHeading = classifyArtifactKind(heading);
+        return fromHeading != null ? fromHeading : Optional.ofNullable(classifyArtifactKind(findingText))
+            .orElse(ArtifactKind.OTHER_SDD);
+    }
+
+    private ArtifactKind classifyArtifactKind(String text) {
+        String lower = " " + text.toLowerCase() + " ";
 
         if (lower.contains("source code") || lower.contains("repository") ||
             lower.contains("implementation evidence") || lower.contains("implemented in") ||
@@ -371,7 +409,7 @@ public class TraceComponentController {
         if (lower.contains("test log")) return ArtifactKind.TEST_LOG;
         if (lower.contains("test design") || lower.contains("test plan")) return ArtifactKind.TEST_DESIGN;
 
-        return ArtifactKind.OTHER_SDD;
+        return null;
     }
 
     private String extractComponentName(String findingText) {
@@ -380,7 +418,9 @@ public class TraceComponentController {
             String firstLine = lines[0].trim();
             // Remove bullet points and image refs
             String cleaned = firstLine.replaceAll("^[*\\-]\\s*", "")
-                           .replaceAll("\\[IMG-\\d+\\]\\s*", "")
+                           .replaceAll("(?i)\\[\\s*IMG\\s*-?\\s*\\d+\\s*\\]\\s*", "")
+                           .replaceAll("^[-–—:\\s]+", "")
+                           .replaceAll("\\s*:\\s*$", "")
                            .trim();
             if (cleaned.length() > 250) {
                 cleaned = cleaned.substring(0, 249).trim() + "…";
@@ -391,10 +431,8 @@ public class TraceComponentController {
     }
 
     private String extractImageRef(String line) {
-        if (line.matches(".*\\[IMG-\\d+\\].*")) {
-            return line.replaceAll(".*\\[IMG-(\\d+)\\].*", "[IMG-$1]");
-        }
-        return null;
+        Matcher matcher = IMG_TAG.matcher(line);
+        return matcher.find() ? "[IMG-" + Integer.parseInt(matcher.group(1)) + "]" : null;
     }
 
     // Section headers in the evaluation output always appear alone on their own line,
@@ -402,22 +440,25 @@ public class TraceComponentController {
     // search false-positives on ordinary words inside diagram descriptions themselves
     // (e.g. "...wireframe with summary cards..." was mistaken for the "Summary:" header
     // and truncated the diagram list mid-way).
+    // Headings are accepted in the same forms the report view renders: "Header:",
+    // "**Header:**", "**Header**" and "## Header".
     private int findHeaderLineStart(String text, String headerName, int fromIndex) {
         Pattern pattern = Pattern.compile(
-            "(?im)^[ \\t]*" + Pattern.quote(headerName) + "[ \\t]*:");
+            "(?im)^[ \\t]*(?:#{1,3}[ \\t]*)?(?:\\*\\*)?" + Pattern.quote(headerName)
+                + "(?:\\*\\*)?[ \\t]*(?::|(?:\\*\\*)?[ \\t]*$)");
         Matcher matcher = pattern.matcher(text);
         return matcher.find(fromIndex) ? matcher.start() : -1;
     }
 
-    private int findSectionStart(String text, String sectionName) {
-        return findHeaderLineStart(text, sectionName, 0);
+    private int findSectionStart(String text, String sectionName, int fromIndex) {
+        return findHeaderLineStart(text, sectionName, fromIndex);
     }
 
     private int findNextSectionStart(String text, int fromIndex) {
         String[] headers = {
             "Diagram Analysis", "Missing Sections", "Weaknesses",
             "Recommendations", "Strengths", "Summary", "Conclusion",
-            "Rubric Evaluation", "Revision Analysis"
+            "Rubric Evaluation", "Revision Analysis", "Remaining Issues", "Next Steps"
         };
         int earliest = -1;
         for (String header : headers) {
