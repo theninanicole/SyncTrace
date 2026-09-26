@@ -61,17 +61,7 @@ public class SmartGoalController {
             if (effectiveTeamCode == null) {
                 return ResponseEntity.ok(goalService.getAllGoalComponentsMap());
             }
-            Set<Long> goalIds = goalService.getAllGoalsWithCategoryStatus(effectiveTeamCode).stream()
-                    .map(goal -> ((Number) goal.get("id")).longValue())
-                    .collect(java.util.stream.Collectors.toSet());
-            Map<Long, ?> allComponents = goalService.getAllGoalComponentsMap();
-            Map<Long, Object> filtered = new java.util.LinkedHashMap<>();
-            allComponents.forEach((goalId, components) -> {
-                if (goalIds.contains(goalId)) {
-                    filtered.put(goalId, components);
-                }
-            });
-            return ResponseEntity.ok(filtered);
+            return ResponseEntity.ok(goalService.getAllGoalComponentsMap(effectiveTeamCode));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {

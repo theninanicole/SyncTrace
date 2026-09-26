@@ -123,8 +123,9 @@ export const getGoalComponents = async (goalId) => {
     return data;
 };
 
-export const getAllGoalComponents = async () => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/components`);
+export const getAllGoalComponents = async (teamCode) => {
+    const query = teamCode ? `?teamCode=${encodeURIComponent(teamCode)}` : '';
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/components${query}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch all goal components.');
     return data;

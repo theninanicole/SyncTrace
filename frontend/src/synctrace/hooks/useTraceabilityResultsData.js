@@ -33,7 +33,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
     try {
       const [goalList, allGoalComponents, findingsData, analysisStatusData, recommendationsData] = await Promise.all([
         getSmartGoals(teamCode || undefined),
-        getAllGoalComponents(),
+        getAllGoalComponents(teamCode || undefined),
         teamCode ? getContinuityFindings(teamCode).catch(() => ({ findings: [] })) : { findings: [] },
         teamCode ? getContinuityAnalysisStatus(teamCode).catch(() => null) : null,
         teamCode ? getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })) : { recommendations: [] },

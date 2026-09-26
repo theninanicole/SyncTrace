@@ -160,8 +160,22 @@ public class SmartGoalService {
     }
 
     public Map<Long, List<TraceComponentSummaryDTO>> getAllGoalComponentsMap() {
-        List<com.ieee.evaluator.synctrace.model.GoalComponentMapping> allMappings =
-            mappingRepository.findAll();
+        return getAllGoalComponentsMap(null);
+    }
+
+    public Map<Long, List<TraceComponentSummaryDTO>> getAllGoalComponentsMap(String teamCode) {
+        List<com.ieee.evaluator.synctrace.model.GoalComponentMapping> allMappings;
+        if (teamCode == null || teamCode.isBlank()) {
+            allMappings = mappingRepository.findAll();
+        } else {
+            List<Long> goalIds = goalRepository
+                .findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(teamCode.trim())
+                .stream()
+                .map(SmartGoal::getId)
+                .toList();
+            if (goalIds.isEmpty()) return Map.of();
+            allMappings = mappingRepository.findByGoalIdIn(goalIds);
+        }
 
         if (allMappings.isEmpty()) {
             return Map.of();
