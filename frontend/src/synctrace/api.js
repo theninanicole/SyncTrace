@@ -1,13 +1,27 @@
 import { API_BASE_URL } from '../api';
 import { supabase } from '../supabaseClient';
 
-async function authorizedFetch(url, options = {}) {
+const AUTH_RETRY_DELAY_MS = 800;
+
+async function fetchWithSession(url, options) {
     const { data: { session } } = await supabase.auth.getSession();
     const headers = { ...(options.headers || {}) };
     if (session?.access_token) {
         headers.Authorization = `Bearer ${session.access_token}`;
     }
     return fetch(url, { ...options, headers });
+}
+
+// Right after sign-in or a backend restart the server may not recognise the user yet (its
+// allowlist is still loading), so the first requests of a page load can come back 401/403
+// even though the user has access. Retrying once, a moment later, loads the team's data
+// without the user having to refresh the page. A real "no access" answer is still returned
+// after the retry.
+async function authorizedFetch(url, options = {}) {
+    const response = await fetchWithSession(url, options);
+    if (response.status !== 401 && response.status !== 403) return response;
+    await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
+    return fetchWithSession(url, options);
 }
 
 // ── SyncTrace: Traceability Mapping ─────────────────────────────────────────

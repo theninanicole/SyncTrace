@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getSmartGoals,
   getLatestMappingActivity,
@@ -120,25 +120,35 @@ export function useStagedTraceability(showToast, teamCode) {
     }
   }, [teamCode]);
 
+  // Switching teams while a load is still running used to let the earlier team's response
+  // land last (or clear the loading flag early), leaving the wrong or no data until a page
+  // refresh. Each loader only applies the response of its latest request.
+  const goalsRequestRef = useRef(0);
+  const componentsRequestRef = useRef(0);
+  const mappingsRequestRef = useRef(0);
+
   const loadSmartGoals = useCallback(async () => {
+    const requestId = ++goalsRequestRef.current;
     setLoadingGoals(true);
     try {
       const data = await getSmartGoals(teamCode || undefined);
-      setSmartGoals(data);
+      if (requestId === goalsRequestRef.current) setSmartGoals(data);
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (requestId === goalsRequestRef.current) showToast?.(err.message, 'error');
     } finally {
-      setLoadingGoals(false);
+      if (requestId === goalsRequestRef.current) setLoadingGoals(false);
     }
   }, [teamCode, showToast]);
 
   const loadComponents = useCallback(async () => {
+    const requestId = ++componentsRequestRef.current;
     setLoadingComponents(true);
     try {
       const [allComponents, history] = await Promise.all([
         getTraceComponents(undefined, undefined, teamCode),
         getEvaluationHistory().catch(() => []),
       ]);
+      if (requestId !== componentsRequestRef.current) return;
       const historyTeamMap = new Map(
         history.map((h) => [h.id, extractSubmissionMeta(h.fileName).teamCode])
       );
@@ -160,9 +170,9 @@ export function useStagedTraceability(showToast, teamCode) {
       });
       setComponents(next);
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (requestId === componentsRequestRef.current) showToast?.(err.message, 'error');
     } finally {
-      setLoadingComponents(false);
+      if (requestId === componentsRequestRef.current) setLoadingComponents(false);
     }
   }, [teamCode, showToast]);
 
@@ -174,6 +184,7 @@ export function useStagedTraceability(showToast, teamCode) {
   }, [teamCode]);
 
   const loadMappings = useCallback(async () => {
+    const requestId = ++mappingsRequestRef.current;
     if (!teamCode) {
       setMappings([]);
       setMappingsLoaded(false);
@@ -181,10 +192,11 @@ export function useStagedTraceability(showToast, teamCode) {
     }
     try {
       const rows = await getStagedMappings(teamCode);
+      if (requestId !== mappingsRequestRef.current) return;
       setMappings(rows.map(toWorkspaceMapping));
       setMappingsLoaded(true);
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (requestId === mappingsRequestRef.current) showToast?.(err.message, 'error');
     }
   }, [teamCode, showToast]);
 

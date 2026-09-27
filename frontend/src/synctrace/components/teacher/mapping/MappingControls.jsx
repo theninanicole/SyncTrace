@@ -5,7 +5,10 @@ function itemLabel(item) {
   return item.name ? componentLabel(item) : item.description;
 }
 
-function MappingControls({ stage, sourceItems, targetItems, selectedSourceId, selectedTargetIds, mappingsForStage, onEstablish, onRemoveMapping }) {
+function MappingControls({ stage, sourceItems, targetItems, selectedSourceId, selectedTargetIds, mappingsForStage, loading = false, onEstablish, onRemoveMapping }) {
+  // While goals/components are still loading, a saved mapping's ends can't be resolved yet;
+  // say so instead of calling them removed.
+  const missingLabel = loading ? 'Loading…' : 'Removed component';
   const sourceById = new Map(sourceItems.map((i) => [i.id, i]));
   const targetById = new Map(targetItems.map((i) => [i.id, i]));
 
@@ -46,9 +49,9 @@ function MappingControls({ stage, sourceItems, targetItems, selectedSourceId, se
             return (
               <li key={m.id} className="stm-controls__list-item">
                 <span className="stm-controls__pair">
-                  <span title={itemLabel(src)}>{itemLabel(src) || 'Removed component'}</span>
+                  <span title={itemLabel(src)}>{itemLabel(src) || missingLabel}</span>
                   <span className="stm-controls__pair-sep">to</span>
-                  <span title={itemLabel(tgt)}>{itemLabel(tgt) || 'Removed component'}</span>
+                  <span title={itemLabel(tgt)}>{itemLabel(tgt) || missingLabel}</span>
                 </span>
                 <button className="stm-mini-btn" onClick={() => onRemoveMapping(m.id)}>
                   Remove

@@ -92,6 +92,7 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
         selectedSourceId={selectedSourceId}
         selectedTargetIds={selectedTargetIds}
         mappingsForStage={mappingsForStage}
+        loading={loadingGoals || loadingComponents}
         onEstablish={establishMapping}
         onRemoveMapping={removeMapping}
       />

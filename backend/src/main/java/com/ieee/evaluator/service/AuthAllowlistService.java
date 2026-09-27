@@ -25,19 +25,49 @@ public class AuthAllowlistService {
         this.sheetsService = sheetsService;
     }
 
+    // One lock per sheet range, so only one request refreshes a range at a time.
+    private final Map<String, Object> rangeLocks = new ConcurrentHashMap<>();
+    private static final long RETRY_DELAY_MILLIS = 400;
+
     private List<List<Object>> readRange(String range) throws Exception {
         CachedRange cached = rangeCache.get(range);
-        if (cached != null && System.currentTimeMillis() - cached.fetchedAt() < CACHE_TTL_MILLIS) {
+        if (isFresh(cached)) {
             return cached.values();
         }
-        try {
-            List<List<Object>> values = sheetsService.getSheetData(range);
-            rangeCache.put(range, new CachedRange(values, System.currentTimeMillis()));
-            return values;
-        } catch (Exception e) {
+        // A page load fires several SyncTrace requests at once. Without this lock each of them
+        // read the sheet in parallel whenever the cache was empty (first load after a restart)
+        // or expired, and any read that failed made that request "Forbidden" until the user
+        // refreshed. Now one request reads the sheet and the rest reuse its result.
+        synchronized (rangeLocks.computeIfAbsent(range, ignored -> new Object())) {
+            cached = rangeCache.get(range);
+            if (isFresh(cached)) {
+                return cached.values();
+            }
+            Exception lastError = null;
+            for (int attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    List<List<Object>> values = sheetsService.getSheetData(range);
+                    rangeCache.put(range, new CachedRange(values, System.currentTimeMillis()));
+                    return values;
+                } catch (Exception e) {
+                    lastError = e;
+                    if (attempt == 1) {
+                        try {
+                            Thread.sleep(RETRY_DELAY_MILLIS);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                }
+            }
             if (cached != null) return cached.values();
-            throw e;
+            throw lastError;
         }
+    }
+
+    private static boolean isFresh(CachedRange cached) {
+        return cached != null && System.currentTimeMillis() - cached.fetchedAt() < CACHE_TTL_MILLIS;
     }
 
     public StudentTrackerRecord verifyUser(String googleEmail) throws Exception {
