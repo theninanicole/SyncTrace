@@ -27,16 +27,19 @@ public class SmartGoalService {
     private final GoalComponentMappingRepository mappingRepository;
     private final TraceComponentRepository componentRepository;
     private final StagedTraceMappingRepository stagedMappingRepository;
+    private final TeamComponentResolverService teamComponentResolver;
 
     public SmartGoalService(
             SmartGoalRepository goalRepository,
             GoalComponentMappingRepository mappingRepository,
             TraceComponentRepository componentRepository,
-            StagedTraceMappingRepository stagedMappingRepository) {
+            StagedTraceMappingRepository stagedMappingRepository,
+            TeamComponentResolverService teamComponentResolver) {
         this.goalRepository = goalRepository;
         this.mappingRepository = mappingRepository;
         this.componentRepository = componentRepository;
         this.stagedMappingRepository = stagedMappingRepository;
+        this.teamComponentResolver = teamComponentResolver;
     }
 
     public List<Map<String, Object>> getAllGoalsWithCategoryStatus(String teamCode) {
@@ -190,6 +193,10 @@ public class SmartGoalService {
             return Map.of();
         }
 
+        allMappings = new ArrayList<>(allMappings);
+        allMappings.sort(Comparator.comparing(
+            com.ieee.evaluator.synctrace.model.GoalComponentMapping::getId,
+            Comparator.nullsLast(Comparator.naturalOrder())));
         Map<Long, List<Long>> componentIdsByGoal = new HashMap<>();
         for (var mapping : allMappings) {
             componentIdsByGoal.computeIfAbsent(mapping.getGoalId(), k -> new ArrayList<>())
@@ -207,7 +214,11 @@ public class SmartGoalService {
 
         List<TraceComponent> allComponents = componentRepository.findAllById(allComponentIds);
         Map<Long, TraceComponentSummaryDTO> componentLookup = new HashMap<>();
+        boolean teamScoped = teamCode != null && !teamCode.isBlank();
         for (TraceComponent c : allComponents) {
+            // Same ownership rule gap detection and readiness use, so the matrix never
+            // shows a component the analysis ignores (or vice versa).
+            if (teamScoped && !teamComponentResolver.countsForTeam(c, teamCode)) continue;
             componentLookup.put(c.getId(), toSummary(c));
         }
 

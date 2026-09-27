@@ -209,7 +209,7 @@ public class AuditExportService {
             .toList();
         
         // Findings are already team-scoped
-        List<ContinuityFinding> allFindings = findingRepository.findByTeamCode(teamCode);
+        List<ContinuityFinding> allFindings = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode.trim());
         
         List<Long> findingIds = allFindings.stream()
             .map(ContinuityFinding::getId)
@@ -217,7 +217,7 @@ public class AuditExportService {
         
         List<DiagnosticRecommendation> allRecommendations = findingIds.isEmpty() 
             ? List.of()
-            : recommendationRepository.findAllById(findingIds);
+            : recommendationRepository.findByFindingIdIn(findingIds);
         
         return new AuditReportData(
             teamGoals.stream().map(this::goalToMap).toList(),

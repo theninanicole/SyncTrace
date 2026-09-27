@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getSmartGoals, getAllGoalComponents } from '../api';
-import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
-import { extractSubmissionMeta } from '../../utils/dashboardUtils';
-import { DOC_TYPES } from './useTraceability';
+import { fetchClassRoster } from '../../services/dashboardService';
+import { DOC_TYPES, clusterCategoryStatus, groupGoalsIntoClusters } from '../constants';
 
 export function groupStatus(coveredCount, totalCells) {
   if (totalCells === 0 || coveredCount === 0) return 'critical';
@@ -16,21 +15,6 @@ export const STATUS_META = {
   critical: { label: 'Critical Gap',   chip: 'status-chip--critical' },
 };
 
-function resolveComponentTeamCode(component, historyTeamMap) {
-  if (component.sourceHistoryId != null) {
-    return historyTeamMap.get(component.sourceHistoryId) || null;
-  }
-
-  if (component.docType === 'IMPLEMENTATION' && typeof component.name === 'string') {
-    const separatorIndex = component.name.indexOf(' - ');
-    if (separatorIndex > 0) {
-      return component.name.slice(0, separatorIndex).trim() || null;
-    }
-  }
-
-  return null;
-}
-
 export function useGroupOverview(showToast) {
   const [goals, setGoals] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -39,25 +23,17 @@ export function useGroupOverview(showToast) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [goalList, roster, history, componentsByGoal] = await Promise.all([
+      const [goalList, roster, componentsByGoal] = await Promise.all([
         getSmartGoals(),
         fetchClassRoster().catch(() => []),
-        fetchTeacherHistory().catch(() => []),
         getAllGoalComponents().catch(() => ({})),
       ]);
       setGoals(goalList);
 
-      const historyTeamMap = new Map();
-      history.forEach((h) => {
-        const meta = extractSubmissionMeta(h.fileName);
-        if (meta.teamCode) historyTeamMap.set(h.id, meta.teamCode);
-      });
-
       const teamSectionMap = new Map();
       const displayCodeByKey = new Map();
       const teamKeys = new Set();
-      
-      // First, add teams from roster if available
+
       roster.forEach((s) => {
         if (!s.groupCode) return;
         const key = s.groupCode.toUpperCase();
@@ -65,42 +41,38 @@ export function useGroupOverview(showToast) {
         if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, s.groupCode);
         if (s.section && !teamSectionMap.has(key)) teamSectionMap.set(key, s.section);
       });
-      
-      const perGoalComponents = goalList.map((g) => componentsByGoal[g.id] || []);
 
-      const coverageByTeam = new Map();
-      const lastTraceabilityByTeam = new Map();
-      goalList.forEach((goal, gi) => {
-        (perGoalComponents[gi] || []).forEach((c) => {
-          const teamCode = resolveComponentTeamCode(c, historyTeamMap);
-          if (!teamCode) return;
-          const key = teamCode.toUpperCase();
-          teamKeys.add(key); // Add team from components as well
-          if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, teamCode);
-          if (!coverageByTeam.has(key)) coverageByTeam.set(key, new Set());
-          coverageByTeam.get(key).add(`${goal.id}:${c.docType}`);
-
-          const traceabilityUpdatedAt = c.mappingCreatedAt || c.createdAt;
-          if (traceabilityUpdatedAt) {
-            const prev = lastTraceabilityByTeam.get(key);
-            if (!prev || new Date(traceabilityUpdatedAt) > new Date(prev)) {
-              lastTraceabilityByTeam.set(key, traceabilityUpdatedAt);
-            }
-          }
-        });
+      // Goals are team-scoped, so a team's coverage is measured against its own goal
+      // clusters (the rows of its matrix) — not against every team's goals combined, and
+      // without guessing ownership from the teacher's evaluation history.
+      const goalsByTeam = new Map();
+      goalList.forEach((goal) => {
+        if (!goal.teamCode) return;
+        const key = goal.teamCode.toUpperCase();
+        teamKeys.add(key);
+        if (!displayCodeByKey.has(key)) displayCodeByKey.set(key, goal.teamCode);
+        if (!goalsByTeam.has(key)) goalsByTeam.set(key, []);
+        goalsByTeam.get(key).push(goal);
       });
-
-      const totalCells = goalList.length * DOC_TYPES.length;
 
       const groupList = [...teamKeys].sort((a, b) => a.localeCompare(b)).map((key) => {
         const teamCode = displayCodeByKey.get(key) || key;
-        const covered = coverageByTeam.get(key) || new Set();
-        const perGoal = goalList.map((goal, gi) => {
-          const docTypeStatus = {};
-          DOC_TYPES.forEach((dt) => { docTypeStatus[dt] = covered.has(`${goal.id}:${dt}`); });
+        const clusters = groupGoalsIntoClusters(goalsByTeam.get(key) || []);
+        let lastTraceability = null;
+        const perGoal = clusters.map((cluster, index) => {
+          const docTypeStatus = clusterCategoryStatus(cluster, DOC_TYPES);
+          [cluster.primary, ...cluster.children].forEach((member) => {
+            (componentsByGoal[member.id] || componentsByGoal[String(member.id)] || []).forEach((c) => {
+              const updatedAt = c.mappingCreatedAt || c.createdAt;
+              if (updatedAt && (!lastTraceability || new Date(updatedAt) > new Date(lastTraceability))) {
+                lastTraceability = updatedAt;
+              }
+            });
+          });
           const coveredCount = DOC_TYPES.filter((dt) => docTypeStatus[dt]).length;
-          return { goalId: goal.id, index: gi, description: goal.description, docTypeStatus, coveredCount };
+          return { goalId: cluster.id, index, description: cluster.primary.description, docTypeStatus, coveredCount };
         });
+        const totalCells = perGoal.length * DOC_TYPES.length;
         const coveredCount = perGoal.reduce((sum, g) => sum + g.coveredCount, 0);
         const percent = totalCells > 0 ? Math.round((coveredCount / totalCells) * 100) : 0;
 
@@ -111,7 +83,7 @@ export function useGroupOverview(showToast) {
           coveredCount,
           totalCells,
           status: groupStatus(coveredCount, totalCells),
-          lastTraceability: lastTraceabilityByTeam.get(key) || null,
+          lastTraceability,
           perGoal,
           readinessScore: percent,
           readinessStatus: null,

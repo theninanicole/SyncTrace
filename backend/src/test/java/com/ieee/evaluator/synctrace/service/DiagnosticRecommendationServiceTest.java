@@ -52,7 +52,7 @@ class DiagnosticRecommendationServiceTest {
 
     @Test
     void generateRecommendationsReturnsEmptyListWithoutCallingAiWhenNoFindingsExist() throws Exception {
-        when(findingRepository.findByTeamCode(TEAM_CODE)).thenReturn(List.of());
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of());
 
         List<DiagnosticRecommendation> recommendations = service.generateRecommendations(TEAM_CODE, "openai", null);
 
@@ -71,7 +71,7 @@ class DiagnosticRecommendationServiceTest {
         finding.setDocTypeTo(DocType.SDD);
         finding.setDescription("Missing SDD coverage");
 
-        when(findingRepository.findByTeamCode(TEAM_CODE)).thenReturn(List.of(finding));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of(finding));
         when(openAiProvider.complete(anyString())).thenReturn(
                 "[{\"findingId\":5,\"rootCause\":\"No design doc mapped\",\"recommendation\":\"Add an SDD component\",\"priority\":\"HIGH\"}]");
         when(recommendationRepository.save(any(DiagnosticRecommendation.class)))
@@ -114,7 +114,7 @@ class DiagnosticRecommendationServiceTest {
         finding.setDocTypeTo(DocType.SDD);
         finding.setDescription("Missing SDD coverage");
 
-        when(findingRepository.findByTeamCode(TEAM_CODE)).thenReturn(List.of(finding));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of(finding));
         when(openAiProvider.complete(anyString())).thenReturn(
                 "```json\n[{\"findingId\":9,\"rootCause\":\"No design doc\",\"recommendation\":\"Add SDD\",\"priority\":\"HIGH\"}]\n```");
         when(recommendationRepository.save(any(DiagnosticRecommendation.class)))
@@ -148,7 +148,7 @@ class DiagnosticRecommendationServiceTest {
         newer.setFindingId(7L);
         newer.setCreatedAt(LocalDateTime.now());
 
-        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of(finding));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of(finding));
         when(recommendationRepository.findByFindingIdIn(List.of(7L))).thenReturn(List.of(older, newer));
 
         List<DiagnosticRecommendation> result = service.getRecommendationsForTeam(TEAM_CODE);

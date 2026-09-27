@@ -10,6 +10,7 @@ import com.ieee.evaluator.synctrace.service.ContinuityReadinessService;
 import com.ieee.evaluator.synctrace.service.DiagnosticRecommendationService;
 import com.ieee.evaluator.synctrace.service.SourceCodeAlignmentService;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.service.TeamAnalysisLock;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +30,7 @@ public class ContinuityController {
     private final ContinuityFindingRepository findingRepository;
     private final ContinuityAnalysisRunRepository analysisRunRepository;
     private final SyncTraceAccessGuard accessGuard;
+    private final TeamAnalysisLock analysisLock;
 
     public ContinuityController(
             SourceCodeAlignmentService alignmentService,
@@ -37,7 +39,8 @@ public class ContinuityController {
             DiagnosticRecommendationService recommendationService,
             ContinuityFindingRepository findingRepository,
             ContinuityAnalysisRunRepository analysisRunRepository,
-            SyncTraceAccessGuard accessGuard) {
+            SyncTraceAccessGuard accessGuard,
+            TeamAnalysisLock analysisLock) {
         this.alignmentService = alignmentService;
         this.gapDetectionService = gapDetectionService;
         this.readinessService = readinessService;
@@ -45,6 +48,7 @@ public class ContinuityController {
         this.findingRepository = findingRepository;
         this.analysisRunRepository = analysisRunRepository;
         this.accessGuard = accessGuard;
+        this.analysisLock = analysisLock;
     }
 
     // Students can run and read analysis, but only ever for their own team.
@@ -88,7 +92,11 @@ public class ContinuityController {
             String teamCode = scopedTeamCode((String) payload.get("teamCode"));
             Long goalId = payload.get("goalId") != null ? ((Number) payload.get("goalId")).longValue() : null;
 
-            List<ContinuityFinding> findings = gapDetectionService.detectGaps(teamCode, goalId);
+            // Teachers and students can both run analysis now; serialize per team so two
+            // overlapping runs can't both insert and leave duplicate findings.
+            final String scopedTeam = teamCode;
+            List<ContinuityFinding> findings = analysisLock.run(scopedTeam,
+                    () -> gapDetectionService.detectGaps(scopedTeam, goalId));
             
             return ResponseEntity.ok(Map.of("findings", findings, "count", findings.size()));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
@@ -129,7 +137,7 @@ public class ContinuityController {
     public ResponseEntity<?> getFindings(@PathVariable String teamCode) {
         teamCode = scopedTeamCode(teamCode);
         try {
-            List<ContinuityFinding> findings = findingRepository.findByTeamCodeOrderByDetectedAtDesc(teamCode);
+            List<ContinuityFinding> findings = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode.trim());
             return ResponseEntity.ok(Map.of("findings", findings, "count", findings.size()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

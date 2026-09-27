@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getSmartGoals,
   getAllGoalComponents,
   getContinuityFindings,
   getContinuityAnalysisStatus,
+  getContinuitySummary,
   getDiagnosticRecommendations,
   getLatestMappingActivity,
 } from '../api';
@@ -17,8 +18,13 @@ export function isAnalysisStale(analysisStatus, mappingActivity) {
   return Boolean(analyzedAt && changedAt && new Date(changedAt) > new Date(analyzedAt));
 }
 
+/**
+ * Single loader for a team's traceability matrix. The teacher Results page, the teacher
+ * group page and the student Results card all read through this hook so they always show
+ * the same rows, cells and Passed/Failed status for the same team.
+ */
 export function useTraceabilityResultsData(teamCode, options = {}) {
-  const { showToast, enabled = true } = options;
+  const { showToast, enabled = true, includeSummary = false } = options;
   const [goals, setGoals] = useState([]);
   const [componentsByGoal, setComponentsByGoal] = useState({});
   const [loading, setLoading] = useState(true);
@@ -26,41 +32,51 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
   const [aiRecommendations, setAiRecommendations] = useState([]);
   const [analysisStatus, setAnalysisStatus] = useState(null);
   const [mappingActivity, setMappingActivity] = useState(null);
+  const [summary, setSummary] = useState(null);
+  // Switching teams quickly can leave an older request in flight; only the latest may
+  // write state, otherwise one team's findings can land on another team's matrix.
+  const requestIdRef = useRef(0);
 
   // silent: background refreshes keep the current matrix on screen instead of a loading state.
   const loadResults = useCallback(async ({ silent = false } = {}) => {
+    const requestId = ++requestIdRef.current;
     if (!enabled) {
       setGoals([]);
       setComponentsByGoal({});
       setAiFindings([]);
       setAiRecommendations([]);
       setAnalysisStatus(null);
+      setSummary(null);
       setLoading(false);
       return;
     }
 
     if (!silent) setLoading(true);
     try {
-      const [goalList, allGoalComponents, findingsData, analysisStatusData, recommendationsData, activity] = await Promise.all([
+      const [goalList, allGoalComponents, findingsData, analysisStatusData, recommendationsData, activity, summaryData] = await Promise.all([
         getSmartGoals(teamCode || undefined),
         getAllGoalComponents(teamCode || undefined),
         teamCode ? getContinuityFindings(teamCode).catch(() => ({ findings: [] })) : { findings: [] },
         teamCode ? getContinuityAnalysisStatus(teamCode).catch(() => null) : null,
         teamCode ? getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })) : { recommendations: [] },
         teamCode ? getLatestMappingActivity(teamCode).catch(() => null) : null,
+        teamCode && includeSummary ? getContinuitySummary(teamCode).catch(() => null) : null,
       ]);
+      if (requestId !== requestIdRef.current) return;
       setGoals(goalList);
       setComponentsByGoal(allGoalComponents);
       setAiFindings(findingsData.findings || []);
       setAnalysisStatus(analysisStatusData);
       setAiRecommendations(recommendationsData.recommendations || []);
       setMappingActivity(activity);
+      setSummary(summaryData);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       if (!silent) showToast?.(err.message, 'error');
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && requestId === requestIdRef.current) setLoading(false);
     }
-  }, [enabled, showToast, teamCode]);
+  }, [enabled, includeSummary, showToast, teamCode]);
 
   useEffect(() => {
     loadResults();
@@ -168,6 +184,7 @@ export function useTraceabilityResultsData(teamCode, options = {}) {
     aiFindings: currentFindings,
     aiRecommendations: currentRecommendations,
     analysisStatus: analysisCurrent ? analysisStatus : null,
+    summary,
     aiIssues,
     setAiFindings,
     setAiRecommendations,

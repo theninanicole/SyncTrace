@@ -45,7 +45,7 @@ class AuditExportServiceTest {
 
     @BeforeEach
     void setUp() {
-        ObjectMapper mapper = JsonMapper.builder().build();
+        objectMapper = JsonMapper.builder().build();
         teamComponentResolver = new TeamComponentResolverService(componentRepository, historyRepository);
         auditExportService = new AuditExportService(
                 goalRepository, componentRepository, findingRepository,
@@ -133,8 +133,8 @@ class AuditExportServiceTest {
         mappingB2.setComponentId(13L);
         when(mappingRepository.findByGoalId(101L)).thenReturn(List.of(mappingB1, mappingB2));
 
-        when(findingRepository.findByTeamCode(TEAM_A)).thenReturn(List.of());
-        when(findingRepository.findByTeamCode(TEAM_B)).thenReturn(List.of());
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_A)).thenReturn(List.of());
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_B)).thenReturn(List.of());
 
         // Export audit report for team A
         byte[] reportA = auditExportService.exportAuditReport(TEAM_A, "json");
@@ -257,7 +257,7 @@ class AuditExportServiceTest {
         finding.setDocTypeTo(TraceComponent.DocType.SDD);
         finding.setDescription(findingDescription);
         finding.setDetectedAt(LocalDateTime.now());
-        when(findingRepository.findByTeamCode(teamCode)).thenReturn(List.of(finding));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode)).thenReturn(List.of(finding));
 
         DiagnosticRecommendation recommendation = new DiagnosticRecommendation();
         recommendation.setId(50L);
@@ -266,7 +266,7 @@ class AuditExportServiceTest {
         recommendation.setRecommendation("Add an SDD component");
         recommendation.setPriority("HIGH");
         recommendation.setCreatedAt(LocalDateTime.now());
-        when(recommendationRepository.findAllById(List.of(40L))).thenReturn(List.of(recommendation));
+        when(recommendationRepository.findByFindingIdIn(List.of(40L))).thenReturn(List.of(recommendation));
     }
 
     @Test

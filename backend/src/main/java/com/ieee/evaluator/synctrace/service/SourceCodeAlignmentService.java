@@ -8,6 +8,7 @@ import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
+import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class SourceCodeAlignmentService {
 
     private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
+    private final DiagnosticRecommendationRepository recommendationRepository;
     private final ProgressEmitter progressEmitter;
     private final TeamComponentResolverService teamComponentResolver;
     private final Map<String, AiProvider> providers;
@@ -41,11 +43,13 @@ public class SourceCodeAlignmentService {
     public SourceCodeAlignmentService(
             TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
+            DiagnosticRecommendationRepository recommendationRepository,
             ProgressEmitter progressEmitter,
             TeamComponentResolverService teamComponentResolver,
             List<AiProvider> providerList) {
         this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
+        this.recommendationRepository = recommendationRepository;
         this.progressEmitter = progressEmitter;
         this.teamComponentResolver = teamComponentResolver;
         this.providers = providerList.stream()
@@ -57,7 +61,8 @@ public class SourceCodeAlignmentService {
     }
 
     public List<ContinuityFinding> analyzeAlignment(
-            String teamCode, String aiModel, String sessionId) throws Exception {
+            String rawTeamCode, String aiModel, String sessionId) throws Exception {
+        String teamCode = TeamCodeResolver.normalize(rawTeamCode);
 
         AiProvider provider;
         try {
@@ -223,6 +228,7 @@ public class SourceCodeAlignmentService {
             }
 
             List<ContinuityFinding> findings = new ArrayList<>();
+            LocalDateTime detectedAt = LocalDateTime.now();
             for (JsonNode node : root) {
                 String description = node.path("description").asText();
                 String severityStr = node.path("severity").asText("MEDIUM").toUpperCase();
@@ -240,12 +246,25 @@ public class SourceCodeAlignmentService {
                 finding.setDocTypeTo(DocType.IMPLEMENTATION);
                 finding.setSeverity(severity);
                 finding.setDescription(description);
-                finding.setDetectedAt(LocalDateTime.now());
-                
-                findings.add(findingRepository.save(finding));
+                finding.setDetectedAt(detectedAt);
+                findings.add(finding);
             }
 
-            return findings;
+            // Replace this team's previous alignment findings instead of appending to them,
+            // otherwise every re-run inflates the finding count and readiness penalty.
+            List<ContinuityFinding> previous = findingRepository
+                .findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode).stream()
+                .filter(f -> f.getGoalId() == null
+                    && f.getDocTypeFrom() == DocType.SDD
+                    && f.getDocTypeTo() == DocType.IMPLEMENTATION)
+                .toList();
+            previous.stream()
+                .map(ContinuityFinding::getId)
+                .filter(Objects::nonNull)
+                .forEach(recommendationRepository::deleteByFindingId);
+            findingRepository.deleteAll(previous);
+
+            return findingRepository.saveAll(findings);
         } catch (Exception e) {
             log.error("Failed to parse AI response as JSON: {}", e.getMessage());
             throw new RuntimeException(

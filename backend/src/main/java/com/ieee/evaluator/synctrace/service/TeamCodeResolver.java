@@ -33,6 +33,18 @@ public class TeamCodeResolver {
         return "";
     }
 
+    /**
+     * Cleans a team code before it is stored: surrounding whitespace is trimmed, but the code
+     * is otherwise kept exactly as listed in the submission form / class list (there is no
+     * default format or case). Because those sources don't always agree on case, every
+     * team-scoped lookup of stored data must ignore case instead.
+     */
+    public static String normalize(String teamCode) {
+        if (teamCode == null) return null;
+        String trimmed = teamCode.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private TeamCodeResolver() {
         // Utility class - prevent instantiation
     }

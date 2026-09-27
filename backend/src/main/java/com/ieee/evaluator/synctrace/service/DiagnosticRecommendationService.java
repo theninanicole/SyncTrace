@@ -53,7 +53,8 @@ public class DiagnosticRecommendationService {
     }
 
     public List<DiagnosticRecommendation> generateRecommendations(
-            String teamCode, String aiModel, String sessionId) throws Exception {
+            String rawTeamCode, String aiModel, String sessionId) throws Exception {
+        String teamCode = TeamCodeResolver.normalize(rawTeamCode);
 
         AiProvider provider;
         try {
@@ -95,7 +96,7 @@ public class DiagnosticRecommendationService {
             return List.of();
         }
 
-        List<Long> findingIds = findingRepository.findByTeamCodeOrderByDetectedAtDesc(teamCode).stream()
+        List<Long> findingIds = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode.trim()).stream()
             .map(ContinuityFinding::getId)
             .filter(Objects::nonNull)
             .toList();
@@ -168,7 +169,7 @@ public class DiagnosticRecommendationService {
 
         emit(sessionId, "LOADING", "Loading continuity findings", 15);
 
-        List<ContinuityFinding> findings = findingRepository.findByTeamCode(teamCode);
+        List<ContinuityFinding> findings = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode);
         if (findings.isEmpty()) {
             emit(sessionId, "COMPLETE", "No findings to analyze", 100);
             return List.of();
@@ -222,9 +223,16 @@ public class DiagnosticRecommendationService {
             }
 
             List<DiagnosticRecommendation> recommendations = new ArrayList<>();
-            for (int i = 0; i < root.size() && i < findings.size(); i++) {
+            Set<Long> covered = new HashSet<>();
+            for (int i = 0; i < root.size(); i++) {
                 JsonNode node = root.get(i);
-                ContinuityFinding finding = findings.get(i);
+                // Prefer the finding number the model echoed back; fall back to position.
+                int findingIndex = node.path("findingNumber").canConvertToInt()
+                    ? node.path("findingNumber").asInt() - 1
+                    : i;
+                if (findingIndex < 0 || findingIndex >= findings.size()) continue;
+                ContinuityFinding finding = findings.get(findingIndex);
+                if (!covered.add(finding.getId())) continue;
                 
                 String rootCause = cleanDiagnosticText(node.path("rootCause").asText());
                 String recommendationText = cleanDiagnosticText(node.path("recommendation").asText());
