@@ -42,6 +42,31 @@ public class TraceabilityClusterService {
     private static final List<ArtifactKind> REQUIRED_SRS_KINDS =
         List.of(ArtifactKind.USE_CASE, ArtifactKind.ACTIVITY, ArtifactKind.WIREFRAME);
 
+    /**
+     * Component-to-component counterparts: every component of the key kind must have a
+     * semantically matching component of each listed kind (e.g. a use case needs its own
+     * class diagram, sequence diagram and test case, not just "some SDD component").
+     */
+    private static final Map<ArtifactKind, List<ArtifactKind>> COUNTERPART_KINDS = new LinkedHashMap<>();
+    static {
+        COUNTERPART_KINDS.put(ArtifactKind.USE_CASE,
+            List.of(ArtifactKind.CLASS, ArtifactKind.SEQUENCE, ArtifactKind.TEST_CASE));
+        COUNTERPART_KINDS.put(ArtifactKind.WIREFRAME, List.of(ArtifactKind.UI));
+        COUNTERPART_KINDS.put(ArtifactKind.CLASS, List.of(ArtifactKind.IMPL_OO));
+        COUNTERPART_KINDS.put(ArtifactKind.NON_OO, List.of(ArtifactKind.IMPL_NON_OO));
+    }
+
+    private static final Map<ArtifactKind, String> KIND_LABELS = Map.ofEntries(
+        Map.entry(ArtifactKind.USE_CASE, "use case"),
+        Map.entry(ArtifactKind.WIREFRAME, "wireframe"),
+        Map.entry(ArtifactKind.CLASS, "class diagram"),
+        Map.entry(ArtifactKind.SEQUENCE, "sequence diagram"),
+        Map.entry(ArtifactKind.UI, "UI design"),
+        Map.entry(ArtifactKind.NON_OO, "non-OO design"),
+        Map.entry(ArtifactKind.TEST_CASE, "test case"),
+        Map.entry(ArtifactKind.IMPL_OO, "OO implementation"),
+        Map.entry(ArtifactKind.IMPL_NON_OO, "non-OO implementation"));
+
     private final SmartGoalRepository goalRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final TraceComponentRepository componentRepository;
@@ -206,7 +231,61 @@ public class TraceabilityClusterService {
         checkCorrespondence(issues, cluster, DocType.SRS, DocType.SPMP);
         checkCorrespondence(issues, cluster, DocType.SRS, DocType.STD);
         checkCorrespondence(issues, cluster, DocType.SDD, DocType.IMPLEMENTATION);
+        checkCounterparts(issues, cluster, establishedDocTypes);
         return issues;
+    }
+
+    /**
+     * For each component with required counterparts, reports every counterpart kind that has
+     * no semantically matching component in the cluster. Only checked for doc types the cluster
+     * already covers; a wholly missing stage is reported once by the coverage check instead.
+     */
+    private void checkCounterparts(List<TraceIssue> issues, GoalCluster cluster, Set<DocType> establishedDocTypes) {
+        Set<DocType> covered = cluster.coveredDocTypes();
+        for (Map.Entry<ArtifactKind, List<ArtifactKind>> rule : COUNTERPART_KINDS.entrySet()) {
+            ArtifactKind sourceKind = rule.getKey();
+            DocType from = sourceKind.toDocType();
+            List<TraceComponent> sources = cluster.components(from).stream()
+                .filter(component -> component.getArtifactKind() == sourceKind)
+                .toList();
+            if (sources.isEmpty()) continue;
+
+            for (ArtifactKind targetKind : rule.getValue()) {
+                DocType to = targetKind.toDocType();
+                if (!establishedDocTypes.contains(to) || !covered.contains(to)) continue;
+                List<Set<String>> targetTokens = cluster.components(to).stream()
+                    .filter(component -> component.getArtifactKind() == targetKind)
+                    .map(TraceabilityClusterService::conceptTokens)
+                    .toList();
+                for (TraceComponent source : sources) {
+                    Set<String> sourceTokens = conceptTokens(source);
+                    boolean matched = targetTokens.stream().anyMatch(tokens -> !Collections.disjoint(sourceTokens, tokens));
+                    if (!matched) {
+                        issues.add(new TraceIssue(from, to, Severity.HIGH,
+                            capitalize(kindLabel(sourceKind)) + " " + describe(source)
+                                + " has no corresponding " + kindLabel(targetKind) + " (" + to + ")."));
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean hasCounterpartRuleFor(ArtifactKind kind, DocType to) {
+        return COUNTERPART_KINDS.getOrDefault(kind, List.of()).stream()
+            .anyMatch(target -> target.toDocType() == to);
+    }
+
+    private static String kindLabel(ArtifactKind kind) {
+        return KIND_LABELS.getOrDefault(kind, kind.name().toLowerCase(Locale.ROOT).replace('_', ' '));
+    }
+
+    private static String capitalize(String text) {
+        return text.isEmpty() ? text : Character.toUpperCase(text.charAt(0)) + text.substring(1);
+    }
+
+    private static String describe(TraceComponent component) {
+        String code = component.getCodeName();
+        return "'" + component.getName() + "'" + (code != null && !code.isBlank() ? " (" + code + ")" : "");
     }
 
     private void checkCorrespondence(List<TraceIssue> issues, GoalCluster cluster, DocType from, DocType to) {
@@ -216,6 +295,8 @@ public class TraceabilityClusterService {
         if (sources.isEmpty() || targets.isEmpty()) return;
         List<Set<String>> targetTokens = targets.stream().map(TraceabilityClusterService::conceptTokens).toList();
         for (TraceComponent source : sources) {
+            // Components with kind-level counterparts are checked more precisely by checkCounterparts.
+            if (hasCounterpartRuleFor(source.getArtifactKind(), to)) continue;
             Set<String> sourceTokens = conceptTokens(source);
             boolean matched = targetTokens.stream().anyMatch(tokens -> !Collections.disjoint(sourceTokens, tokens));
             if (!matched) {

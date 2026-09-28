@@ -111,7 +111,7 @@ function TraceabilityMatrix({
                   aria-label={goalDetails}
                 >
                   <div className="trm-goal-primary">
-                    <span className="trm-goal-kind trm-goal-kind--general">GEN</span>
+                    <span className="trm-goal-kind trm-goal-kind--general">{row.code}</span>
                     <span className="trm-goal-desc">{row.description}</span>
                   </div>
                 </div>

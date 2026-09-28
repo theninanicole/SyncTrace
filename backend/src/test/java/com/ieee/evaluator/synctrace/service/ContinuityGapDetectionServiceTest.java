@@ -194,6 +194,67 @@ class ContinuityGapDetectionServiceTest {
         assertEquals(3L, findings.get(0).getGoalId());
     }
 
+    @Test
+    void useCaseNeedsItsOwnClassSequenceAndTestCaseCounterparts() {
+        SmartGoal goal = goal(1L, SmartGoal.GoalKind.GENERAL, null);
+        stubTeamGoals(goal);
+        mapFullSrs(goal, 100L, "login");
+        // A matching SDD component exists, but only as a UI design: before, this passed the
+        // SRS -> SDD check; now the use case still needs a class and a sequence diagram.
+        map(goal, component(110L, DocType.SDD, ArtifactKind.UI, "login wireframe screen"));
+        map(goal, component(111L, DocType.SDD, ArtifactKind.CLASS, "login controller"));
+        map(goal, component(120L, DocType.STD, ArtifactKind.TEST_CASE, "login test"));
+
+        List<String> descriptions = service.detectGaps(TEAM_CODE, null).stream()
+            .map(ContinuityFinding::getDescription)
+            .toList();
+
+        assertEquals(List.of("Use case 'login use case' has no corresponding sequence diagram (SDD)."), descriptions);
+    }
+
+    @Test
+    void counterpartMustMatchTheSourceComponentNotJustExist() {
+        SmartGoal goal = goal(1L, SmartGoal.GoalKind.GENERAL, null);
+        stubTeamGoals(goal);
+        TraceComponent useCase = component(100L, DocType.SRS, ArtifactKind.USE_CASE, "checkout order");
+        useCase.setCodeName("UC-02");
+        map(goal, useCase);
+        map(goal, component(101L, DocType.SRS, ArtifactKind.ACTIVITY, "checkout activity"));
+        map(goal, component(102L, DocType.SRS, ArtifactKind.WIREFRAME, "checkout wireframe"));
+        map(goal, component(110L, DocType.SDD, ArtifactKind.CLASS, "profile settings"));
+        map(goal, component(111L, DocType.SDD, ArtifactKind.SEQUENCE, "checkout sequence"));
+        map(goal, component(112L, DocType.SDD, ArtifactKind.UI, "checkout screen"));
+
+        List<ContinuityFinding> findings = service.detectGaps(TEAM_CODE, null);
+
+        assertTrue(findings.stream().anyMatch(f -> f.getDocTypeFrom() == DocType.SRS
+            && f.getDocTypeTo() == DocType.SDD
+            && f.getDescription().equals("Use case 'checkout order' (UC-02) has no corresponding class diagram (SDD).")));
+        // STD and IMPLEMENTATION are not being mapped yet, so those counterparts aren't required.
+        assertTrue(findings.stream().noneMatch(f -> f.getDescription().contains("sequence diagram")));
+        assertTrue(findings.stream().noneMatch(f -> f.getDocTypeTo() == DocType.STD));
+    }
+
+    @Test
+    void classDiagramNeedsMatchingImplementationOnceCodeIsMapped() {
+        SmartGoal goal = goal(1L, SmartGoal.GoalKind.GENERAL, null);
+        stubTeamGoals(goal);
+        mapFullSrs(goal, 100L, "login");
+        map(goal, component(110L, DocType.SDD, ArtifactKind.CLASS, "login service"));
+        map(goal, component(111L, DocType.SDD, ArtifactKind.SEQUENCE, "login sequence"));
+        map(goal, component(112L, DocType.SDD, ArtifactKind.UI, "login wireframe screen"));
+        map(goal, component(130L, DocType.IMPLEMENTATION, ArtifactKind.IMPL_OO, "ReportExporter.java"));
+
+        List<ContinuityFinding> findings = service.detectGaps(TEAM_CODE, null);
+
+        List<String> counterpartFindings = findings.stream()
+            .map(ContinuityFinding::getDescription)
+            .filter(d -> d.contains("has no corresponding "))
+            .toList();
+        assertEquals(List.of("Class diagram 'login service' has no corresponding OO implementation (IMPLEMENTATION)."),
+            counterpartFindings);
+    }
+
     private void stubTeamGoals(SmartGoal... goals) {
         when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goals));
     }

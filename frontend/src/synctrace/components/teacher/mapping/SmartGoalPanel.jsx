@@ -51,7 +51,7 @@ function SmartGoalPanel({
 
   return (
     <div className="stm-goal-tree">
-      {clusters.map((cluster) => {
+      {clusters.map((cluster, clusterIndex) => {
         const count = mappedCounts?.[cluster.id] || 0;
         const isSelected = selectedId === cluster.id;
         const isLinked = linkedIds?.has(cluster.id);
@@ -66,19 +66,15 @@ function SmartGoalPanel({
               ].filter(Boolean).join(' ')}
               onClick={() => onSelect(cluster.id)}
             >
-              <span className={`tm-goal-kind tm-goal-kind--${cluster.primary.goalKind.toLowerCase()}`}>
-                {cluster.primary.goalKind === 'GENERAL' ? 'GEN' : 'SPEC'}
-              </span>
+              {/* Numbered like the Results matrix and Issues panel (G1, G2, …). */}
+              <span className="tm-goal-kind tm-goal-kind--general">G{clusterIndex + 1}</span>
               <span className="stm-goal-node__text">{cluster.primary.description}</span>
               {count > 0 && <span className="stm-mapped-count">{count}</span>}
             </button>
             {cluster.children.length > 0 && (
               <ul className="tm-goal-item__children tm-goal-summary__children">
                 {cluster.children.map((child) => (
-                  <li key={child.id}>
-                    <span className="tm-goal-kind tm-goal-kind--specific">SPEC</span>
-                    {child.description}
-                  </li>
+                  <li key={child.id}>{child.description}</li>
                 ))}
               </ul>
             )}
