@@ -346,33 +346,20 @@ export const ingestRepository = async ({ teamCode, githubUrl, sessionId }) => {
 // ── SyncTrace: Audit Export ─────────────────────────────────────────────────
 
 export const exportAuditReport = async (teamCode, format = 'json') => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/audit/${teamCode}/export?format=${format}`);
+    const response = await authorizedFetch(
+        `${API_BASE_URL}/synctrace/audit/${encodeURIComponent(teamCode)}/export?format=${encodeURIComponent(format)}`,
+    );
     if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to export audit report.');
     }
-    
-    // Handle binary response for PDF/CSV
-    if (format === 'pdf' || format === 'csv') {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `audit-report-${teamCode}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        return { success: true };
-    }
-    
-    // JSON response - also trigger download
-    const data = await response.json();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+    // The server renders every format (JSON, CSV with UTF-8 BOM, PDF); save it as-is.
+    const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `audit-report-${teamCode}.json`;
+    a.download = `audit-report-${teamCode}.${format}`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
