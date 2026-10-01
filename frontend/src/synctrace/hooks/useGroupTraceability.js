@@ -1,41 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
-import { getSmartGoals, getAllGoalComponents, getContinuitySummary, getContinuityFindings, getDiagnosticRecommendations } from '../api';
-import { fetchClassRoster, fetchTeacherHistory } from '../../services/dashboardService';
-import { extractSubmissionMeta } from '../../utils/dashboardUtils';
-import { DOC_TYPES } from './useTraceability';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchClassRoster } from '../../services/dashboardService';
+import { useTraceabilityResultsData } from './useTraceabilityResultsData';
 import { groupStatus } from './useGroupOverview';
-import { buildAiIssues } from '../utils/gapIssues';
-import { groupGoalsIntoClusters } from '../constants';
-
-const EMPTY_STATE = {
-  loading: true,
-  section: '',
-  rows: [],
-  percent: 0,
-  status: 'critical',
-  coveredCount: 0,
-  totalCells: 0,
-  lastTraceability: null,
-  readinessScore: 0,
-  readinessStatus: null,
-  findingCount: 0,
-  aiIssues: [],
-};
-
-function resolveComponentTeamCode(component, historyTeamMap) {
-  if (component.sourceHistoryId != null) {
-    return historyTeamMap.get(component.sourceHistoryId) || null;
-  }
-
-  if (component.docType === 'IMPLEMENTATION' && typeof component.name === 'string') {
-    const separatorIndex = component.name.indexOf(' - ');
-    if (separatorIndex > 0) {
-      return component.name.slice(0, separatorIndex).trim() || null;
-    }
-  }
-
-  return null;
-}
+import { DOC_TYPES } from '../constants';
 
 function mapBackendStatus(status) {
   switch (status) {
@@ -51,109 +18,69 @@ function mapBackendStatus(status) {
   }
 }
 
+/**
+ * Group (per-team) view of the traceability results. Rows, findings and analysis status
+ * come from the same hook the Traceability Results page uses, so both pages always agree.
+ * Previously this hook rebuilt the matrix itself and filtered components through the
+ * teacher's evaluation history on the client; whenever that history request failed or
+ * was slow every cell rendered as "Missing", and the status column never saw the
+ * analysis run, which made results look different from one visit to the next.
+ */
 export function useGroupTraceability(teamCode, showToast) {
-  const [state, setGroupState] = useState(EMPTY_STATE);
+  const {
+    loading,
+    rows,
+    aiIssues,
+    analysisStatus,
+    summary,
+    refresh,
+  } = useTraceabilityResultsData(teamCode, { showToast, enabled: Boolean(teamCode), includeSummary: true });
 
-  const load = useCallback(async () => {
-    if (!teamCode) return;
-    setGroupState((s) => ({ ...s, loading: true }));
-    try {
-      const [goalList, roster, history, componentsByGoal, summary, findingsData, recommendationsData] = await Promise.all([
-        getSmartGoals(teamCode),
-        fetchClassRoster().catch(() => []),
-        fetchTeacherHistory().catch(() => []),
-        getAllGoalComponents().catch(() => ({})),
-        getContinuitySummary(teamCode).catch(() => null),
-        getContinuityFindings(teamCode).catch(() => ({ findings: [] })),
-        getDiagnosticRecommendations(teamCode).catch(() => ({ recommendations: [] })),
-      ]);
-
-      const historyTeamMap = new Map();
-      history.forEach((h) => {
-        const meta = extractSubmissionMeta(h.fileName);
-        if (meta.teamCode) historyTeamMap.set(h.id, meta.teamCode);
-      });
-
-      const section = roster.find((s) => s.groupCode?.toUpperCase() === teamCode.toUpperCase())?.section || '';
-
-      const clusters = groupGoalsIntoClusters(goalList);
-
-      let lastTraceability = null;
-      let coveredCount = 0;
-
-      const rows = clusters.map((cluster, clusterIndex) => {
-        const cells = {};
-        DOC_TYPES.forEach((dt) => { cells[dt] = []; });
-        const componentById = new Map();
-        const memberIds = [cluster.primary.id, ...cluster.children.map((child) => child.id)];
-
-        memberIds.forEach((memberId) => {
-          (componentsByGoal[memberId] || componentsByGoal[String(memberId)] || []).forEach((component) => {
-            const componentTeam = resolveComponentTeamCode(component, historyTeamMap);
-            if (componentTeam?.toUpperCase() !== teamCode.toUpperCase()) return;
-            componentById.set(component.id ?? `${component.docType}:${component.name}`, component);
-          });
-        });
-
-        componentById.forEach((component) => {
-          if (cells[component.docType]) cells[component.docType].push(component);
-          const traceabilityUpdatedAt = component.mappingCreatedAt || component.createdAt;
-          if (traceabilityUpdatedAt && (!lastTraceability || new Date(traceabilityUpdatedAt) > new Date(lastTraceability))) {
-            lastTraceability = traceabilityUpdatedAt;
-          }
-        });
-
-        const coveredTypes = DOC_TYPES.filter((dt) => cells[dt].length > 0).length;
-        coveredCount += coveredTypes;
-
-        return {
-          goalId: cluster.id,
-          memberGoalIds: memberIds,
-          code: `G${clusterIndex + 1}`,
-          description: cluster.primary.description,
-          specificDescriptions: cluster.children.map((child) => child.description),
-          teamCode: cluster.primary.teamCode || '',
-          cells,
-          aligned: coveredTypes === DOC_TYPES.length,
-          createdAt: cluster.primary.createdAt,
-        };
-      });
-
-      const totalCells = rows.length * DOC_TYPES.length;
-      const percent = totalCells > 0 ? Math.round((coveredCount / totalCells) * 100) : 0;
-
-      const goalCodeById = new Map(rows.map((r) => [r.goalId, r.code]));
-      rows.forEach((row) => row.memberGoalIds.forEach((memberId) => goalCodeById.set(memberId, row.code)));
-      const aiIssues = buildAiIssues(
-        findingsData.findings || [],
-        recommendationsData.recommendations || [],
-        goalCodeById,
-      );
-
-      setGroupState((s) => ({
-        ...s,
-        section,
-        rows,
-        percent,
-        status: summary ? mapBackendStatus(summary.status) : groupStatus(coveredCount, totalCells),
-        coveredCount,
-        totalCells,
-        lastTraceability,
-        readinessScore: percent,
-        readinessStatus: summary?.status ?? null,
-        findingCount: summary?.totalFindings ?? 0,
-        aiIssues,
-      }));
-    } catch (err) {
-      showToast?.(err.message, 'error');
-    } finally {
-      setGroupState((s) => ({ ...s, loading: false }));
-    }
-  }, [teamCode, showToast]);
-
+  const [section, setSection] = useState('');
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    if (!teamCode) return undefined;
+    fetchClassRoster()
+      .catch(() => [])
+      .then((roster) => {
+        if (cancelled) return;
+        const match = roster.find((s) => s.groupCode?.toUpperCase() === teamCode.toUpperCase());
+        setSection(match?.section || '');
+      });
+    return () => { cancelled = true; };
+  }, [teamCode]);
 
-  return { ...state, reload: load };
+  const derived = useMemo(() => {
+    let coveredCount = 0;
+    let lastTraceability = null;
+    rows.forEach((row) => {
+      coveredCount += DOC_TYPES.filter((dt) => (row.cells[dt] || []).length > 0).length;
+      DOC_TYPES.forEach((dt) => (row.cells[dt] || []).forEach((component) => {
+        const updatedAt = component.mappingCreatedAt || component.createdAt;
+        if (updatedAt && (!lastTraceability || new Date(updatedAt) > new Date(lastTraceability))) {
+          lastTraceability = updatedAt;
+        }
+      }));
+    });
+    const totalCells = rows.length * DOC_TYPES.length;
+    const percent = totalCells > 0 ? Math.round((coveredCount / totalCells) * 100) : 0;
+    return { coveredCount, totalCells, percent, lastTraceability };
+  }, [rows]);
+
+  const reload = useCallback(() => refresh(), [refresh]);
+
+  return {
+    loading,
+    section,
+    rows,
+    ...derived,
+    status: summary ? mapBackendStatus(summary.status) : groupStatus(derived.coveredCount, derived.totalCells),
+    // The backend score is computed from the same clusters and findings shown in the matrix.
+    readinessScore: typeof summary?.readinessScore === 'number' ? summary.readinessScore : derived.percent,
+    readinessStatus: summary?.status ?? null,
+    findingCount: summary?.totalFindings ?? 0,
+    aiIssues,
+    analysisStatus,
+    reload,
+  };
 }

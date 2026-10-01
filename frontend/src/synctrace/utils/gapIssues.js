@@ -16,6 +16,11 @@ function docTypeLabel(docType) {
   return DOC_TYPE_SEVERITY[docType]?.label || (docType === 'PROPOSAL' ? 'Proposal' : docType);
 }
 
+function readableIssueText(value) {
+  const text = String(value || '').trim().replace(/\s+/g, ' ');
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+}
+
 /** Short inline diagnosis for a matrix row (shown under the goal). */
 export function buildRowDiagnosis(row) {
   const missing = DOC_TYPES.filter((docType) => (row.cells[docType] || []).length === 0);
@@ -57,14 +62,14 @@ export function buildAiIssues(findings, recommendations, goalCodeById = new Map(
     const fromLabel = docTypeLabel(finding.docTypeFrom);
     const toLabel = docTypeLabel(finding.docTypeTo);
     const matchedRecs = recsByFindingId.get(finding.id) || [];
-    const fix = matchedRecs.map((r) => r.recommendation).filter(Boolean).join(' ') || undefined;
+    const fix = readableIssueText(matchedRecs.map((r) => r.recommendation).filter(Boolean).join(' ')) || undefined;
 
     return {
       id: `ai-${finding.id}`,
       level: rawLevel,
       confidence: AI_SEVERITY_CONFIDENCE[finding.severity] ?? AI_SEVERITY_CONFIDENCE[rawLevel],
       title: `Continuity gap: ${fromLabel} → ${toLabel}${goalCode ? ` (${goalCode})` : ''}`,
-      summary: finding.description || 'The AI continuity check found a broken link between these artifacts.',
+      summary: readableIssueText(finding.description || 'The AI continuity check found a broken link between these artifacts.'),
       fix,
       tags: ['AI Verified', goalCode, finding.teamCode].filter(Boolean),
       reported: finding.detectedAt ? new Date(finding.detectedAt).toLocaleDateString() : undefined,

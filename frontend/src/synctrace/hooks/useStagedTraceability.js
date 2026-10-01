@@ -1,72 +1,69 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getSmartGoals,
+  getLatestMappingActivity,
   extractSmartGoalsFromProposal,
   getTraceComponents,
   extractTraceComponents,
   createTraceComponent,
   deleteTraceComponent,
-  addGoalComponents,
+  getStagedMappings,
+  addStagedMappings,
+  removeStagedMapping,
+  syncStagedMappings,
 } from '../api';
+import { notifyMappingsChanged, useMappingsChangedRefresh } from '../utils/mappingEvents';
 import { getEvaluationHistory } from '../../api';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { STAGES, COMPONENT_DOC_TYPES, artifactKindLabel, formatArtifactKind, groupGoalsIntoClusters } from '../constants';
 
-let localMappingCounter = 0;
-function nextLocalMappingId() {
-  localMappingCounter += 1;
-  return `map-${Date.now().toString(36)}-${localMappingCounter}`;
-}
-
 /**
- * Traces a stage mapping's sourceId back through earlier stages to the SmartGoal
- * cluster id(s) it originates from. Stage chains only carry a real backend
- * meaning once resolved to a goal, since GoalComponentMapping is goal-to-component.
+ * The staged mapping chain (stage, sourceId, targetId) is shared per team on the server, so
+ * every teacher and student sees the same workspace. Save Mapping asks the server to turn
+ * the chain into the GoalComponentMapping rows that continuity detection, readiness
+ * scoring, audit export and the results matrix read.
+ *
+ * Before the workspace was shared it lived in each browser's localStorage. The first time
+ * a team's shared workspace is empty, this browser's old chain for that team is uploaded
+ * so earlier work isn't lost.
  */
-function resolveGoalIdsForSource(sourceId, stageKey, mappingsList) {
-  const currentStage = STAGES.find((s) => s.key === stageKey);
-  if (!currentStage) return [];
-  if (currentStage.sourceType === 'PROPOSAL') return [sourceId];
+const LEGACY_MAPPINGS_STORAGE_KEY = 'synctrace.stagedMappings';
+const LEGACY_SEEDED_KEY = 'synctrace.stagedMappings.seeded';
 
-  const goalIds = new Set();
-  STAGES
-    .filter((s) => s.targetType === currentStage.sourceType)
-    .forEach((precedingStage) => {
-      mappingsList
-        .filter((m) => m.stage === precedingStage.key && m.targetId === sourceId)
-        .forEach((m) => {
-          resolveGoalIdsForSource(m.sourceId, precedingStage.key, mappingsList)
-            .forEach((id) => goalIds.add(id));
-        });
-    });
-  return [...goalIds];
-}
-
-/**
- * The staged-workspace mapping chain (stage, sourceId, targetId) is a local
- * editing surface persisted to localStorage. Save Mapping resolves each stage
- * link back to its originating SmartGoal and persists it as a real
- * GoalComponentMapping row via addGoalComponents, which is what continuity
- * detection, readiness scoring, and audit export actually read.
- */
-const MAPPINGS_STORAGE_KEY = 'synctrace.stagedMappings';
-
-function loadStoredMappings() {
+function loadLegacyMappings() {
   try {
-    const raw = localStorage.getItem(MAPPINGS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
+    const parsed = JSON.parse(localStorage.getItem(LEGACY_MAPPINGS_STORAGE_KEY) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function persistMappings(mappings) {
+function legacySeedDone(teamCode) {
   try {
-    localStorage.setItem(MAPPINGS_STORAGE_KEY, JSON.stringify(mappings));
+    return JSON.parse(localStorage.getItem(LEGACY_SEEDED_KEY) || '[]').includes(teamCode.toUpperCase());
   } catch {
-    // localStorage unavailable (e.g. private browsing) — mappings stay in-memory only.
+    return true;
   }
+}
+
+function markLegacySeedDone(teamCode) {
+  try {
+    const done = JSON.parse(localStorage.getItem(LEGACY_SEEDED_KEY) || '[]');
+    localStorage.setItem(LEGACY_SEEDED_KEY, JSON.stringify([...new Set([...done, teamCode.toUpperCase()])]));
+  } catch {
+    // localStorage unavailable — nothing to seed from anyway.
+  }
+}
+
+function toWorkspaceMapping(row) {
+  return { id: row.id, stage: row.stage, sourceId: row.sourceId, targetId: row.targetId };
+}
+
+/** A component id can be a target in any stage and a source in any stage but PROPOSAL_SRS. */
+function referencesComponent(mapping, componentId) {
+  return mapping.targetId === componentId
+    || (mapping.sourceId === componentId && mapping.stage !== 'PROPOSAL_SRS');
 }
 
 function emptyComponentLibrary() {
@@ -86,11 +83,9 @@ function computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage 
 }
 
 /**
- * Staged traceability workspace. SMART goals and components are real,
- * backend-persisted data (SmartGoal / TraceComponent). The source-to-target
- * mapping chain (stage, sourceId, targetId) is edited locally and persisted
- * to this browser's localStorage; saveMapping() is what pushes the resolved
- * goal-to-component links to the backend as real GoalComponentMapping rows.
+ * Staged traceability workspace. SMART goals, components and the source-to-target
+ * mapping chain are all shared, backend-persisted data for the team; saveMapping()
+ * publishes the chain to the goal-to-component links the results read.
  */
 export function useStagedTraceability(showToast, teamCode) {
   const [selectedStage, setSelectedStageState] = useState(STAGES[0].key);
@@ -105,31 +100,55 @@ export function useStagedTraceability(showToast, teamCode) {
   const [loadingComponents, setLoadingComponents] = useState(false);
   const [extractingComponents, setExtractingComponents] = useState(false);
 
-  const [mappings, setMappings] = useState(loadStoredMappings);
+  const [mappings, setMappings] = useState([]);
+  const [mappingsLoaded, setMappingsLoaded] = useState(false);
 
   const [saveState, setSaveState] = useState('idle'); // idle | saving | verifying
   const [verification, setVerification] = useState({ status: 'idle', message: null, verifiedAt: null });
   const [lastError, setLastError] = useState(null);
+  const [mappingActivity, setMappingActivity] = useState(null);
+
+  const loadMappingActivity = useCallback(async () => {
+    if (!teamCode) {
+      setMappingActivity(null);
+      return;
+    }
+    try {
+      setMappingActivity(await getLatestMappingActivity(teamCode));
+    } catch {
+      setMappingActivity(null);
+    }
+  }, [teamCode]);
+
+  // Switching teams while a load is still running used to let the earlier team's response
+  // land last (or clear the loading flag early), leaving the wrong or no data until a page
+  // refresh. Each loader only applies the response of its latest request.
+  const goalsRequestRef = useRef(0);
+  const componentsRequestRef = useRef(0);
+  const mappingsRequestRef = useRef(0);
 
   const loadSmartGoals = useCallback(async () => {
+    const requestId = ++goalsRequestRef.current;
     setLoadingGoals(true);
     try {
       const data = await getSmartGoals(teamCode || undefined);
-      setSmartGoals(data);
+      if (requestId === goalsRequestRef.current) setSmartGoals(data);
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (requestId === goalsRequestRef.current) showToast?.(err.message, 'error');
     } finally {
-      setLoadingGoals(false);
+      if (requestId === goalsRequestRef.current) setLoadingGoals(false);
     }
   }, [teamCode, showToast]);
 
   const loadComponents = useCallback(async () => {
+    const requestId = ++componentsRequestRef.current;
     setLoadingComponents(true);
     try {
       const [allComponents, history] = await Promise.all([
-        getTraceComponents(),
+        getTraceComponents(undefined, undefined, teamCode),
         getEvaluationHistory().catch(() => []),
       ]);
+      if (requestId !== componentsRequestRef.current) return;
       const historyTeamMap = new Map(
         history.map((h) => [h.id, extractSubmissionMeta(h.fileName).teamCode])
       );
@@ -151,21 +170,62 @@ export function useStagedTraceability(showToast, teamCode) {
       });
       setComponents(next);
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (requestId === componentsRequestRef.current) showToast?.(err.message, 'error');
     } finally {
-      setLoadingComponents(false);
+      if (requestId === componentsRequestRef.current) setLoadingComponents(false);
     }
   }, [teamCode, showToast]);
 
   useEffect(() => {
     loadSmartGoals();
     loadComponents();
+    loadMappingActivity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamCode]);
 
+  const loadMappings = useCallback(async () => {
+    const requestId = ++mappingsRequestRef.current;
+    if (!teamCode) {
+      setMappings([]);
+      setMappingsLoaded(false);
+      return;
+    }
+    try {
+      const rows = await getStagedMappings(teamCode);
+      if (requestId !== mappingsRequestRef.current) return;
+      setMappings(rows.map(toWorkspaceMapping));
+      setMappingsLoaded(true);
+    } catch (err) {
+      if (requestId === mappingsRequestRef.current) showToast?.(err.message, 'error');
+    }
+  }, [teamCode, showToast]);
+
   useEffect(() => {
-    persistMappings(mappings);
-  }, [mappings]);
+    setMappingsLoaded(false);
+    loadMappings();
+  }, [loadMappings]);
+
+  // Edits and saves by other users (or other tabs) show up without a reload.
+  useMappingsChangedRefresh(teamCode, loadMappings, { pollMs: 30000 });
+
+  // One-time upload of this browser's pre-sharing chain into an empty shared workspace.
+  useEffect(() => {
+    if (!teamCode || !mappingsLoaded || mappings.length > 0 || loadingGoals || loadingComponents) return;
+    if (legacySeedDone(teamCode)) return;
+    const goalIds = new Set(groupGoalsIntoClusters(smartGoals).map((cluster) => cluster.id));
+    const componentIds = new Set(Object.values(components).flat().map((c) => c.id));
+    const known = (id, isGoal) => (isGoal ? goalIds.has(id) : componentIds.has(id));
+    const legacy = loadLegacyMappings().filter((m) => STAGES.some((s) => s.key === m.stage)
+      && known(m.sourceId, m.stage === 'PROPOSAL_SRS') && known(m.targetId, false));
+    markLegacySeedDone(teamCode);
+    if (legacy.length === 0) return;
+    Promise.allSettled(legacy.map((m) => addStagedMappings(teamCode, [
+      { stage: m.stage, sourceId: m.sourceId, targetId: m.targetId },
+    ]))).then(() => {
+      loadMappings();
+      showToast?.('Your earlier mapping work was added to the shared workspace. Save Mapping to publish it.', 'info');
+    });
+  }, [teamCode, mappingsLoaded, mappings.length, loadingGoals, loadingComponents, smartGoals, components, loadMappings, showToast]);
 
   const stage = useMemo(() => STAGES.find((s) => s.key === selectedStage) || STAGES[0], [selectedStage]);
 
@@ -225,26 +285,45 @@ export function useStagedTraceability(showToast, teamCode) {
     });
   }
 
-  function establishMapping() {
+  async function establishMapping() {
     if (!selectedSourceId || selectedTargetIds.size === 0) return;
+    if (!teamCode) {
+      showToast?.('Select a team before mapping.', 'error');
+      return;
+    }
     const newMappings = [...selectedTargetIds]
       .filter((targetId) => !mappingsForStage.some(
         (m) => m.sourceId === selectedSourceId && m.targetId === targetId
       ))
-      .map((targetId) => ({
-        id: nextLocalMappingId(), stage: selectedStage, sourceId: selectedSourceId, targetId,
-      }));
+      .map((targetId) => ({ stage: selectedStage, sourceId: selectedSourceId, targetId }));
     if (newMappings.length === 0) {
       showToast?.('These components are already mapped.', 'info');
       return;
     }
-    setMappings((prev) => [...prev, ...newMappings]);
-    setSelectedTargetIds(new Set());
-    showToast?.(`${newMappings.length} mapping${newMappings.length === 1 ? '' : 's'} established.`, 'success');
+    try {
+      const rows = await addStagedMappings(teamCode, newMappings);
+      setMappings((prev) => {
+        const known = new Set(prev.map((m) => m.id));
+        return [...prev, ...rows.filter((r) => !known.has(r.id)).map(toWorkspaceMapping)];
+      });
+      setSelectedTargetIds(new Set());
+      notifyMappingsChanged(teamCode);
+      showToast?.(`${newMappings.length} mapping${newMappings.length === 1 ? '' : 's'} established.`, 'success');
+    } catch (err) {
+      showToast?.(err.message || 'Failed to establish mapping.', 'error');
+    }
   }
 
-  function removeMapping(mappingId) {
+  async function removeMapping(mappingId) {
+    const removed = mappings.find((m) => m.id === mappingId);
     setMappings((prev) => prev.filter((m) => m.id !== mappingId));
+    try {
+      await removeStagedMapping(teamCode, mappingId);
+      notifyMappingsChanged(teamCode);
+    } catch (err) {
+      if (removed) setMappings((prev) => [...prev, removed]);
+      showToast?.(err.message || 'Failed to remove mapping.', 'error');
+    }
   }
 
   async function removeComponent(docType, componentId) {
@@ -254,7 +333,9 @@ export function useStagedTraceability(showToast, teamCode) {
         ...prev,
         [docType]: prev[docType].filter((c) => c.id !== componentId),
       }));
-      setMappings((prev) => prev.filter((m) => m.sourceId !== componentId && m.targetId !== componentId));
+      // The server drops the component's links from the shared chain along with it.
+      setMappings((prev) => prev.filter((m) => !referencesComponent(m, componentId)));
+      notifyMappingsChanged(teamCode);
       if (selectedSourceId === componentId) setSelectedSourceId(null);
       if (selectedTargetIds.has(componentId)) {
         setSelectedTargetIds((prev) => {
@@ -344,8 +425,8 @@ export function useStagedTraceability(showToast, teamCode) {
   }
 
   async function saveMapping() {
-    if (mappingsForStage.length === 0) {
-      const message = `No mappings established for ${stage.label}. Create at least one mapping before saving.`;
+    if (!teamCode) {
+      const message = 'Select a team before saving the mapping.';
       showToast?.(message, 'error');
       return { ok: false, message };
     }
@@ -353,26 +434,11 @@ export function useStagedTraceability(showToast, teamCode) {
     setSaveState('saving');
     setLastError(null);
     try {
-      const goalComponentPairs = new Map(); // goalId -> Set<componentId>
-      const addPair = (goalId, componentId) => {
-        if (!goalComponentPairs.has(goalId)) goalComponentPairs.set(goalId, new Set());
-        goalComponentPairs.get(goalId).add(componentId);
-      };
-
-      mappingsForStage.forEach((m) => {
-        const goalIds = resolveGoalIdsForSource(m.sourceId, m.stage, mappings);
-        goalIds.forEach((goalId) => {
-          addPair(goalId, m.targetId);
-          if (stage.sourceType !== 'PROPOSAL') addPair(goalId, m.sourceId);
-        });
-      });
-
-      const persistResults = await Promise.allSettled(
-        [...goalComponentPairs.entries()].map(([goalId, componentIds]) =>
-          addGoalComponents(goalId, [...componentIds])
-        )
-      );
-      const persistFailures = persistResults.filter((r) => r.status === 'rejected').length;
+      // The server derives every goal link from the shared chain (all stages) and removes
+      // links an earlier save produced that the chain no longer implies.
+      await syncStagedMappings(teamCode, selectedStage);
+      notifyMappingsChanged(teamCode);
+      await loadMappingActivity();
 
       setSaveState('verifying');
 
@@ -387,20 +453,13 @@ export function useStagedTraceability(showToast, teamCode) {
       };
       setVerification(verified);
 
-      if (persistFailures > 0) {
-        showToast?.(
-          `Mapping saved locally, but ${persistFailures} goal link(s) failed to sync to the server. Traceability results may be incomplete until you retry.`,
-          'error'
-        );
-      } else {
-        showToast?.(
-          unmapped.length === 0
-            ? 'Mapping saved. Traceability verified — full coverage.'
-            : 'Mapping saved. Traceability verified — some gaps remain.',
-          unmapped.length === 0 ? 'success' : 'info'
-        );
-      }
-      return { ok: persistFailures === 0, verification: verified };
+      showToast?.(
+        unmapped.length === 0
+          ? 'Mapping saved. Traceability verified — full coverage.'
+          : 'Mapping saved. Traceability verified — some gaps remain.',
+        unmapped.length === 0 ? 'success' : 'info'
+      );
+      return { ok: true, verification: verified };
     } catch (err) {
       const message = err.message || 'Failed to save mapping.';
       setLastError(message);
@@ -449,6 +508,7 @@ export function useStagedTraceability(showToast, teamCode) {
     saveState,
     verification,
     lastError,
+    mappingActivity,
     saveMapping,
   };
 }

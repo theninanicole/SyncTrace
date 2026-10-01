@@ -80,9 +80,9 @@ function IssueAnalysisPanel({
         {selectedIssue ? (
           <>
             <div className="iap-detail__meta">
-              ISSUE ANALYSIS • {selectedIssue.tags.join(' • ')}
+              Issue analysis • {selectedIssue.tags.join(' • ')}
               {selectedIssue.reported && (
-                <span className="iap-detail__reported">REPORTED {selectedIssue.reported}</span>
+                <span className="iap-detail__reported">Reported {selectedIssue.reported}</span>
               )}
             </div>
             <h2 className="iap-detail__title">{selectedIssue.title}</h2>
@@ -94,7 +94,7 @@ function IssueAnalysisPanel({
             </div>
 
             <div className="iap-section">
-              <h3>Why this happened</h3>
+              <h3>Why it happened</h3>
               <p>{selectedIssue.summary}</p>
             </div>
 

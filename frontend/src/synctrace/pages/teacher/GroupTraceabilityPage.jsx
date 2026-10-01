@@ -8,7 +8,6 @@ import { useGroupTraceability } from '../../hooks/useGroupTraceability';
 import { STATUS_META } from '../../hooks/useGroupOverview';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import TraceabilityResults from '../../components/common/TraceabilityResults';
-import SendButton from '../../components/common/SendButton';
 import ExportReportButton from '../../components/common/ExportReportButton';
 import './TraceabilityMappingPage.css';
 import './GroupTraceabilityPage.css';
@@ -22,7 +21,19 @@ const SEVERITY_CONFIDENCE = {
 
 function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
   const { toast, showToast, hideToast } = useToast();
-  const { loading, section, rows, status, lastTraceability, readinessScore, readinessStatus, findingCount, aiIssues, reload } = useGroupTraceability(teamCode, showToast);
+  const {
+    loading,
+    section,
+    rows,
+    status,
+    lastTraceability,
+    readinessScore,
+    readinessStatus,
+    findingCount,
+    aiIssues,
+    analysisStatus,
+    reload,
+  } = useGroupTraceability(teamCode, showToast);
   const [previewComponent, setPreviewComponent] = useState(null);
   //eslint-disable-next-line no-unused-vars
   const meta = STATUS_META[status];
@@ -40,7 +51,6 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
         subtitle={section || 'Group traceability results'}
         actions={
           <div className="teacher-header-actions">
-            <SendButton showToast={showToast} teamCode={teamCode} />
             <ExportReportButton showToast={showToast} teamCode={teamCode} />
           </div>
         }
@@ -64,6 +74,7 @@ function GroupTraceabilityPage({ teamCode, onBack, onNavigate }) {
           focusDocType: docType,
         })}
         aiIssues={aiIssues}
+        analysisStatus={analysisStatus}
         issuesEmptyMessage="Run AI Analysis from Traceability Results to detect continuity gaps for this team."
       />
 

@@ -29,6 +29,22 @@ public class DiagnosticRecommendationService {
     private static final long DEFAULT_RETRY_BACKOFF_MAX_DELAY_MS = 30_000;
     private static final long DEFAULT_RETRY_TIME_LIMIT_MS = 180_000;
 
+    /** What a complete trace looks like, so the model can name the exact artifacts to add. */
+    private static final String TRACEABILITY_CONTEXT = """
+        HOW TRACEABILITY WORKS IN SYNCTRACE:
+        - Each SMART goal from the Proposal is traced through SRS (requirements), SDD (design), \
+        SPMP (project plan), STD (testing) and IMPLEMENTATION (source code).
+        - Every goal needs SRS use case, activity diagram and wireframe components.
+        - Every use case needs its own matching class diagram and sequence diagram in the SDD, \
+        and its own test case in the STD.
+        - Every wireframe needs a matching UI design in the SDD.
+        - Every class diagram needs matching source code files.
+        - Components "match" when they describe the same feature, so names should reuse the same key words.
+        - Teams link components to goals on the Traceability Mapping page, connect code on the Source Code page, \
+        and see results on the Traceability Results page, where they can re-run the analysis.
+
+        """;
+
     private final ContinuityFindingRepository findingRepository;
     private final DiagnosticRecommendationRepository recommendationRepository;
     private final ProgressEmitter progressEmitter;
@@ -53,7 +69,8 @@ public class DiagnosticRecommendationService {
     }
 
     public List<DiagnosticRecommendation> generateRecommendations(
-            String teamCode, String aiModel, String sessionId) throws Exception {
+            String rawTeamCode, String aiModel, String sessionId) throws Exception {
+        String teamCode = TeamCodeResolver.normalize(rawTeamCode);
 
         AiProvider provider;
         try {
@@ -95,7 +112,7 @@ public class DiagnosticRecommendationService {
             return List.of();
         }
 
-        List<Long> findingIds = findingRepository.findByTeamCodeOrderByDetectedAtDesc(teamCode).stream()
+        List<Long> findingIds = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode.trim()).stream()
             .map(ContinuityFinding::getId)
             .filter(Objects::nonNull)
             .toList();
@@ -168,7 +185,7 @@ public class DiagnosticRecommendationService {
 
         emit(sessionId, "LOADING", "Loading continuity findings", 15);
 
-        List<ContinuityFinding> findings = findingRepository.findByTeamCode(teamCode);
+        List<ContinuityFinding> findings = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode);
         if (findings.isEmpty()) {
             emit(sessionId, "COMPLETE", "No findings to analyze", 100);
             return List.of();
@@ -192,23 +209,32 @@ public class DiagnosticRecommendationService {
 
     private String buildDiagnosticPrompt(List<ContinuityFinding> findings) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Analyze the following continuity findings and provide root cause analysis and recommendations.\n\n");
-        
+        sb.append("You help student software teams fix gaps in the traceability of their IEEE project documents. ")
+          .append("Analyze the continuity findings below and give a short, clear explanation and fix for each one.\n\n");
+
+        sb.append(TRACEABILITY_CONTEXT);
+
         sb.append("FINDINGS:\n");
-        for (ContinuityFinding finding : findings) {
-            sb.append(String.format("- [%s] %s → %s: %s\n",
+        for (int i = 0; i < findings.size(); i++) {
+            ContinuityFinding finding = findings.get(i);
+            sb.append(String.format("%d. [%s] %s → %s: %s\n",
+                i + 1,
                 finding.getSeverity(),
                 finding.getDocTypeFrom(),
                 finding.getDocTypeTo(),
                 finding.getDescription()));
         }
-        
-        sb.append("\nReturn your response as a raw JSON array of objects. Each object should have:\n");
-        sb.append("- \"rootCause\": Analysis of why this issue occurred\n");
-        sb.append("- \"recommendation\": Specific actionable steps to fix the issue\n");
+
+        sb.append("\nReturn your response as a raw JSON array with exactly one object per finding, in the same order. Each object should have:\n");
+        sb.append("- \"findingNumber\": The number of the finding it answers.\n");
+        sb.append("- \"rootCause\": One short sentence in plain English explaining why the issue happened. Start with \"This happened because\". Use sentence case.\n");
+        sb.append("- \"recommendation\": One short plain-English sentence (about 15 words or fewer) that tells the student what to do. ")
+          .append("Start with an action verb such as \"Add\", \"Map\", or \"Link\", and name the exact artifact and document involved. ")
+          .append("Example: \"Add a wireframe in the SRS that matches the SMART goal.\"\n");
         sb.append("- \"priority\": One of \"HIGH\", \"MEDIUM\", or \"LOW\"\n");
-        sb.append("Do not include markdown code fences, just the raw JSON array.\n");
-        
+        sb.append("Write for a student, not an expert: avoid jargon, headings, all-caps wording and filler. ")
+          .append("Do not include markdown code fences, just the raw JSON array.\n");
+
         return sb.toString();
     }
 
@@ -222,12 +248,19 @@ public class DiagnosticRecommendationService {
             }
 
             List<DiagnosticRecommendation> recommendations = new ArrayList<>();
-            for (int i = 0; i < root.size() && i < findings.size(); i++) {
+            Set<Long> covered = new HashSet<>();
+            for (int i = 0; i < root.size(); i++) {
                 JsonNode node = root.get(i);
-                ContinuityFinding finding = findings.get(i);
+                // Prefer the finding number the model echoed back; fall back to position.
+                int findingIndex = node.path("findingNumber").canConvertToInt()
+                    ? node.path("findingNumber").asInt() - 1
+                    : i;
+                if (findingIndex < 0 || findingIndex >= findings.size()) continue;
+                ContinuityFinding finding = findings.get(findingIndex);
+                if (!covered.add(finding.getId())) continue;
                 
-                String rootCause = node.path("rootCause").asText();
-                String recommendationText = node.path("recommendation").asText();
+                String rootCause = cleanDiagnosticText(node.path("rootCause").asText());
+                String recommendationText = cleanDiagnosticText(node.path("recommendation").asText());
                 String priority = node.path("priority").asText("MEDIUM").toUpperCase();
 
                 DiagnosticRecommendation rec = new DiagnosticRecommendation();
@@ -259,6 +292,12 @@ public class DiagnosticRecommendationService {
         String withoutOpeningFence = firstNewline != -1 ? trimmed.substring(firstNewline + 1) : trimmed;
         int lastFence = withoutOpeningFence.lastIndexOf("```");
         return (lastFence != -1 ? withoutOpeningFence.substring(0, lastFence) : withoutOpeningFence).trim();
+    }
+
+    private static String cleanDiagnosticText(String value) {
+        String cleaned = value == null ? "" : value.trim().replaceAll("\\s+", " ");
+        if (cleaned.isEmpty()) return cleaned;
+        return Character.toUpperCase(cleaned.charAt(0)) + cleaned.substring(1);
     }
 
     private void emit(String sessionId, String step, String message, int percent) {

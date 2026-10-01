@@ -22,10 +22,13 @@ function ComponentLibraryColumn({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
+    const matches = !q ? items : items.filter(
       (c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q)
     );
+    // Alphabetical by the label shown on the card; numeric-aware so UC-2 precedes UC-10.
+    return [...matches].sort((a, b) => componentLabel(a).localeCompare(
+      componentLabel(b), undefined, { numeric: true, sensitivity: 'base' },
+    ));
   }, [items, query]);
 
   const groupedItems = useMemo(() => {
@@ -46,9 +49,7 @@ function ComponentLibraryColumn({
     <div className="stm-column">
       <div className="stm-column__header">
         <span>{heading}</span>
-        <button className="stm-mini-btn" onClick={onAdd}>
-          Add
-        </button>
+        {onAdd && <button className="stm-mini-btn" onClick={onAdd}>Add</button>}
       </div>
 
       <label className="stm-search">
@@ -68,9 +69,7 @@ function ComponentLibraryColumn({
         <div className="stm-column-empty">
           <p>No {docType} components are currently available.</p>
           <p className="tm-muted">{emptyHint}</p>
-          <button className="btn btn--soft" onClick={onAdd}>
-            Add Component
-          </button>
+          {onAdd && <button className="btn btn--soft" onClick={onAdd}>Add Component</button>}
         </div>
       ) : filtered.length === 0 ? (
         <p className="tm-muted stm-column-noresults">No components match “{query}”.</p>
@@ -101,7 +100,6 @@ function ComponentLibraryColumn({
                           {count > 0 && <span className="stm-mapped-count">{count}</span>}
                         </div>
                         <span className="stm-component-card__type">{c.type}</span>
-                        {c.description && <p className="stm-component-card__desc">{c.description}</p>}
                       </button>
                       <div className="stm-component-card__actions">
                         {onPreview && (

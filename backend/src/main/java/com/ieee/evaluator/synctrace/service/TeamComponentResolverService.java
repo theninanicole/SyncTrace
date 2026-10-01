@@ -44,6 +44,22 @@ public class TeamComponentResolverService {
     }
 
     /**
+     * Whether a component that is already mapped to one of this team's goals should count
+     * as this team's evidence. Unlike {@link #belongsToTeam}, a component whose owner cannot
+     * be resolved (e.g. one added manually on the mapping page) counts, because the mapping
+     * itself was made on a team-scoped goal. Only components provably owned by a different
+     * team are excluded. The Results matrix, gap detection and readiness score all use this
+     * same rule so they never disagree about what a cell contains.
+     */
+    public boolean countsForTeam(TraceComponent component, String teamCode) {
+        if (component == null) return false;
+        if (teamCode == null || teamCode.isBlank()) return true;
+        return resolveTeamCode(component)
+            .map(resolvedTeamCode -> resolvedTeamCode.equalsIgnoreCase(teamCode.trim()))
+            .orElse(true);
+    }
+
+    /**
      * Resolves the team code for a component when possible.
      *
      * Resolution order:

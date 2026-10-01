@@ -25,6 +25,7 @@ public class SubmissionSyncService {
     private final GoogleSheetsService configLoader;
     private final DynamicConfigService configService;
     private final Drive driveService;
+    private final GoogleDriveMetadataService metadataService;
 
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("M/d/yyyy H:mm:ss");
 
@@ -32,11 +33,13 @@ public class SubmissionSyncService {
             Sheets sheetsService,
             GoogleSheetsService configLoader,
             DynamicConfigService configService,
-            Drive driveService) {
+            Drive driveService,
+            GoogleDriveMetadataService metadataService) {
         this.sheetsService = sheetsService;
         this.configLoader  = configLoader;
         this.configService = configService;
         this.driveService  = driveService;
+        this.metadataService = metadataService;
     }
 
     public List<DriveFile> getLatestSubmissions() throws IOException {
@@ -155,16 +158,22 @@ public class SubmissionSyncService {
             }
         }
 
-        // Fetch the real mimeType from Drive instead of hardcoding it
-        String mimeType;
+        String mimeType = "application/vnd.google-apps.document";
         try {
-            com.google.api.services.drive.model.File fileInfo = driveService
-                    .files().get(fileId).setFields("mimeType").execute();
-            mimeType = fileInfo.getMimeType() != null ? fileInfo.getMimeType() : "application/vnd.google-apps.document";
+            String resolvedMimeType = metadataService.getMimeType(fileId);
+            if (resolvedMimeType != null && !resolvedMimeType.isBlank()) {
+                mimeType = resolvedMimeType;
+            }
+        } catch (GoogleDriveMetadataService.MetadataLookupException e) {
+            if (e.getStatusCode() == 404) {
+                System.err.println("Skipping deleted fileId=" + fileId + ": " + e.getMessage());
+                return;
+            }
+            System.err.println("Using default MIME type for fileId=" + fileId
+                    + " after metadata lookup failed: " + e.getMessage());
         } catch (Exception e) {
-            // CRITICAL FIX: If the file is deleted or inaccessible, DO NOT add it to the map.
-            System.err.println("Skipping inaccessible fileId=" + fileId + ": " + e.getMessage());
-            return; // Exit the method so it isn't added to submissionMap
+            System.err.println("Using default MIME type for fileId=" + fileId
+                    + " after metadata lookup failed: " + e.getMessage());
         }
 
         DriveFile file = new DriveFile();

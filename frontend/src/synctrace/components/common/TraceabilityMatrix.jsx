@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CircleCheck, CircleX, Link2, Search } from 'lucide-react';
+import { CircleCheck, CircleDashed, CircleX, Link2, Search } from 'lucide-react';
 import { componentLabel } from '../../constants';
 import './TraceabilityMatrix.css';
 
@@ -17,6 +17,7 @@ function TraceabilityMatrix({
   onAddClick,
   emptyMessage = 'No SMART goals to display.',
   readOnly = false,
+  analysisStatus = null,
 }) {
   const [search, setSearch] = useState('');
 
@@ -94,7 +95,8 @@ function TraceabilityMatrix({
           )}
 
           {filteredRows.map((row) => {
-            const complete = visibleDocColumns.every((col) => (row.cells[col.key] || []).length > 0);
+            const hasAnalysisRun = Boolean(analysisStatus?.lastAnalyzedAt);
+            const complete = hasAnalysisRun && visibleDocColumns.length > 0 && row.validationIssues?.length === 0;
             const goalDetails = [
               row.description,
               ...(row.specificDescriptions?.length
@@ -109,7 +111,7 @@ function TraceabilityMatrix({
                   aria-label={goalDetails}
                 >
                   <div className="trm-goal-primary">
-                    <span className="trm-goal-kind trm-goal-kind--general">GEN</span>
+                    <span className="trm-goal-kind trm-goal-kind--general">{row.code}</span>
                     <span className="trm-goal-desc">{row.description}</span>
                   </div>
                 </div>
@@ -127,19 +129,21 @@ function TraceabilityMatrix({
                         </span>
                       ) : (
                         <div className="trm-chip-stack">
-                          {components.map((c) => {
+                          {components.map((c, i) => {
                             const label = componentLabel(c);
                             return (
-                              <button
-                                type="button"
-                                key={c.id}
-                                className={`trm-chip ${col.key === 'IMPLEMENTATION' ? 'trm-chip--impl' : 'trm-chip--doc'}`}
-                                onClick={() => onComponentClick?.(c)}
-                                title={c.name || label}
-                              >
-                                {col.key === 'IMPLEMENTATION' && <Link2 size={12} />}
-                                <span className="trm-chip__label">{label}</span>
-                              </button>
+                              <span className="trm-chip-item" key={c.id}>
+                                <button
+                                  type="button"
+                                  className={`trm-chip ${col.key === 'IMPLEMENTATION' ? 'trm-chip--impl' : 'trm-chip--doc'}`}
+                                  onClick={() => onComponentClick?.(c)}
+                                  title={c.name || label}
+                                >
+                                  {col.key === 'IMPLEMENTATION' && <Link2 size={12} />}
+                                  <span className="trm-chip__label">{label}</span>
+                                </button>
+                                {i < components.length - 1 && <span className="trm-chip-sep" aria-hidden="true">,</span>}
+                              </span>
                             );
                           })}
                         </div>
@@ -149,12 +153,19 @@ function TraceabilityMatrix({
                 })}
 
                 <div className="trm-cell trm-cell--last trm-cell--status">
-                  {complete ? (
-                    <span className="trm-status-badge trm-status-badge--pass">
+                  {!hasAnalysisRun ? (
+                    <span className="trm-status-badge trm-status-badge--neutral" title="Run AI Analysis to verify continuity.">
+                      <CircleDashed size={14} /> Not analyzed
+                    </span>
+                  ) : complete ? (
+                    <span className="trm-status-badge trm-status-badge--pass" title="All required components have downstream coverage.">
                       <CircleCheck size={14} /> Passed
                     </span>
                   ) : (
-                    <span className="trm-status-badge trm-status-badge--fail">
+                    <span
+                      className="trm-status-badge trm-status-badge--fail"
+                      title={row.validationIssues?.join('; ') || 'Required component coverage is incomplete.'}
+                    >
                       <CircleX size={14} /> Failed
                     </span>
                   )}

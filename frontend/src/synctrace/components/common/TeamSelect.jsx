@@ -16,11 +16,18 @@ function TeamSelect({ value, onChange }) {
       fetchClassRoster().catch(() => []),
       getTeamRepositories().catch(() => []),
     ]).then(([roster, repositories]) => {
-      const codes = new Set([
+      // The two sheets don't agree on case ("2627-sem2-it411-01" vs "2627-SEM2-IT411-01");
+      // collapse them so one team never appears twice with split results.
+      const codesByKey = new Map();
+      [
         ...roster.map((r) => r.groupCode),
         ...repositories.map((r) => r.teamCode),
-      ].filter(Boolean));
-      setTeams(Array.from(codes).sort());
+      ].filter(Boolean).forEach((code) => {
+        const trimmed = code.trim();
+        const key = trimmed.toUpperCase();
+        if (trimmed && !codesByKey.has(key)) codesByKey.set(key, trimmed);
+      });
+      setTeams(Array.from(codesByKey.values()).sort((a, b) => a.localeCompare(b)));
     });
   }, []);
 

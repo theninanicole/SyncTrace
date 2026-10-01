@@ -2,11 +2,9 @@ import { useMemo, useState } from 'react';
 import { ChevronRight, CircleAlert, CircleCheck, ListChecks, Search, TriangleAlert } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
-import ConfirmModal from '../../components/common/ConfirmModal';
 import { useToast } from '../../../hooks/useToast';
 import { formatDate } from '../../../utils/dashboardUtils';
 import { useGroupOverview, STATUS_META } from '../../hooks/useGroupOverview';
-import { publishAllTraceabilityResults } from '../../api';
 import './TraceabilityMappingPage.css';
 import './OverviewPage.css';
 
@@ -22,8 +20,6 @@ function OverviewPage({ onOpenGroup }) {
   const { groups, loading } = useGroupOverview(showToast);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
-  const [sendAllOpen, setSendAllOpen] = useState(false);
-  const [sendingAll, setSendingAll] = useState(false);
 
   const stats = useMemo(() => ({
     total: groups.length,
@@ -39,23 +35,6 @@ function OverviewPage({ onOpenGroup }) {
     return true;
   }), [groups, activeFilter, search]);
 
-  async function handleSendAll() {
-    setSendingAll(true);
-    setSendAllOpen(false);
-    try {
-      const teamCodes = groups.map((g) => g.teamCode).filter(Boolean);
-      const data = await publishAllTraceabilityResults(teamCodes);
-      showToast(
-        data.message || `Published results for ${data.successCount} of ${data.totalCount} team(s).`,
-        data.successCount === data.totalCount ? 'success' : 'error',
-      );
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setSendingAll(false);
-    }
-  }
-
   return (
     <div className="ov-root">
       <ToastMessage toast={toast} onClose={hideToast} />
@@ -63,16 +42,6 @@ function OverviewPage({ onOpenGroup }) {
       <PanelHeader
         title="Overview"
         subtitle="Monitor traceability and project readiness across all groups"
-        actions={(
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => setSendAllOpen(true)}
-            disabled={loading || sendingAll || groups.length === 0}
-          >
-            {sendingAll ? 'Sending...' : 'Send All Results'}
-          </button>
-        )}
       />
 
       <div className="ov-stats">
@@ -170,16 +139,6 @@ function OverviewPage({ onOpenGroup }) {
           })}
         </div>
       )}
-
-      <ConfirmModal
-        isOpen={sendAllOpen}
-        title="Send finalized traceability results to all project groups?"
-        message={`All ${groups.length} eligible project group${groups.length === 1 ? '' : 's'} will receive their finalized traceability results.`}
-        confirmLabel="Send All Results"
-        submitting={sendingAll}
-        onConfirm={handleSendAll}
-        onCancel={() => setSendAllOpen(false)}
-      />
     </div>
   );
 }

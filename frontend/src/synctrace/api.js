@@ -1,4 +1,28 @@
 import { API_BASE_URL } from '../api';
+import { supabase } from '../supabaseClient';
+
+const AUTH_RETRY_DELAY_MS = 800;
+
+async function fetchWithSession(url, options) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { ...(options.headers || {}) };
+    if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
+    }
+    return fetch(url, { ...options, headers });
+}
+
+// Right after sign-in or a backend restart the server may not recognise the user yet (its
+// allowlist is still loading), so the first requests of a page load can come back 401/403
+// even though the user has access. Retrying once, a moment later, loads the team's data
+// without the user having to refresh the page. A real "no access" answer is still returned
+// after the retry.
+async function authorizedFetch(url, options = {}) {
+    const response = await fetchWithSession(url, options);
+    if (response.status !== 401 && response.status !== 403) return response;
+    await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
+    return fetchWithSession(url, options);
+}
 
 // ── SyncTrace: Traceability Mapping ─────────────────────────────────────────
 
@@ -6,14 +30,22 @@ export const getSmartGoals = async (teamCode) => {
     const params = new URLSearchParams();
     if (teamCode) params.set('teamCode', teamCode);
     const query = params.toString();
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals${query ? `?${query}` : ''}`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals${query ? `?${query}` : ''}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch SMART goals.');
     return data;
 };
 
+export const getLatestMappingActivity = async (teamCode) => {
+    const params = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/activity?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch mapping activity.');
+    return data;
+};
+
 export const createSmartGoal = async (description, options = {}) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -29,7 +61,7 @@ export const createSmartGoal = async (description, options = {}) => {
 };
 
 export const deleteSmartGoal = async (goalId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}`, {
         method: 'DELETE',
     });
     const data = await response.json();
@@ -37,19 +69,20 @@ export const deleteSmartGoal = async (goalId) => {
     return data;
 };
 
-export const getTraceComponents = async (docType, search) => {
+export const getTraceComponents = async (docType, search, teamCode) => {
     const params = new URLSearchParams();
     if (docType) params.set('docType', docType);
     if (search) params.set('search', search);
+    if (teamCode) params.set('teamCode', teamCode);
     const query = params.toString();
-    const response = await fetch(`${API_BASE_URL}/synctrace/components${query ? `?${query}` : ''}`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components${query ? `?${query}` : ''}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch components.');
     return data;
 };
 
 export const createTraceComponent = async (docType, name, content, artifactKind, codeName, imageData) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/components`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -67,7 +100,7 @@ export const renameTraceComponent = async (componentId, nameOrPayload) => {
     const payload = typeof nameOrPayload === 'string'
         ? { name: nameOrPayload }
         : nameOrPayload;
-    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -78,7 +111,7 @@ export const renameTraceComponent = async (componentId, nameOrPayload) => {
 };
 
 export const deleteTraceComponent = async (componentId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/${componentId}`, {
         method: 'DELETE',
     });
     const data = await response.json();
@@ -87,7 +120,7 @@ export const deleteTraceComponent = async (componentId) => {
 };
 
 export const extractTraceComponents = async (historyId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/components/extract`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ historyId }),
@@ -98,39 +131,81 @@ export const extractTraceComponents = async (historyId) => {
 };
 
 export const getGoalComponents = async (goalId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch goal mappings.');
     return data;
 };
 
-export const getAllGoalComponents = async () => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals/components`);
+export const getAllGoalComponents = async (teamCode) => {
+    const query = teamCode ? `?teamCode=${encodeURIComponent(teamCode)}` : '';
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/components${query}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch all goal components.');
     return data;
 };
 
 export const getTraceComponent = async (componentId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/components/${componentId}`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/${componentId}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch component.');
     return data;
 };
 
-export const addGoalComponents = async (goalId, componentIds) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`, {
+export const addGoalComponents = async (goalId, componentIds, stage) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ componentIds }),
+        body: JSON.stringify({ componentIds, stage }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to add components.');
     return data;
 };
 
+// ── SyncTrace: Shared staged mapping workspace ────────────────────────────────
+export const getStagedMappings = async (teamCode) => {
+    const params = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load the mapping workspace.');
+    return data;
+};
+
+export const addStagedMappings = async (teamCode, mappings) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, mappings }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to add mappings.');
+    return data;
+};
+
+export const removeStagedMapping = async (teamCode, mappingId) => {
+    const params = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings/${mappingId}?${params.toString()}`, {
+        method: 'DELETE',
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to remove mapping.');
+    return data;
+};
+
+export const syncStagedMappings = async (teamCode, stage) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/staged-mappings/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, stage }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to save mapping.');
+    return data;
+};
+
 export const removeGoalComponent = async (goalId, componentId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
         method: 'DELETE',
     });
     const data = await response.json();
@@ -141,7 +216,7 @@ export const removeGoalComponent = async (goalId, componentId) => {
 // ── SyncTrace: Proposal Analysis ─────────────────────────────────────────────
 
 export const extractSmartGoalsFromProposal = async (fileId, fileName, model, sessionId, teamCode) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/proposals/extract-goals`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/proposals/extract-goals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileId, fileName, model, sessionId, teamCode: teamCode || null }),
@@ -154,7 +229,7 @@ export const extractSmartGoalsFromProposal = async (fileId, fileName, model, ses
 // ── SyncTrace: Continuity Analysis ────────────────────────────────────────────
 
 export const analyzeSourceCodeAlignment = async (teamCode, model, sessionId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/align`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/align`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamCode, model, sessionId }),
@@ -165,7 +240,7 @@ export const analyzeSourceCodeAlignment = async (teamCode, model, sessionId) => 
 };
 
 export const detectContinuityGaps = async (teamCode, goalId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/detect-gaps`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/detect-gaps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamCode, goalId }),
@@ -176,14 +251,21 @@ export const detectContinuityGaps = async (teamCode, goalId) => {
 };
 
 export const getContinuityFindings = async (teamCode) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/findings/${encodeURIComponent(teamCode)}`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/findings/${encodeURIComponent(teamCode)}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to load continuity findings.');
     return data;
 };
 
+export const getContinuityAnalysisStatus = async (teamCode) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/analysis-status/${encodeURIComponent(teamCode)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to load continuity analysis status.');
+    return data;
+};
+
 export const generateDiagnosticRecommendations = async (teamCode, model, sessionId) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/recommendations`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/recommendations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamCode, model, sessionId }),
@@ -194,58 +276,30 @@ export const generateDiagnosticRecommendations = async (teamCode, model, session
 };
 
 export const getDiagnosticRecommendations = async (teamCode) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/recommendations/${encodeURIComponent(teamCode)}`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/recommendations/${encodeURIComponent(teamCode)}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to load diagnostic recommendations.');
     return data;
 };
 
 export const getContinuitySummary = async (teamCode) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/continuity/summary/${encodeURIComponent(teamCode)}`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/summary/${encodeURIComponent(teamCode)}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to load continuity summary.');
-    return data;
-};
-
-export const getTraceabilityResultPublication = async (teamCode) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/results/${encodeURIComponent(teamCode)}/publication`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to load traceability result status.');
-    return data;
-};
-
-export const publishTraceabilityResults = async (teamCode) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/results/${encodeURIComponent(teamCode)}/publication`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results.');
-    return data;
-};
-
-export const publishAllTraceabilityResults = async (teamCodes) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/results/publish-all`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamCodes }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || 'Failed to send traceability results to all teams.');
     return data;
 };
 
 // ── SyncTrace: GitHub Ingestion ───────────────────────────────────────────────
 
 export const getLinkedGitHubRepositories = async () => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/github/repositories`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch linked GitHub repositories.');
     return data;
 };
 
 export const linkGitHubRepository = async ({ teamCode, githubUrl }) => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/github/repositories/link`, {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamCode, githubUrl }),
@@ -266,7 +320,7 @@ export const ingestGitHubRepository = async ({ repositoryId, teamCode, githubUrl
         ? { teamCode, sessionId }
         : { teamCode, githubUrl, sessionId };
 
-    const response = await fetch(endpoint, {
+    const response = await authorizedFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -279,7 +333,7 @@ export const ingestGitHubRepository = async ({ repositoryId, teamCode, githubUrl
 };
 
 export const getTeamRepositories = async () => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/github/teams`);
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/teams`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch team repositories.');
     return data;
@@ -292,33 +346,20 @@ export const ingestRepository = async ({ teamCode, githubUrl, sessionId }) => {
 // ── SyncTrace: Audit Export ─────────────────────────────────────────────────
 
 export const exportAuditReport = async (teamCode, format = 'json') => {
-    const response = await fetch(`${API_BASE_URL}/synctrace/audit/${teamCode}/export?format=${format}`);
+    const response = await authorizedFetch(
+        `${API_BASE_URL}/synctrace/audit/${encodeURIComponent(teamCode)}/export?format=${encodeURIComponent(format)}`,
+    );
     if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to export audit report.');
     }
-    
-    // Handle binary response for PDF/CSV
-    if (format === 'pdf' || format === 'csv') {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `audit-report-${teamCode}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        return { success: true };
-    }
-    
-    // JSON response - also trigger download
-    const data = await response.json();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+    // The server renders every format (JSON, CSV with UTF-8 BOM, PDF); save it as-is.
+    const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `audit-report-${teamCode}.json`;
+    a.download = `audit-report-${teamCode}.${format}`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

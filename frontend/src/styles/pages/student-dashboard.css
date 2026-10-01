@@ -341,6 +341,14 @@
   line-height: 1.45;
 }
 
+.student-section-heading__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
 .student-traceability-card {
   margin-top: 1rem;
 }

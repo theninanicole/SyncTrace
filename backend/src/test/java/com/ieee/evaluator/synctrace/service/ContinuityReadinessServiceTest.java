@@ -23,7 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyIterable;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -46,9 +47,9 @@ class ContinuityReadinessServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ContinuityReadinessService(
-                goalRepository, mappingRepository, componentRepository,
-                findingRepository, recommendationRepository, teamComponentResolver);
+        TraceabilityClusterService clusterService = new TraceabilityClusterService(
+                goalRepository, mappingRepository, componentRepository, teamComponentResolver);
+        service = new ContinuityReadinessService(findingRepository, recommendationRepository, clusterService);
     }
 
     @Test
@@ -64,9 +65,8 @@ class ContinuityReadinessServiceTest {
         goal.setDescription("Unstarted Goal");
         goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
-        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
-        when(mappingRepository.findByGoalId(goalId)).thenReturn(List.of());
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of());
 
         Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
 
@@ -84,8 +84,8 @@ class ContinuityReadinessServiceTest {
         goal.setDescription("Goal A");
         goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
-        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of());
         stubFullyCoveredGoal(goalId);
 
         Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
@@ -93,7 +93,8 @@ class ContinuityReadinessServiceTest {
         assertEquals(1, summary.get("totalGoals"));
         assertEquals(1, summary.get("readyGoals"));
         assertEquals(100, summary.get("readinessScore"));
-        assertEquals("READY", summary.get("status"));
+        assertEquals("ON_TRACK", summary.get("status"));
+        assertEquals(0, summary.get("strictReadyGoals"));
     }
 
     @Test
@@ -111,11 +112,10 @@ class ContinuityReadinessServiceTest {
         unstartedGoal.setDescription("Unstarted goal");
         unstartedGoal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE))
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE))
                 .thenReturn(List.of(coveredGoal, unstartedGoal));
-        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of());
         stubFullyCoveredGoal(coveredGoalId);
-        when(mappingRepository.findByGoalId(unstartedGoalId)).thenReturn(List.of());
 
         Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
 
@@ -140,11 +140,11 @@ class ContinuityReadinessServiceTest {
         srsComponent.setId(50L);
         srsComponent.setDocType(DocType.SRS);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
-        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of());
-        when(mappingRepository.findByGoalId(goalId)).thenReturn(List.of(mapping));
-        when(componentRepository.findAllById(anyList())).thenReturn(List.of(srsComponent));
-        when(teamComponentResolver.belongsToTeam(any(), eq(TEAM_CODE))).thenReturn(true);
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of());
+        when(mappingRepository.findByGoalIdIn(anyCollection())).thenReturn(List.of(mapping));
+        when(componentRepository.findAllById(anyIterable())).thenReturn(List.of(srsComponent));
+        when(teamComponentResolver.countsForTeam(any(), eq(TEAM_CODE))).thenReturn(true);
 
         Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
 
@@ -169,14 +169,14 @@ class ContinuityReadinessServiceTest {
         goal.setDescription("Goal C");
         goal.setTeamCode(TEAM_CODE);
 
-        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(TEAM_CODE)).thenReturn(List.of(goal));
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(TEAM_CODE)).thenReturn(List.of(goal));
         stubFullyCoveredGoal(goalId);
 
         ContinuityFinding criticalFinding = new ContinuityFinding();
         criticalFinding.setId(500L);
         criticalFinding.setGoalId(goalId);
         criticalFinding.setSeverity(ContinuityFinding.Severity.CRITICAL);
-        when(findingRepository.findByTeamCodeOrderByDetectedAtDesc(TEAM_CODE)).thenReturn(List.of(criticalFinding));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM_CODE)).thenReturn(List.of(criticalFinding));
 
         Map<String, Object> summary = service.getTeamReadinessSummary(TEAM_CODE);
 
@@ -188,6 +188,10 @@ class ContinuityReadinessServiceTest {
 
     /** Wires one mapped component per required doc type, all resolved to {@link #TEAM_CODE}. */
     private void stubFullyCoveredGoal(long goalId) {
+        stubFullyCoveredGoal(goalId, TEAM_CODE);
+    }
+
+    private void stubFullyCoveredGoal(long goalId, String teamCode) {
         Map<DocType, Long> componentIdsByDocType = Map.of(
                 DocType.SRS, 10L,
                 DocType.SDD, 11L,
@@ -214,8 +218,37 @@ class ContinuityReadinessServiceTest {
                 })
                 .toList();
 
-        when(mappingRepository.findByGoalId(goalId)).thenReturn(mappings);
-        when(componentRepository.findAllById(anyList())).thenReturn(components);
-        when(teamComponentResolver.belongsToTeam(any(), eq(TEAM_CODE))).thenReturn(true);
+        when(mappingRepository.findByGoalIdIn(anyCollection())).thenReturn(mappings);
+        when(componentRepository.findAllById(anyIterable())).thenReturn(components);
+        when(teamComponentResolver.countsForTeam(any(), eq(teamCode))).thenReturn(true);
+    }
+
+    @Test
+    void getTeamReadinessSummaryScoresGeneralGoalAndItsSpecificChildrenAsOneRow() {
+        SmartGoal general = new SmartGoal();
+        general.setId(20L);
+        general.setDescription("General objective");
+        general.setGoalKind(SmartGoal.GoalKind.GENERAL);
+        general.setTeamCode(TEAM_CODE);
+
+        SmartGoal specific = new SmartGoal();
+        specific.setId(21L);
+        specific.setDescription("Specific objective");
+        specific.setGoalKind(SmartGoal.GoalKind.SPECIFIC);
+        specific.setParentGoalId(20L);
+        specific.setTeamCode(TEAM_CODE);
+
+        // Lower-case team code, as it appears in the roster / URL.
+        String lowerTeam = TEAM_CODE.toLowerCase();
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(lowerTeam))
+                .thenReturn(List.of(general, specific));
+        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(lowerTeam)).thenReturn(List.of());
+        stubFullyCoveredGoal(20L, lowerTeam);
+
+        Map<String, Object> summary = service.getTeamReadinessSummary(lowerTeam);
+
+        // Mappings live on the GENERAL goal only; the child must not count as an empty goal.
+        assertEquals(1, summary.get("totalGoals"));
+        assertEquals(100, summary.get("readinessScore"));
     }
 }

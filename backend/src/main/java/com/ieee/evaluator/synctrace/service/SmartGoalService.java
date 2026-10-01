@@ -1,6 +1,7 @@
 package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ArtifactKind;
+import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.SmartGoal.GoalKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
@@ -8,6 +9,7 @@ import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.model.TraceComponentSummaryDTO;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
+import com.ieee.evaluator.synctrace.repository.StagedTraceMappingRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,20 +26,26 @@ public class SmartGoalService {
     private final SmartGoalRepository goalRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final TraceComponentRepository componentRepository;
+    private final StagedTraceMappingRepository stagedMappingRepository;
+    private final TeamComponentResolverService teamComponentResolver;
 
     public SmartGoalService(
             SmartGoalRepository goalRepository,
             GoalComponentMappingRepository mappingRepository,
-            TraceComponentRepository componentRepository) {
+            TraceComponentRepository componentRepository,
+            StagedTraceMappingRepository stagedMappingRepository,
+            TeamComponentResolverService teamComponentResolver) {
         this.goalRepository = goalRepository;
         this.mappingRepository = mappingRepository;
         this.componentRepository = componentRepository;
+        this.stagedMappingRepository = stagedMappingRepository;
+        this.teamComponentResolver = teamComponentResolver;
     }
 
     public List<Map<String, Object>> getAllGoalsWithCategoryStatus(String teamCode) {
         List<SmartGoal> goals = (teamCode != null && !teamCode.isBlank())
-            ? goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(teamCode.trim())
-            : goalRepository.findAllByOrderByCreatedAtAsc();
+            ? goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(teamCode.trim())
+            : goalRepository.findAllByOrderByCreatedAtAscIdAsc();
 
         List<Long> goalIds = goals.stream().map(SmartGoal::getId).toList();
         Map<Long, List<DocType>> goalDocTypes = new HashMap<>();
@@ -136,13 +144,18 @@ public class SmartGoalService {
 
     @Transactional
     public void deleteGoal(Long goalId) {
-        List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtAsc(goalId);
+        List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtAscIdAsc(goalId);
         for (SmartGoal child : children) {
-            mappingRepository.deleteByGoalId(child.getId());
+            deleteGoalLinks(child.getId());
             goalRepository.deleteById(child.getId());
         }
-        mappingRepository.deleteByGoalId(goalId);
+        deleteGoalLinks(goalId);
         goalRepository.deleteById(goalId);
+    }
+
+    private void deleteGoalLinks(Long goalId) {
+        mappingRepository.deleteByGoalId(goalId);
+        stagedMappingRepository.deleteGoalReferences(goalId);
     }
 
     public List<TraceComponentSummaryDTO> getGoalComponents(Long goalId) {
@@ -159,13 +172,31 @@ public class SmartGoalService {
     }
 
     public Map<Long, List<TraceComponentSummaryDTO>> getAllGoalComponentsMap() {
-        List<com.ieee.evaluator.synctrace.model.GoalComponentMapping> allMappings =
-            mappingRepository.findAll();
+        return getAllGoalComponentsMap(null);
+    }
+
+    public Map<Long, List<TraceComponentSummaryDTO>> getAllGoalComponentsMap(String teamCode) {
+        List<com.ieee.evaluator.synctrace.model.GoalComponentMapping> allMappings;
+        if (teamCode == null || teamCode.isBlank()) {
+            allMappings = mappingRepository.findAll();
+        } else {
+            List<Long> goalIds = goalRepository
+                .findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(teamCode.trim())
+                .stream()
+                .map(SmartGoal::getId)
+                .toList();
+            if (goalIds.isEmpty()) return Map.of();
+            allMappings = mappingRepository.findByGoalIdIn(goalIds);
+        }
 
         if (allMappings.isEmpty()) {
             return Map.of();
         }
 
+        allMappings = new ArrayList<>(allMappings);
+        allMappings.sort(Comparator.comparing(
+            com.ieee.evaluator.synctrace.model.GoalComponentMapping::getId,
+            Comparator.nullsLast(Comparator.naturalOrder())));
         Map<Long, List<Long>> componentIdsByGoal = new HashMap<>();
         for (var mapping : allMappings) {
             componentIdsByGoal.computeIfAbsent(mapping.getGoalId(), k -> new ArrayList<>())
@@ -183,7 +214,11 @@ public class SmartGoalService {
 
         List<TraceComponent> allComponents = componentRepository.findAllById(allComponentIds);
         Map<Long, TraceComponentSummaryDTO> componentLookup = new HashMap<>();
+        boolean teamScoped = teamCode != null && !teamCode.isBlank();
         for (TraceComponent c : allComponents) {
+            // Same ownership rule gap detection and readiness use, so the matrix never
+            // shows a component the analysis ignores (or vice versa).
+            if (teamScoped && !teamComponentResolver.countsForTeam(c, teamCode)) continue;
             componentLookup.put(c.getId(), toSummary(c));
         }
 
@@ -201,11 +236,17 @@ public class SmartGoalService {
 
     @Transactional
     public void addGoalComponents(Long goalId, List<Long> componentIds) {
+        addGoalComponents(goalId, componentIds, GoalComponentMapping.MappingSource.MANUAL);
+    }
+
+    @Transactional
+    public void addGoalComponents(Long goalId, List<Long> componentIds, GoalComponentMapping.MappingSource source) {
         for (Long componentId : componentIds) {
             if (mappingRepository.findByGoalIdAndComponentId(goalId, componentId).isEmpty()) {
-                var mapping = new com.ieee.evaluator.synctrace.model.GoalComponentMapping();
+                var mapping = new GoalComponentMapping();
                 mapping.setGoalId(goalId);
                 mapping.setComponentId(componentId);
+                mapping.setSource(source);
                 mapping.setCreatedAt(LocalDateTime.now());
                 mappingRepository.save(mapping);
             }
@@ -226,6 +267,7 @@ public class SmartGoalService {
             c.getDocType(),
             kind,
             c.getName(),
+            c.getContent(),
             code,
             c.getAiExtracted(),
             c.getSourceHistoryId(),

@@ -1,13 +1,15 @@
 package com.ieee.evaluator.synctrace.service;
 
+import com.ieee.evaluator.synctrace.model.ContinuityAnalysisRun;
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
-import com.ieee.evaluator.synctrace.model.ContinuityFinding.Severity;
-import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
+import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
+import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
-import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
+import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
-import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
+import com.ieee.evaluator.synctrace.service.TraceabilityClusterService.GoalCluster;
+import com.ieee.evaluator.synctrace.service.TraceabilityClusterService.TraceIssue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,140 +21,117 @@ import java.util.*;
 @Slf4j
 public class ContinuityGapDetectionService {
 
-    private final GoalComponentMappingRepository mappingRepository;
-    private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
+    private final DiagnosticRecommendationRepository recommendationRepository;
+    private final ContinuityAnalysisRunRepository analysisRunRepository;
     private final SmartGoalRepository goalRepository;
-    private final TeamComponentResolverService teamComponentResolver;
+    private final TraceabilityClusterService clusterService;
 
     public ContinuityGapDetectionService(
-            GoalComponentMappingRepository mappingRepository,
-            TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
+            DiagnosticRecommendationRepository recommendationRepository,
+            ContinuityAnalysisRunRepository analysisRunRepository,
             SmartGoalRepository goalRepository,
-            TeamComponentResolverService teamComponentResolver) {
-        this.mappingRepository = mappingRepository;
-        this.componentRepository = componentRepository;
+            TraceabilityClusterService clusterService) {
         this.findingRepository = findingRepository;
+        this.recommendationRepository = recommendationRepository;
+        this.analysisRunRepository = analysisRunRepository;
         this.goalRepository = goalRepository;
-        this.teamComponentResolver = teamComponentResolver;
+        this.clusterService = clusterService;
     }
 
+    /**
+     * Regenerates the goal-level continuity findings for a team (or a single goal cluster).
+     * The result depends only on the current goals and mappings, so running it repeatedly
+     * without changing the mapping yields the same findings every time.
+     */
     @Transactional
-    public List<ContinuityFinding> detectGaps(String teamCode, Long goalId) {
+    public List<ContinuityFinding> detectGaps(String rawTeamCode, Long goalId) {
+        String teamCode = TeamCodeResolver.normalize(rawTeamCode);
+        if (teamCode == null && goalId != null) {
+            teamCode = goalRepository.findById(goalId)
+                .map(SmartGoal::getTeamCode)
+                .map(TeamCodeResolver::normalize)
+                .orElse(null);
+        }
+
+        List<GoalCluster> teamClusters = teamCode != null
+            ? clusterService.clustersForTeam(teamCode)
+            : clusterService.buildClusters(goalRepository.findAllByOrderByCreatedAtAscIdAsc(), null);
+
+        List<GoalCluster> targetClusters = teamClusters;
         if (goalId != null) {
-            findingRepository.findByGoalId(goalId).forEach(f -> {
-                if (teamCode == null || teamCode.equals(f.getTeamCode())) {
-                    findingRepository.delete(f);
-                }
-            });
-        } else if (teamCode != null) {
-            findingRepository.deleteByTeamCode(teamCode);
+            targetClusters = teamClusters.stream()
+                .filter(cluster -> cluster.memberGoalIds().contains(goalId))
+                .toList();
         }
 
+        clearGoalFindings(teamCode, goalId, targetClusters);
+
+        Set<DocType> established = clusterService.establishedDocTypes(teamClusters);
+        LocalDateTime detectedAt = LocalDateTime.now();
         List<ContinuityFinding> findings = new ArrayList<>();
-        List<Long> goalIds = goalId != null ? List.of(goalId) : getAllGoalIds();
-
-        for (Long currentGoalId : goalIds) {
-            if (!goalRepository.existsById(currentGoalId)) continue;
-
-            List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(currentGoalId);
-            Map<DocType, List<GoalComponentMapping>> byDocType = mapTeamScopedComponentsByDocType(mappings, teamCode);
-
-            if (teamCode != null && !teamCode.isBlank() && byDocType.isEmpty()) {
-                continue;
+        for (GoalCluster cluster : targetClusters) {
+            for (TraceIssue issue : clusterService.evaluate(cluster, established)) {
+                findings.add(toFinding(teamCode, cluster.id(), issue, detectedAt));
             }
-
-            checkMissingSrs(findings, teamCode, currentGoalId, byDocType);
-            checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.SDD, byDocType);
-            checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.SPMP, byDocType);
-            checkGap(findings, teamCode, currentGoalId, DocType.SRS, DocType.STD, byDocType);
-            checkGap(findings, teamCode, currentGoalId, DocType.SDD, DocType.IMPLEMENTATION, byDocType);
         }
 
-        return findingRepository.saveAll(findings);
+        List<ContinuityFinding> savedFindings = findingRepository.saveAll(findings);
+        if (teamCode != null) {
+            final String runTeamCode = teamCode;
+            ContinuityAnalysisRun run = analysisRunRepository
+                .findByTeamCodeIgnoreCase(runTeamCode)
+                .orElseGet(ContinuityAnalysisRun::new);
+            if (run.getTeamCode() == null) run.setTeamCode(runTeamCode);
+            run.setLastAnalyzedAt(detectedAt);
+            analysisRunRepository.save(run);
+        }
+        return savedFindings;
     }
 
-    private void checkMissingSrs(
-            List<ContinuityFinding> findings, String teamCode, Long goalId,
-            Map<DocType, List<GoalComponentMapping>> byDocType) {
-        boolean hasSrs = byDocType.containsKey(DocType.SRS) && !byDocType.get(DocType.SRS).isEmpty();
-        if (!hasSrs) {
-            ContinuityFinding finding = new ContinuityFinding();
-            finding.setTeamCode(teamCode);
-            finding.setGoalId(goalId);
-            finding.setDocTypeFrom(DocType.PROPOSAL);
-            finding.setDocTypeTo(DocType.SRS);
-            finding.setSeverity(Severity.HIGH);
-            finding.setDescription("Goal has no mapped SRS component. This represents a continuity gap.");
-            finding.setDetectedAt(LocalDateTime.now());
-            findings.add(finding);
+    /**
+     * Removes the previous goal-level findings (and their recommendations) before regenerating.
+     * Source-code alignment findings (goalId == null) are owned by SourceCodeAlignmentService
+     * and are left alone, so running one analysis never silently wipes out the other.
+     */
+    private void clearGoalFindings(String teamCode, Long goalId, List<GoalCluster> targetClusters) {
+        List<ContinuityFinding> stale;
+        if (goalId != null) {
+            Set<Long> memberIds = new HashSet<>();
+            memberIds.add(goalId);
+            targetClusters.forEach(cluster -> memberIds.addAll(cluster.memberGoalIds()));
+            stale = new ArrayList<>();
+            for (Long memberId : memberIds) {
+                findingRepository.findByGoalId(memberId).stream()
+                    .filter(f -> teamCode == null || teamCode.equalsIgnoreCase(Objects.toString(f.getTeamCode(), "")))
+                    .forEach(stale::add);
+            }
+        } else if (teamCode != null) {
+            stale = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode).stream()
+                .filter(f -> f.getGoalId() != null)
+                .toList();
+        } else {
+            return;
         }
-    }
+        if (stale.isEmpty()) return;
 
-    private void checkGap(
-            List<ContinuityFinding> findings,
-            String teamCode,
-            Long goalId,
-            DocType fromType,
-            DocType toType,
-            Map<DocType, List<GoalComponentMapping>> byDocType) {
-
-        boolean hasFrom = byDocType.containsKey(fromType) && !byDocType.get(fromType).isEmpty();
-        boolean hasTo = byDocType.containsKey(toType) && !byDocType.get(toType).isEmpty();
-
-        if (hasFrom && !hasTo) {
-            ContinuityFinding finding = new ContinuityFinding();
-            finding.setTeamCode(teamCode);
-            finding.setGoalId(goalId);
-            finding.setDocTypeFrom(fromType);
-            finding.setDocTypeTo(toType);
-            finding.setSeverity(Severity.HIGH);
-            finding.setDescription(String.format(
-                "Goal has components in %s but no mapped components in %s. This represents a continuity gap.",
-                fromType, toType));
-            finding.setDetectedAt(LocalDateTime.now());
-            findings.add(finding);
-        }
-    }
-
-    private Map<DocType, List<GoalComponentMapping>> mapTeamScopedComponentsByDocType(
-            List<GoalComponentMapping> mappings,
-            String teamCode) {
-        Map<DocType, List<GoalComponentMapping>> byDocType = new HashMap<>();
-
-        if (mappings.isEmpty()) {
-            return byDocType;
-        }
-
-        List<Long> componentIds = mappings.stream()
-            .map(GoalComponentMapping::getComponentId)
+        stale.stream()
+            .map(ContinuityFinding::getId)
             .filter(Objects::nonNull)
-            .toList();
-
-        Map<Long, com.ieee.evaluator.synctrace.model.TraceComponent> componentsById = componentRepository.findAllById(componentIds)
-            .stream()
-            .collect(HashMap::new, (acc, component) -> acc.put(component.getId(), component), HashMap::putAll);
-
-        for (GoalComponentMapping mapping : mappings) {
-            com.ieee.evaluator.synctrace.model.TraceComponent component = componentsById.get(mapping.getComponentId());
-            if (component == null) {
-                continue;
-            }
-            if (teamCode != null && !teamCode.isBlank() && !teamComponentResolver.belongsToTeam(component, teamCode)) {
-                continue;
-            }
-
-            byDocType.computeIfAbsent(component.getDocType(), ignored -> new ArrayList<>())
-                .add(mapping);
-        }
-
-        return byDocType;
+            .forEach(recommendationRepository::deleteByFindingId);
+        findingRepository.deleteAll(stale);
     }
 
-    private List<Long> getAllGoalIds() {
-        List<Long> goalIds = new ArrayList<>();
-        goalRepository.findAll().forEach(goal -> goalIds.add(goal.getId()));
-        return goalIds;
+    private ContinuityFinding toFinding(String teamCode, Long goalId, TraceIssue issue, LocalDateTime detectedAt) {
+        ContinuityFinding finding = new ContinuityFinding();
+        finding.setTeamCode(teamCode);
+        finding.setGoalId(goalId);
+        finding.setDocTypeFrom(issue.from());
+        finding.setDocTypeTo(issue.to());
+        finding.setSeverity(issue.severity());
+        finding.setDescription(issue.description());
+        finding.setDetectedAt(detectedAt);
+        return finding;
     }
 }

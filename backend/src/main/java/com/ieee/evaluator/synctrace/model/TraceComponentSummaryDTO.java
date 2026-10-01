@@ -8,6 +8,7 @@ public record TraceComponentSummaryDTO(
     DocType docType,
     ArtifactKind artifactKind,
     String name,
+    String content,
     String codeName,
     Boolean aiExtracted,
     Long sourceHistoryId,

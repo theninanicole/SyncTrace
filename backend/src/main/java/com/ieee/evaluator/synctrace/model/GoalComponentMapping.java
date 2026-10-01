@@ -21,5 +21,14 @@ public class GoalComponentMapping {
     @Column(name = "componentId")
     private Long componentId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", columnDefinition = "varchar(20) default 'MANUAL'")
+    private MappingSource source = MappingSource.MANUAL;
+
     private LocalDateTime createdAt;
+
+    public enum MappingSource {
+        MANUAL,
+        AI_SUGGESTED
+    }
 }

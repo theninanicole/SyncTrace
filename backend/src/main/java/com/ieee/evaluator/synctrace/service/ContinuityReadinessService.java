@@ -2,19 +2,13 @@ package com.ieee.evaluator.synctrace.service;
 
 import com.ieee.evaluator.synctrace.model.ContinuityFinding;
 import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
-import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
-import com.ieee.evaluator.synctrace.model.SmartGoal;
-import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
-import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
-import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
-import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
+import com.ieee.evaluator.synctrace.service.TraceabilityClusterService.GoalCluster;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -42,26 +36,17 @@ public class ContinuityReadinessService {
     private static final int PENALTY_LOW = 1;
     private static final int MAX_FINDINGS_PENALTY = 40;
 
-    private final SmartGoalRepository goalRepository;
-    private final GoalComponentMappingRepository mappingRepository;
-    private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
     private final DiagnosticRecommendationRepository recommendationRepository;
-    private final TeamComponentResolverService teamComponentResolver;
+    private final TraceabilityClusterService clusterService;
 
     public ContinuityReadinessService(
-            SmartGoalRepository goalRepository,
-            GoalComponentMappingRepository mappingRepository,
-            TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
             DiagnosticRecommendationRepository recommendationRepository,
-            TeamComponentResolverService teamComponentResolver) {
-        this.goalRepository = goalRepository;
-        this.mappingRepository = mappingRepository;
-        this.componentRepository = componentRepository;
+            TraceabilityClusterService clusterService) {
         this.findingRepository = findingRepository;
         this.recommendationRepository = recommendationRepository;
-        this.teamComponentResolver = teamComponentResolver;
+        this.clusterService = clusterService;
     }
 
     public Map<String, Object> getTeamReadinessSummary(String teamCode) {
@@ -69,33 +54,45 @@ public class ContinuityReadinessService {
             throw new IllegalArgumentException("teamCode is required");
         }
 
-        List<SmartGoal> teamGoals = getTeamGoals(teamCode);
-        List<ContinuityFinding> findings = findingRepository.findByTeamCodeOrderByDetectedAtDesc(teamCode);
+        // Scored per goal cluster (one matrix row), not per individual goal: SPECIFIC
+        // objectives carry no mappings of their own, so scoring them separately dragged
+        // every team's readiness down regardless of what was actually mapped.
+        List<GoalCluster> clusters = clusterService.clustersForTeam(teamCode);
+        Set<DocType> established = clusterService.establishedDocTypes(clusters);
+        List<ContinuityFinding> findings = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode.trim());
         Map<Long, List<DiagnosticRecommendation>> recommendationsByFinding = getRecommendationsByFinding(findings);
 
-        int totalGoals = teamGoals.size();
+        int totalGoals = clusters.size();
         int readyGoals = 0;
         int totalMappedComponents = 0;
+        int strictReadyGoals = 0;
         double totalCoverageFraction = 0;
         List<Map<String, Object>> goalSummaries = new ArrayList<>();
 
-        for (SmartGoal goal : teamGoals) {
-            Set<DocType> coveredTypes = getCoveredDocTypes(goal.getId(), teamCode);
+        for (GoalCluster cluster : clusters) {
+            Set<DocType> coveredTypes = cluster.coveredDocTypes();
+            coveredTypes.retainAll(REQUIRED_DOC_TYPES);
+            Set<Long> memberIds = new HashSet<>(cluster.memberGoalIds());
             long goalFindingCount = findings.stream()
-                .filter(finding -> Objects.equals(goal.getId(), finding.getGoalId()))
+                .filter(finding -> finding.getGoalId() != null && memberIds.contains(finding.getGoalId()))
                 .count();
 
-            if (goalFindingCount == 0 && coveredTypes.containsAll(REQUIRED_DOC_TYPES)) {
-                readyGoals++;
-            }
+            boolean fullCoverage = coveredTypes.containsAll(REQUIRED_DOC_TYPES);
+            boolean strictCoverage = fullCoverage && clusterService.evaluate(cluster, established).isEmpty();
+            if (goalFindingCount == 0 && fullCoverage) readyGoals++;
+            if (goalFindingCount == 0 && strictCoverage) strictReadyGoals++;
 
             totalMappedComponents += coveredTypes.size();
             totalCoverageFraction += (double) coveredTypes.size() / REQUIRED_DOC_TYPES.size();
 
             Map<String, Object> goalSummary = new LinkedHashMap<>();
-            goalSummary.put("goalId", goal.getId());
-            goalSummary.put("description", goal.getDescription());
-            goalSummary.put("coveredDocTypes", coveredTypes.stream().map(Enum::name).toList());
+            goalSummary.put("goalId", cluster.id());
+            goalSummary.put("memberGoalIds", cluster.memberGoalIds());
+            goalSummary.put("description", cluster.primary().getDescription());
+            goalSummary.put("coveredDocTypes", REQUIRED_DOC_TYPES.stream()
+                .filter(coveredTypes::contains)
+                .map(Enum::name)
+                .toList());
             goalSummary.put("missingDocTypes", REQUIRED_DOC_TYPES.stream()
                 .filter(docType -> !coveredTypes.contains(docType))
                 .map(Enum::name)
@@ -112,7 +109,9 @@ public class ContinuityReadinessService {
         }
 
         for (ContinuityFinding finding : findings) {
-            severityCounts.computeIfPresent(finding.getSeverity().name(), (ignored, count) -> count + 1);
+            if (finding.getSeverity() != null) {
+                severityCounts.computeIfPresent(finding.getSeverity().name(), (ignored, count) -> count + 1);
+            }
             if (!recommendationsByFinding.getOrDefault(finding.getId(), List.of()).isEmpty()) {
                 resolvedFindingCount++;
             }
@@ -129,53 +128,18 @@ public class ContinuityReadinessService {
             : Math.max(0, Math.min(100, averageCoveragePercent - findingsPenalty));
 
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("teamCode", teamCode);
-        summary.put("status", statusFor(totalGoals, totalMappedComponents, readinessScore, totalFindings));
+        summary.put("status", statusFor(totalGoals, totalMappedComponents, readinessScore, totalFindings, strictReadyGoals));
         summary.put("readinessScore", readinessScore);
         summary.put("averageCoveragePercent", averageCoveragePercent);
         summary.put("totalGoals", totalGoals);
         summary.put("readyGoals", readyGoals);
+        summary.put("strictReadyGoals", strictReadyGoals);
         summary.put("totalFindings", totalFindings);
         summary.put("findingsWithRecommendations", resolvedFindingCount);
         summary.put("totalMappedComponents", totalMappedComponents);
         summary.put("severityCounts", severityCounts);
         summary.put("goalSummaries", goalSummaries);
         return summary;
-    }
-
-    private List<SmartGoal> getTeamGoals(String teamCode) {
-        return goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAsc(teamCode.trim());
-    }
-
-    private Set<DocType> getCoveredDocTypes(Long goalId, String teamCode) {
-        Set<DocType> coveredTypes = new HashSet<>();
-        List<GoalComponentMapping> mappings = mappingRepository.findByGoalId(goalId);
-        if (mappings.isEmpty()) {
-            return coveredTypes;
-        }
-
-        List<Long> componentIds = mappings.stream()
-            .map(GoalComponentMapping::getComponentId)
-            .filter(Objects::nonNull)
-            .toList();
-
-        Map<Long, TraceComponent> componentsById = new HashMap<>();
-        for (TraceComponent component : componentRepository.findAllById(componentIds)) {
-            componentsById.put(component.getId(), component);
-        }
-
-        for (GoalComponentMapping mapping : mappings) {
-            TraceComponent component = componentsById.get(mapping.getComponentId());
-            if (component == null) {
-                continue;
-            }
-            if (!teamComponentResolver.belongsToTeam(component, teamCode)) {
-                continue;
-            }
-            coveredTypes.add(component.getDocType());
-        }
-
-        return coveredTypes;
     }
 
     private Map<Long, List<DiagnosticRecommendation>> getRecommendationsByFinding(List<ContinuityFinding> findings) {
@@ -205,11 +169,12 @@ public class ContinuityReadinessService {
             + severityCounts.getOrDefault("LOW", 0) * PENALTY_LOW;
     }
 
-    private String statusFor(int totalGoals, int totalMappedComponents, int readinessScore, int totalFindings) {
+        private String statusFor(int totalGoals, int totalMappedComponents, int readinessScore,
+            int totalFindings, int strictReadyGoals) {
         if (totalGoals == 0 || totalMappedComponents == 0) {
             return "NOT_STARTED";
         }
-        if (totalFindings == 0 && readinessScore == 100) {
+        if (totalFindings == 0 && readinessScore == 100 && strictReadyGoals == totalGoals) {
             return "READY";
         }
         if (readinessScore >= 75) {

@@ -17,7 +17,7 @@ public final class ComponentCodeHelper {
 
     private static final Pattern CODED_ID = Pattern.compile(
         "\\b((?:UC|TC|FR|NFR|REQ|CL|CLS|CD|SQ|SEQ|AD|ACT|DFD|CTX|CX|MS|ML|TK|TSK|DL|DEL|TD|TL|WF|UI|ER|ERD)"
-            + "[-\\s_]?\\d{1,3})\\b",
+            + "[-\\s_]?\\d{1,3}(?:\\.\\d{1,3})*)\\b",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -27,7 +27,7 @@ public final class ComponentCodeHelper {
 
     private static final Pattern ELEMENT_TOKEN = Pattern.compile(
         "((?:UC|TC|FR|NFR|REQ|CL|CLS|CD|SQ|SEQ|AD|ACT|DFD|CTX|CX|MS|ML|TK|TSK|DL|DEL|TD|TL|WF|UI|ER|ERD)"
-            + "[-\\s_]?\\d{1,3})"
+            + "[-\\s_]?\\d{1,3}(?:\\.\\d{1,3})*)"
             + "(?:[\\s:\\-]+([^,;\\n]+))?",
         Pattern.CASE_INSENSITIVE
     );
@@ -65,6 +65,37 @@ public final class ComponentCodeHelper {
         return new ArrayList<>(found.values());
     }
 
+    /**
+     * Codes that identify the diagram itself, taken only from its title line and Elements:
+     * lines and only when the prefix matches the diagram's kind. Codes of other kinds
+     * (e.g. FR-01 cited inside an activity diagram) are references, not the diagram's code.
+     */
+    public static List<CodedElement> extractOwnElements(String text, ArtifactKind kind) {
+        if (text == null || text.isBlank()) return List.of();
+        String prefix = prefixFor(kind);
+
+        Map<String, CodedElement> found = new LinkedHashMap<>();
+        parseElementTokens(text.lines().findFirst().orElse(""), found);
+        Matcher elementsLine = ELEMENTS_LINE.matcher(text);
+        while (elementsLine.find()) {
+            parseElementTokens(elementsLine.group(1), found);
+        }
+
+        List<CodedElement> own = new ArrayList<>();
+        for (CodedElement element : found.values()) {
+            if (element.codeName().startsWith(prefix + "-")) own.add(element);
+        }
+        return own;
+    }
+
+    /** Keeps fallback numbering past codes the document already used, so they never collide. */
+    public static void reserveCode(String code, Map<String, Integer> counters) {
+        if (code == null) return;
+        Matcher m = Pattern.compile("^([A-Z]+)-(\\d{1,3})$").matcher(code);
+        if (!m.matches()) return;
+        counters.merge(m.group(1), Integer.parseInt(m.group(2)), Math::max);
+    }
+
     public static String extractPrimaryCode(String text) {
         List<CodedElement> elements = extractElements(text, ArtifactKind.UNSPECIFIED);
         return elements.isEmpty() ? null : elements.get(0).codeName();
@@ -80,9 +111,12 @@ public final class ComponentCodeHelper {
     public static String normalizeCode(String raw) {
         if (raw == null || raw.isBlank()) return null;
         String compact = raw.trim().toUpperCase(Locale.ROOT).replaceAll("[\\s_]+", "-");
-        Matcher m = Pattern.compile("^([A-Z]+)[-]?(\\d{1,3})$").matcher(compact);
+        Matcher m = Pattern.compile("^([A-Z]+)[-]?(\\d{1,3})((?:\\.\\d{1,3})*)$").matcher(compact);
         if (!m.matches()) return compact;
         String prefix = canonicalizePrefix(m.group(1));
+        // Sub-numbered codes (UC-1.1) are kept exactly as numbered; padding only the
+        // first segment would give UC-01.1, which no longer matches the document.
+        if (!m.group(3).isEmpty()) return prefix + "-" + m.group(2) + m.group(3);
         return prefix + "-" + String.format(Locale.ROOT, "%02d", Integer.parseInt(m.group(2)));
     }
 
@@ -110,9 +144,9 @@ public final class ComponentCodeHelper {
         };
     }
 
-    /** Prefer stored code, else derive from name/content, else null. */
+    /** Prefer stored code (as saved), else derive from name/content, else null. */
     public static String resolveDisplayCode(String codeName, String name, String content) {
-        if (codeName != null && !codeName.isBlank()) return normalizeCode(codeName);
+        if (codeName != null && !codeName.isBlank()) return codeName.trim();
         String fromName = extractPrimaryCode(name);
         if (fromName != null) return fromName;
         return extractPrimaryCode(content);
