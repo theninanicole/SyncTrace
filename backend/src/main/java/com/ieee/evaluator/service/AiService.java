@@ -145,7 +145,8 @@ public class AiService {
                 if (errMsg.contains("PERMISSION DENIED") ||
                     errMsg.contains("FILE NOT FOUND") ||
                     errMsg.contains("UNSUPPORTED FILE FORMAT") ||
-                    errMsg.contains("NO READABLE TEXT")) {
+                    errMsg.contains("NO READABLE TEXT") ||
+                    errMsg.contains("TOO LARGE TO RENDER")) {
                     throw e; // Abort the retry loop immediately
                 }
 
