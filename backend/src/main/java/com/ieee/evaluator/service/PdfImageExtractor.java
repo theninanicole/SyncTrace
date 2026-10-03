@@ -1,6 +1,7 @@
 package com.ieee.evaluator.service;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.springframework.stereotype.Service;
 
@@ -43,16 +44,25 @@ public class PdfImageExtractor {
 
         List<String> images = new ArrayList<>();
 
+        // Callers pass a hard upper bound; the RENDER_MAX_PAGES setting can lower it further
+        int pageLimit = Math.min(Math.max(maxPages, 0), readMaxPages());
+
         try (PDDocument document = PDDocument.load(pdfBytes)) {
             PDFRenderer renderer     = new PDFRenderer(document);
-            int         pagesToRender = Math.min(Math.max(maxPages, 0), document.getNumberOfPages());
+            int         pagesToRender = Math.min(pageLimit, document.getNumberOfPages());
 
             for (int pageIndex = 0; pageIndex < pagesToRender; pageIndex++) {
-                BufferedImage image    = renderer.renderImageWithDPI(pageIndex, renderDpi);
-                BufferedImage rgbImage = toRgb(image);
-                byte[]        jpegBytes = encodeAsJpeg(rgbImage, jpegQuality);
+                // Render straight to RGB so we don't hold a second full-size ARGB copy per page
+                BufferedImage image     = renderer.renderImageWithDPI(pageIndex, renderDpi, ImageType.RGB);
+                byte[]        jpegBytes = encodeAsJpeg(toRgb(image), jpegQuality);
                 images.add(Base64.getEncoder().encodeToString(jpegBytes));
             }
+        } catch (OutOfMemoryError oom) {
+            images.clear();
+            throw new IllegalStateException(
+                "EVALUATION ERROR: Document is too large to render with the current settings (" +
+                (int) renderDpi + " DPI, quality " + jpegQuality + "). " +
+                "Lower RENDER_DPI, RENDER_JPEG_QUALITY or RENDER_MAX_PAGES in System Settings and try again.");
         }
 
         return images;
