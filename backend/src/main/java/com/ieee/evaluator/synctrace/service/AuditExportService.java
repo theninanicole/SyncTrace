@@ -11,8 +11,9 @@ import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
+import com.ieee.evaluator.synctrace.repository.TraceabilityMappingActivityRepository;
+import com.ieee.evaluator.synctrace.model.TraceabilityMappingActivity;
 import com.ieee.evaluator.synctrace.service.TraceabilityClusterService.GoalCluster;
-import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
@@ -31,6 +32,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Builds the team's traceability audit report. Every format (JSON, CSV, PDF) is rendered from
@@ -63,6 +66,7 @@ public class AuditExportService {
     private final ContinuityFindingRepository findingRepository;
     private final DiagnosticRecommendationRepository recommendationRepository;
     private final ContinuityAnalysisRunRepository analysisRunRepository;
+    private final TraceabilityMappingActivityRepository mappingActivityRepository;
     private final ObjectMapper objectMapper;
 
     public AuditExportService(
@@ -71,12 +75,14 @@ public class AuditExportService {
             ContinuityFindingRepository findingRepository,
             DiagnosticRecommendationRepository recommendationRepository,
             ContinuityAnalysisRunRepository analysisRunRepository,
+            TraceabilityMappingActivityRepository mappingActivityRepository,
             ObjectMapper objectMapper) {
         this.clusterService = clusterService;
         this.readinessService = readinessService;
         this.findingRepository = findingRepository;
         this.recommendationRepository = recommendationRepository;
         this.analysisRunRepository = analysisRunRepository;
+        this.mappingActivityRepository = mappingActivityRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -98,9 +104,22 @@ public class AuditExportService {
 
     // ── Report model ──────────────────────────────────────────────────────────
 
+    // Same codes componentLabel() in frontend/src/synctrace/constants.js recognises in a name.
+    private static final Pattern NAME_CODE = Pattern.compile(
+        "\\b((?:UC|TC|FR|NFR|CL|CD|SQ|AD|DFD|CTX|MS|TK|DL|TD|TL|WF|UI|ER)[-\\s_]?\\d{1,3}(?:\\.\\d{1,3})*)\\b",
+        Pattern.CASE_INSENSITIVE);
+
     record ComponentRef(Long id, String code, String name, String docType, String artifactKind) {
+        /** The chip text the Results matrix shows for this component (componentLabel() in the frontend). */
         String label() {
-            return code != null && !code.isBlank() ? code : (name == null || name.isBlank() ? "Component" : name);
+            if (code != null && !code.isBlank()) return code.trim();
+            String trimmed = name == null ? "" : name.trim();
+            if (trimmed.isEmpty()) return "Component";
+            Matcher m = NAME_CODE.matcher(trimmed);
+            if (m.find()) {
+                return m.group(1).toUpperCase(Locale.ROOT).replaceAll("[\\s_]+", "-").replaceFirst("([A-Z]+)(\\d)", "$1-$2");
+            }
+            return trimmed.length() > 28 ? trimmed.substring(0, 27) + "…" : trimmed;
         }
     }
 
@@ -114,22 +133,45 @@ public class AuditExportService {
 
     record MappedComponent(ComponentRef component, List<String> goalCodes) {}
 
+    /**
+     * @param matrixColumns  the document columns the Results matrix shows: only those with at
+     *                       least one mapped component in some goal
+     * @param analysisOutdated the mapping changed after the last analysis, so (like the Results
+     *                       page) its statuses and findings are not shown
+     */
     record AuditReport(
             String teamCode,
             LocalDateTime generatedAt,
             LocalDateTime lastAnalyzedAt,
+            boolean analysisOutdated,
             Map<String, Object> readiness,
             Map<String, Integer> coverage,
+            List<String> matrixColumns,
             List<MatrixRow> matrix,
             List<FindingRow> findings,
             List<MappedComponent> components) {}
 
     AuditReport buildReport(String teamCode) {
         List<GoalCluster> clusters = clusterService.clustersForTeam(teamCode);
-        List<ContinuityFinding> findings = findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode);
         LocalDateTime lastAnalyzedAt = analysisRunRepository.findByTeamCodeIgnoreCase(teamCode)
             .map(ContinuityAnalysisRun::getLastAnalyzedAt)
             .orElse(null);
+        LocalDateTime mappingChangedAt = mappingActivityRepository.findTopByTeamCodeIgnoreCaseOrderByPerformedAtDesc(teamCode)
+            .map(TraceabilityMappingActivity::getPerformedAt)
+            .orElse(null);
+        // Same rule as isAnalysisStale() on the Results page: an analysis made before the mapping
+        // last changed no longer describes it, so its statuses and findings are not shown.
+        boolean analysisOutdated = lastAnalyzedAt != null && mappingChangedAt != null && mappingChangedAt.isAfter(lastAnalyzedAt);
+        boolean analysisCurrent = lastAnalyzedAt != null && !analysisOutdated;
+        List<ContinuityFinding> findings = analysisOutdated
+            ? List.of()
+            : findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(teamCode);
+
+        // Only the document columns the Results matrix shows: those mapped in at least one goal.
+        List<String> matrixColumns = DOC_TYPE_LABELS.entrySet().stream()
+            .filter(docType -> clusters.stream().anyMatch(cluster -> !cluster.components(docType.getKey()).isEmpty()))
+            .map(Map.Entry::getValue)
+            .toList();
 
         Map<Long, List<DiagnosticRecommendation>> recommendationsByFinding = new HashMap<>();
         List<Long> findingIds = findings.stream().map(ContinuityFinding::getId).filter(Objects::nonNull).toList();
@@ -169,7 +211,11 @@ public class AuditExportService {
                 .filter(f -> f.getGoalId() != null && members.contains(f.getGoalId()))
                 .map(ContinuityFinding::getDescription)
                 .toList();
-            String status = lastAnalyzedAt == null ? NOT_ANALYZED : (issues.isEmpty() ? PASSED : FAILED);
+            // Mirrors the Status column of TraceabilityMatrix.jsx.
+            String status;
+            if (!analysisCurrent) status = NOT_ANALYZED;
+            else if (!matrixColumns.isEmpty() && issues.isEmpty()) status = PASSED;
+            else status = FAILED;
 
             matrix.add(new MatrixRow(
                 code, cluster.id(), cluster.primary().getDescription(),
@@ -215,8 +261,8 @@ public class AuditExportService {
             readiness = Map.of();
         }
 
-        return new AuditReport(teamCode, LocalDateTime.now(), lastAnalyzedAt, readiness, coverage,
-            matrix, findingRows, new ArrayList<>(mappedComponents.values()));
+        return new AuditReport(teamCode, LocalDateTime.now(), lastAnalyzedAt, analysisOutdated, readiness, coverage,
+            matrixColumns, matrix, findingRows, new ArrayList<>(mappedComponents.values()));
     }
 
     private ComponentRef toRef(TraceComponent c) {
@@ -254,6 +300,29 @@ public class AuditExportService {
         return time == null ? NOT_ANALYZED : time.format(DISPLAY_TIME);
     }
 
+    private static String analysisText(AuditReport report) {
+        String text = formatTime(report.lastAnalyzedAt());
+        return report.analysisOutdated()
+            ? text + " (out of date: the mapping changed afterwards; run AI Analysis again)"
+            : text;
+    }
+
+    /** What the Results page shows instead of the matrix, or null when the matrix is shown. */
+    private static String matrixEmptyMessage(AuditReport report) {
+        if (report.matrix().isEmpty()) return "No SMART goals to display.";
+        if (report.matrixColumns().isEmpty()) return "No mapped documents to display.";
+        return null;
+    }
+
+    private static String findingsEmptyMessage(AuditReport report) {
+        if (report.analysisOutdated()) {
+            return "The mapping changed after the last AI Analysis, so its findings no longer apply. Run AI Analysis again.";
+        }
+        return report.lastAnalyzedAt() == null
+            ? "AI Analysis has not been run for this team yet."
+            : "No continuity gaps were found in the last analysis.";
+    }
+
     /** AT_RISK → "At Risk", USE_CASE → "Use Case" for the human-readable formats. */
     static String humanize(Object value) {
         if (value == null) return "—";
@@ -281,6 +350,7 @@ public class AuditExportService {
         root.put("generatedAt", report.generatedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         root.put("lastAnalyzedAt", report.lastAnalyzedAt() == null
             ? null : report.lastAnalyzedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        root.put("analysisOutdated", report.analysisOutdated());
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("readinessStatus", report.readiness().get("status"));
@@ -291,25 +361,33 @@ public class AuditExportService {
         summary.put("severityCounts", report.readiness().get("severityCounts"));
         root.put("summary", summary);
 
-        List<Map<String, Object>> matrix = new ArrayList<>();
-        for (MatrixRow row : report.matrix()) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("code", row.code());
-            item.put("goal", row.goal());
-            item.put("specificObjectives", row.specificObjectives());
-            Map<String, Object> cells = new LinkedHashMap<>();
-            row.cells().forEach((docType, refs) -> cells.put(docType, refs.stream().map(ref -> {
-                Map<String, Object> c = new LinkedHashMap<>();
-                c.put("code", ref.code());
-                c.put("name", ref.name());
-                c.put("artifactKind", ref.artifactKind());
-                return c;
-            }).toList()));
-            item.put("cells", cells);
-            item.put("status", row.status());
-            item.put("issues", row.issues());
-            matrix.add(item);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        String emptyMessage = matrixEmptyMessage(report);
+        if (emptyMessage == null) {
+            for (MatrixRow row : report.matrix()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("code", row.code());
+                item.put("goal", row.goal());
+                item.put("specificObjectives", row.specificObjectives());
+                Map<String, Object> cells = new LinkedHashMap<>();
+                for (String column : report.matrixColumns()) {
+                    cells.put(column, row.cells().getOrDefault(column, List.of()).stream().map(ref -> {
+                        Map<String, Object> c = new LinkedHashMap<>();
+                        c.put("label", ref.label());
+                        c.put("name", ref.name());
+                        c.put("artifactKind", ref.artifactKind());
+                        return c;
+                    }).toList());
+                }
+                item.put("cells", cells);
+                item.put("status", row.status());
+                rows.add(item);
+            }
         }
+        Map<String, Object> matrix = new LinkedHashMap<>();
+        matrix.put("columns", report.matrixColumns());
+        matrix.put("rows", rows);
+        matrix.put("message", emptyMessage);
         root.put("traceabilityMatrix", matrix);
 
         root.put("findings", report.findings().stream().map(f -> {
@@ -347,7 +425,7 @@ public class AuditExportService {
         csv.append("Traceability Audit Report\n");
         appendCsvRow(csv, "Team", report.teamCode());
         appendCsvRow(csv, "Generated", report.generatedAt().format(DISPLAY_TIME));
-        appendCsvRow(csv, "Last analyzed", formatTime(report.lastAnalyzedAt()));
+        appendCsvRow(csv, "Last analyzed", analysisText(report));
         csv.append("\n");
 
         csv.append("Readiness Summary\n");
@@ -364,24 +442,32 @@ public class AuditExportService {
         csv.append("\n");
 
         csv.append("Traceability Matrix\n");
-        List<Object> header = new ArrayList<>(List.of("Goal", "SMART Goal", "Specific Objectives"));
-        header.addAll(DOC_TYPE_LABELS.values());
-        header.addAll(List.of("Status", "Issues"));
-        appendCsvRow(csv, header.toArray());
-        for (MatrixRow row : report.matrix()) {
-            List<Object> values = new ArrayList<>(List.of(row.code(), row.goal(), String.join("; ", row.specificObjectives())));
-            DOC_TYPE_LABELS.values().forEach(docType -> values.add(cellText(row.cells().get(docType))));
-            values.add(row.status());
-            values.add(String.join("; ", row.issues()));
-            appendCsvRow(csv, values.toArray());
+        String emptyMessage = matrixEmptyMessage(report);
+        if (emptyMessage != null) {
+            appendCsvRow(csv, emptyMessage);
+        } else {
+            List<Object> header = new ArrayList<>(List.of("Goal", "SMART Goal"));
+            header.addAll(report.matrixColumns());
+            header.add("Status");
+            appendCsvRow(csv, header.toArray());
+            for (MatrixRow row : report.matrix()) {
+                List<Object> values = new ArrayList<>(List.of(row.code(), row.goal()));
+                report.matrixColumns().forEach(column -> values.add(cellText(row.cells().get(column))));
+                values.add(row.status());
+                appendCsvRow(csv, values.toArray());
+            }
         }
         csv.append("\n");
 
         csv.append("Continuity Findings and Recommendations\n");
-        appendCsvRow(csv, "Goal", "Severity", "From", "To", "Finding", "Root Cause", "Recommendation", "Priority");
-        for (FindingRow f : report.findings()) {
-            appendCsvRow(csv, f.goalCode(), f.severity(), f.from(), f.to(), f.description(),
-                f.rootCause(), f.recommendation(), f.priority());
+        if (report.findings().isEmpty()) {
+            appendCsvRow(csv, findingsEmptyMessage(report));
+        } else {
+            appendCsvRow(csv, "Goal", "Severity", "From", "To", "Finding", "Root Cause", "Recommendation", "Priority");
+            for (FindingRow f : report.findings()) {
+                appendCsvRow(csv, f.goalCode(), f.severity(), f.from(), f.to(), f.description(),
+                    f.rootCause(), f.recommendation(), f.priority());
+            }
         }
         csv.append("\n");
 
@@ -434,7 +520,7 @@ public class AuditExportService {
         document.add(new Paragraph("Traceability Audit Report", titleFont));
         document.add(new Paragraph("Team: " + report.teamCode(), textFont));
         document.add(new Paragraph("Generated: " + report.generatedAt().format(DISPLAY_TIME)
-            + "    Last analyzed: " + formatTime(report.lastAnalyzedAt()), textFont));
+            + "    Last analyzed: " + analysisText(report), textFont));
         document.add(spacer());
 
         // Summary
@@ -458,30 +544,30 @@ public class AuditExportService {
         document.add(spacer());
 
         // Matrix
-        document.add(new Paragraph("Traceability Matrix", headerFont));
-        if (report.matrix().isEmpty()) {
-            document.add(new Paragraph("No SMART goals for this team yet.", textFont));
+        String emptyMessage = matrixEmptyMessage(report);
+        if (emptyMessage != null) {
+            document.add(new Paragraph("Traceability Matrix", headerFont));
+            document.add(new Paragraph(emptyMessage, textFont));
         } else {
-            PdfPTable matrix = new PdfPTable(2 + DOC_TYPE_LABELS.size() + 1);
+            List<String> columns = report.matrixColumns();
+            float[] widths = new float[2 + columns.size() + 1];
+            widths[0] = 0.6f;
+            widths[1] = 4.2f;
+            for (int c = 0; c < columns.size(); c++) widths[2 + c] = 1.7f;
+            widths[widths.length - 1] = 1.1f;
+            PdfPTable matrix = new PdfPTable(widths.length);
             matrix.setWidthPercentage(100);
             matrix.setSpacingBefore(4);
-            matrix.setHeaderRows(1);
-            matrix.setWidths(new float[] {0.6f, 4.2f, 1.6f, 1.6f, 1.6f, 1.6f, 1.8f, 1.1f});
+            matrix.setWidths(widths);
+            addSectionTitle(matrix, "Traceability Matrix", headerFont);
             addHeaderCell(matrix, "Goal", boldFont);
             addHeaderCell(matrix, "SMART Goal", boldFont);
-            DOC_TYPE_LABELS.values().forEach(label -> addHeaderCell(matrix, label, boldFont));
+            columns.forEach(label -> addHeaderCell(matrix, label, boldFont));
             addHeaderCell(matrix, "Status", boldFont);
             for (MatrixRow row : report.matrix()) {
                 matrix.addCell(cell(new Phrase(row.code(), boldFont)));
-                Phrase goal = new Phrase(row.goal(), cellFont);
-                if (!row.specificObjectives().isEmpty()) {
-                    goal.add(Chunk.NEWLINE);
-                    for (String objective : row.specificObjectives()) {
-                        goal.add(new Chunk("- " + objective + "\n", cellFont));
-                    }
-                }
-                matrix.addCell(cell(goal));
-                for (String docType : DOC_TYPE_LABELS.values()) {
+                matrix.addCell(cell(new Phrase(row.goal(), cellFont)));
+                for (String docType : columns) {
                     List<ComponentRef> refs = row.cells().get(docType);
                     matrix.addCell(cell(new Phrase(cellText(refs), refs == null || refs.isEmpty() ? missingFont : cellFont)));
                 }
@@ -495,16 +581,14 @@ public class AuditExportService {
         document.add(spacer());
 
         // Findings with their recommendations
-        document.add(new Paragraph("Continuity Findings and Recommendations", headerFont));
         if (report.findings().isEmpty()) {
-            document.add(new Paragraph(report.lastAnalyzedAt() == null
-                ? "AI Analysis has not been run for this team yet."
-                : "No continuity gaps were found in the last analysis.", textFont));
+            document.add(new Paragraph("Continuity Findings and Recommendations", headerFont));
+            document.add(new Paragraph(findingsEmptyMessage(report), textFont));
         } else {
             PdfPTable findings = new PdfPTable(new float[] {0.8f, 0.9f, 1.3f, 4f, 4f});
             findings.setWidthPercentage(100);
             findings.setSpacingBefore(4);
-            findings.setHeaderRows(1);
+            addSectionTitle(findings, "Continuity Findings and Recommendations", headerFont);
             addHeaderCell(findings, "Goal", boldFont);
             addHeaderCell(findings, "Severity", boldFont);
             addHeaderCell(findings, "Stage", boldFont);
@@ -524,14 +608,14 @@ public class AuditExportService {
         document.add(spacer());
 
         // Mapped components
-        document.add(new Paragraph("Mapped Components", headerFont));
         if (report.components().isEmpty()) {
+            document.add(new Paragraph("Mapped Components", headerFont));
             document.add(new Paragraph("No components are mapped to this team's goals yet.", textFont));
         } else {
             PdfPTable components = new PdfPTable(new float[] {1f, 5f, 1.3f, 1.6f, 1.1f});
             components.setWidthPercentage(100);
             components.setSpacingBefore(4);
-            components.setHeaderRows(1);
+            addSectionTitle(components, "Mapped Components", headerFont);
             addHeaderCell(components, "Code", boldFont);
             addHeaderCell(components, "Name", boldFont);
             addHeaderCell(components, "Document", boldFont);
@@ -559,6 +643,21 @@ public class AuditExportService {
 
     private static Paragraph spacer() {
         return new Paragraph(" ");
+    }
+
+    /**
+     * Puts the section title inside the table as a borderless first row and makes it, plus the
+     * column header row added next, repeat on every page. The title then always moves to the
+     * next page together with its table instead of being left alone at the bottom of a page.
+     */
+    private static void addSectionTitle(PdfPTable table, String title, Font font) {
+        PdfPCell titleCell = new PdfPCell(new Phrase(title, font));
+        titleCell.setColspan(table.getNumberOfColumns());
+        titleCell.setBorder(PdfPCell.NO_BORDER);
+        titleCell.setPaddingLeft(0);
+        titleCell.setPaddingBottom(6);
+        table.addCell(titleCell);
+        table.setHeaderRows(2);
     }
 
     private static void addHeaderCell(PdfPTable table, String text, Font font) {
