@@ -53,7 +53,9 @@ public class StdPromptService {
                - Is test coverage sufficient and are gaps explicitly acknowledged?
 
             4. REPORT findings under "Diagram Analysis" in the output.
-               Use this format for each diagram found:
+               Use this format for each diagram found. List entries in page order (ascending
+               [IMG-X], the order the images were analyzed); do NOT group or sort them by
+               diagram type or component:
 
                * [IMG-X] - <Diagram Type>:
                  - Elements: <exact IDs/labels from the document, comma-separated — e.g. TC-01 Login, TC-02 Logout>

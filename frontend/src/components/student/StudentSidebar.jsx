@@ -3,7 +3,12 @@ import TutorialButton from '../common/TutorialButton';
 import { useTheme } from '../../hooks/useTheme';
 import appLogo from '../../assets/logo.png';
 
-function StudentSidebar({ studentData, teamMembers = [], onTutorialStart }) {
+const NAV_ITEMS = [
+  { key: 'evaluations', label: 'Evaluations' },
+  { key: 'traceability', label: 'Traceability' },
+];
+
+function StudentSidebar({ studentData, teamMembers = [], onTutorialStart, currentView, onNavigate }) {
   const { themeMode, setThemeMode } = useTheme();
   const toggleTheme = () => {
     setThemeMode(themeMode === 'dark' ? 'light' : 'dark');
@@ -44,7 +49,23 @@ function StudentSidebar({ studentData, teamMembers = [], onTutorialStart }) {
         <span className="student-profile__meta">{studentData.section}</span>
       </div>
 
+      {onNavigate && (
+        <nav className="student-sidebar__nav" aria-label="Student workspace">
+          {NAV_ITEMS.map((item) => (
             <button
+              key={item.key}
+              type="button"
+              className={`student-nav-btn student-nav-btn--${item.key}${currentView === item.key ? ' student-nav-btn--active' : ''}`}
+              onClick={() => onNavigate(item.key)}
+              aria-current={currentView === item.key ? 'page' : undefined}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <button
         type="button"
         className="btn btn--ghost student-sidebar__theme-toggle"
         onClick={toggleTheme}

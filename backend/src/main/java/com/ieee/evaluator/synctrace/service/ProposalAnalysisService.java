@@ -8,8 +8,8 @@ import com.ieee.evaluator.service.ProgressEmitter;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,7 +30,6 @@ public class ProposalAnalysisService {
     private static final long DEFAULT_RETRY_TIME_LIMIT_MS = 180_000;
 
     private final GoogleDocsService docsService;
-    private final SmartGoalService smartGoalService;
     private final ProposalPromptService proposalPromptService;
     private final ProgressEmitter progressEmitter;
     private final Map<String, AiProvider> providers;
@@ -39,12 +38,10 @@ public class ProposalAnalysisService {
 
     public ProposalAnalysisService(
             GoogleDocsService docsService,
-            SmartGoalService smartGoalService,
             ProposalPromptService proposalPromptService,
             ProgressEmitter progressEmitter,
             List<AiProvider> providerList) {
         this.docsService = docsService;
-        this.smartGoalService = smartGoalService;
         this.proposalPromptService = proposalPromptService;
         this.progressEmitter = progressEmitter;
         this.providers = providerList.stream()
@@ -158,82 +155,89 @@ public class ProposalAnalysisService {
         String prompt = proposalPromptService.smartGoalExtractionPrompt(docData.text());
         String response = provider.complete(prompt);
 
-        emit(sessionId, "PROCESSING", "Parsing AI response and creating goals", 80);
+        emit(sessionId, "PROCESSING", "Parsing AI response into SMART goals for review", 80);
 
-        return parseAndCreateGoals(response, teamCode);
+        return parseGoalDrafts(response);
     }
 
-    @Transactional
-    protected List<Map<String, Object>> parseAndCreateGoals(String aiResponse, String teamCode) throws Exception {
+    /**
+     * Turns the AI response into a draft goal tree for the user to review. Nothing is saved
+     * here; the reviewed tree is saved through SmartGoalService.saveReviewedGoals.
+     * Shape: [{ goalKind, description, children: [{ goalKind: "SPECIFIC", description }] }]
+     */
+    List<Map<String, Object>> parseGoalDrafts(String aiResponse) {
+        JsonNode root;
         try {
-            String cleaned = stripCodeFences(aiResponse);
-            JsonNode root = objectMapper.readTree(cleaned);
-            if (!root.isArray()) {
-                throw new RuntimeException("AI response is not a JSON array");
-            }
-
-            List<Map<String, Object>> createdGoals = new java.util.ArrayList<>();
-            for (JsonNode node : root) {
-                if (node.isTextual()) {
-                    // Legacy flat string → SPECIFIC
-                    createdGoals.add(persistGoal(node.asText(), SmartGoal.GoalKind.SPECIFIC, null, teamCode));
-                    continue;
-                }
-                if (!node.isObject()) continue;
-
-                String description = node.path("description").asText("").trim();
-                if (description.isBlank()) continue;
-
-                SmartGoal.GoalKind kind = parseGoalKind(node.path("goalKind").asText("SPECIFIC"));
-                if (kind == SmartGoal.GoalKind.GENERAL) {
-                    Map<String, Object> parentMap = persistGoal(description, SmartGoal.GoalKind.GENERAL, null, teamCode);
-                    createdGoals.add(parentMap);
-                    Long parentId = (Long) parentMap.get("id");
-
-                    JsonNode children = node.path("children");
-                    if (children.isArray()) {
-                        for (JsonNode child : children) {
-                            String childDesc = child.isTextual()
-                                ? child.asText("").trim()
-                                : child.path("description").asText("").trim();
-                            if (childDesc.isBlank()) continue;
-                            createdGoals.add(persistGoal(childDesc, SmartGoal.GoalKind.SPECIFIC, parentId, teamCode));
-                        }
-                    }
-                } else {
-                    createdGoals.add(persistGoal(description, SmartGoal.GoalKind.SPECIFIC, null, teamCode));
-                    JsonNode children = node.path("children");
-                    if (children.isArray()) {
-                        // Misplaced children under SPECIFIC — still create as SPECIFIC orphans
-                        for (JsonNode child : children) {
-                            String childDesc = child.isTextual()
-                                ? child.asText("").trim()
-                                : child.path("description").asText("").trim();
-                            if (childDesc.isBlank()) continue;
-                            createdGoals.add(persistGoal(childDesc, SmartGoal.GoalKind.SPECIFIC, null, teamCode));
-                        }
-                    }
-                }
-            }
-
-            return createdGoals;
+            root = objectMapper.readTree(stripCodeFences(aiResponse));
         } catch (Exception e) {
             log.error("Failed to parse AI response as JSON: {}", e.getMessage());
             throw new RuntimeException("Failed to parse AI response as JSON: " + e.getMessage());
         }
+        if (!root.isArray()) {
+            throw new RuntimeException("Failed to parse AI response as JSON: AI response is not a JSON array");
+        }
+
+        List<Map<String, Object>> drafts = new java.util.ArrayList<>();
+        // The AI sometimes copies one shared list of specific objectives under every general
+        // objective, with small wording differences. Keep only the first occurrence of each.
+        Set<String> seenSpecifics = new HashSet<>();
+        for (JsonNode node : root) {
+            if (node.isTextual()) {
+                // Legacy flat string → SPECIFIC
+                String text = node.asText("").trim();
+                if (!text.isEmpty() && seenSpecifics.add(normalizeGoalText(text))) {
+                    drafts.add(draft(SmartGoal.GoalKind.SPECIFIC, text, List.of()));
+                }
+                continue;
+            }
+            if (!node.isObject()) continue;
+
+            String description = node.path("description").asText("").trim();
+            if (description.isBlank()) continue;
+
+            List<String> children = new java.util.ArrayList<>();
+            JsonNode childNodes = node.path("children");
+            if (childNodes.isArray()) {
+                for (JsonNode child : childNodes) {
+                    String childDesc = child.isTextual()
+                        ? child.asText("").trim()
+                        : child.path("description").asText("").trim();
+                    if (!childDesc.isBlank() && seenSpecifics.add(normalizeGoalText(childDesc))) {
+                        children.add(childDesc);
+                    }
+                }
+            }
+
+            if (parseGoalKind(node.path("goalKind").asText("SPECIFIC")) == SmartGoal.GoalKind.GENERAL) {
+                drafts.add(draft(SmartGoal.GoalKind.GENERAL, description, children));
+            } else {
+                // Misplaced children under a SPECIFIC become standalone specific objectives.
+                if (seenSpecifics.add(normalizeGoalText(description))) {
+                    drafts.add(draft(SmartGoal.GoalKind.SPECIFIC, description, List.of()));
+                }
+                children.forEach(child -> drafts.add(draft(SmartGoal.GoalKind.SPECIFIC, child, List.of())));
+            }
+        }
+        return drafts;
     }
 
-    private Map<String, Object> persistGoal(
-            String description, SmartGoal.GoalKind kind, Long parentGoalId, String teamCode) {
-        var goal = smartGoalService.createGoal(description, kind, parentGoalId, teamCode);
-        Map<String, Object> goalMap = new java.util.HashMap<>();
-        goalMap.put("id", goal.getId());
-        goalMap.put("description", goal.getDescription());
-        goalMap.put("goalKind", goal.getGoalKind() != null ? goal.getGoalKind().name() : "SPECIFIC");
-        goalMap.put("parentGoalId", goal.getParentGoalId());
-        goalMap.put("teamCode", goal.getTeamCode());
-        goalMap.put("createdAt", goal.getCreatedAt());
-        return goalMap;
+    private static Map<String, Object> draft(SmartGoal.GoalKind kind, String description, List<String> children) {
+        Map<String, Object> node = new java.util.LinkedHashMap<>();
+        node.put("goalKind", kind.name());
+        node.put("description", description);
+        node.put("children", children.stream()
+            .map(child -> Map.<String, Object>of("goalKind", SmartGoal.GoalKind.SPECIFIC.name(), "description", child))
+            .toList());
+        return node;
+    }
+
+    /** Comparison key for an objective: case, list numbering/bullets, punctuation and spacing ignored. */
+    public static String normalizeGoalText(String text) {
+        if (text == null) return "";
+        return text.toLowerCase(java.util.Locale.ROOT)
+            .replaceFirst("^\\s*(?:[\\-*\u2022]|\\(?[0-9a-z]{1,3}[.)])\\s*", "")
+            .replaceAll("[^\\p{L}\\p{N}]+", " ")
+            .trim();
     }
 
     private static SmartGoal.GoalKind parseGoalKind(String raw) {

@@ -70,9 +70,17 @@ public class SmartGoalController {
         }
     }
 
+    /** Adding, editing and deleting SMART goals is a teacher action. */
+    private void requireTeacher() {
+        if (accessGuard.isStudent()) {
+            throw new SyncTraceAccessGuard.AccessDeniedException("Only teachers can change SMART goals.");
+        }
+    }
+
     @PostMapping
     public ResponseEntity<?> createSmartGoal(@RequestBody Map<String, Object> payload) {
         try {
+            requireTeacher();
             String description = payload.get("description") != null
                 ? String.valueOf(payload.get("description")) : null;
             if (description == null || description.isBlank()) {
@@ -92,7 +100,9 @@ public class SmartGoalController {
             String teamCode = payload.get("teamCode") != null
                 ? String.valueOf(payload.get("teamCode")) : null;
 
-            return ResponseEntity.ok(goalService.createGoal(description, goalKind, parentGoalId, teamCode));
+            return ResponseEntity.ok(goalService.addGoal(description, goalKind, parentGoalId, teamCode));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
@@ -101,11 +111,31 @@ public class SmartGoalController {
         }
     }
 
+    @PutMapping("/{goalId}")
+    public ResponseEntity<?> updateSmartGoal(@PathVariable Long goalId, @RequestBody Map<String, Object> payload) {
+        try {
+            requireTeacher();
+            String description = payload.get("description") != null
+                ? String.valueOf(payload.get("description")) : null;
+            return ResponseEntity.ok(goalService.updateGoalDescription(goalId, description));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to update goal: " + e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/{goalId}")
     public ResponseEntity<?> deleteSmartGoal(@PathVariable Long goalId) {
         try {
+            requireTeacher();
             goalService.deleteGoal(goalId);
             return ResponseEntity.ok(Map.of("message", "Goal deleted successfully"));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to delete goal: " + e.getMessage()));

@@ -94,12 +94,20 @@ function ComponentLibraryColumn({
                         isLinked ? 'stm-component-card--linked' : '',
                       ].filter(Boolean).join(' ')}
                     >
-                      <button type="button" className="stm-component-card__body" onClick={() => onSelect(c.id)}>
+                      <button
+                        type="button"
+                        className="stm-component-card__body"
+                        onClick={() => onSelect(c.id)}
+                        aria-pressed={isSelected}
+                      >
                         <div className="stm-component-card__top">
                           <span className="stm-component-card__name">{componentLabel(c)}</span>
                           {count > 0 && <span className="stm-mapped-count">{count}</span>}
                         </div>
-                        <span className="stm-component-card__type">{c.type}</span>
+                        <span className="stm-component-card__type">
+                          {c.type}
+                          {isLinked && <span className="stm-component-card__linked"> · linked to selection</span>}
+                        </span>
                       </button>
                       <div className="stm-component-card__actions">
                         {onPreview && (

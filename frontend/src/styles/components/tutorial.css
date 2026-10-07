@@ -38,6 +38,12 @@
   z-index: 10000;
 }
 
+/* Gated steps: let clicks reach the highlighted target; the overlay's capture
+   listener blocks everything else. */
+.tutorial-overlay--gated {
+  pointer-events: none;
+}
+
 .tutorial-overlay__backdrop {
   position: absolute;
   inset: 0;
@@ -59,7 +65,11 @@
 .tutorial-tooltip {
   position: absolute;
   z-index: 3;
-  width: 340px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  transition: top 160ms ease, left 160ms ease;
   padding: 1.1rem 1.1rem 0.95rem;
   border-radius: 18px;
   background: linear-gradient(135deg, #0f172a 0%, #111827 100%);

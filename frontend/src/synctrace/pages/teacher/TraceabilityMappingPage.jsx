@@ -121,12 +121,15 @@ function TraceabilityMappingPage({ focusStep }) {
         teamCode={selectedTeam}
         extracting={tm.extractingGoals}
         onExtract={tm.extractSmartGoals}
+        onSave={tm.saveReviewedGoals}
+        reviewBeforeSave
       />
 
       <ExtractComponentsDialog
         isOpen={isExtractComponentsOpen}
         onClose={() => setIsExtractComponentsOpen(false)}
         teamCode={selectedTeam}
+        stage={tm.stage}
         extracting={tm.extractingComponents}
         onExtract={tm.extractComponents}
       />

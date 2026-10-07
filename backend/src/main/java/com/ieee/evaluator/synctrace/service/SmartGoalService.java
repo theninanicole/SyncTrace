@@ -142,6 +142,138 @@ public class SmartGoalService {
         return goalRepository.save(goal);
     }
 
+    /**
+     * Teacher-entered goal. Unlike createGoal (used by extraction), this never reuses an
+     * existing goal with the same wording, which could belong to another team.
+     */
+    @Transactional
+    public SmartGoal addGoal(String description, GoalKind goalKind, Long parentGoalId, String teamCode) {
+        String text = description == null ? "" : description.trim();
+        if (text.isEmpty()) throw new IllegalArgumentException("Description is required.");
+        GoalKind kind = goalKind != null ? goalKind : GoalKind.SPECIFIC;
+
+        if (kind == GoalKind.GENERAL && parentGoalId != null) {
+            throw new IllegalArgumentException("GENERAL goals cannot have a parent goal.");
+        }
+        String scope = blankToNull(teamCode);
+        if (kind == GoalKind.SPECIFIC && parentGoalId != null) {
+            SmartGoal parent = goalRepository.findById(parentGoalId)
+                .orElseThrow(() -> new IllegalArgumentException("Parent goal not found: " + parentGoalId));
+            if (parent.getGoalKind() != GoalKind.GENERAL) {
+                throw new IllegalArgumentException("Parent goal must be a GENERAL objective.");
+            }
+            // A specific objective always belongs to its general objective's team.
+            scope = parent.getTeamCode();
+        }
+
+        SmartGoal goal = new SmartGoal();
+        goal.setDescription(text);
+        goal.setGoalKind(kind);
+        goal.setParentGoalId(kind == GoalKind.SPECIFIC ? parentGoalId : null);
+        goal.setTeamCode(scope);
+        goal.setCreatedAt(LocalDateTime.now());
+        return goalRepository.save(goal);
+    }
+
+    /**
+     * Saves a goal tree the user reviewed after extraction:
+     * [{ goalKind, description, children: [{ description }] }].
+     * Goals already on file for the team with the same wording (ignoring case, numbering and
+     * punctuation) are reused, so saving the same proposal twice adds nothing new and existing
+     * mappings are kept. Returns the number of goals created.
+     */
+    @Transactional
+    public int saveReviewedGoals(String teamCode, List<Map<String, Object>> tree) {
+        String scope = blankToNull(teamCode);
+        List<SmartGoal> existing = scope != null
+            ? goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(scope)
+            : goalRepository.findAllByOrderByCreatedAtAscIdAsc().stream()
+                .filter(g -> g.getTeamCode() == null).collect(Collectors.toCollection(ArrayList::new));
+        Map<String, SmartGoal> generalByText = new HashMap<>();
+        Map<String, SmartGoal> specificByText = new HashMap<>();
+        for (SmartGoal goal : existing) {
+            String key = ProposalAnalysisService.normalizeGoalText(goal.getDescription());
+            (goal.getGoalKind() == GoalKind.GENERAL ? generalByText : specificByText).putIfAbsent(key, goal);
+        }
+
+        int created = 0;
+        for (Map<String, Object> node : tree == null ? List.<Map<String, Object>>of() : tree) {
+            String description = textOf(node);
+            if (description == null) continue;
+            boolean general = "GENERAL".equalsIgnoreCase(String.valueOf(node.get("goalKind")));
+            List<String> children = childTexts(node.get("children"));
+
+            if (!general) {
+                created += saveReviewedSpecific(description, null, scope, specificByText) ? 1 : 0;
+                for (String child : children) {
+                    created += saveReviewedSpecific(child, null, scope, specificByText) ? 1 : 0;
+                }
+                continue;
+            }
+
+            String key = ProposalAnalysisService.normalizeGoalText(description);
+            SmartGoal parent = generalByText.get(key);
+            if (parent == null) {
+                parent = newGoal(description, GoalKind.GENERAL, null, scope);
+                generalByText.put(key, parent);
+                created++;
+            }
+            for (String child : children) {
+                created += saveReviewedSpecific(child, parent.getId(), scope, specificByText) ? 1 : 0;
+            }
+        }
+        return created;
+    }
+
+    private boolean saveReviewedSpecific(String description, Long parentId, String scope,
+            Map<String, SmartGoal> specificByText) {
+        String key = ProposalAnalysisService.normalizeGoalText(description);
+        SmartGoal found = specificByText.get(key);
+        if (found != null) {
+            // Already on file: attach a previously standalone objective to its reviewed parent.
+            if (parentId != null && found.getParentGoalId() == null) {
+                found.setParentGoalId(parentId);
+                goalRepository.save(found);
+            }
+            return false;
+        }
+        specificByText.put(key, newGoal(description, GoalKind.SPECIFIC, parentId, scope));
+        return true;
+    }
+
+    private SmartGoal newGoal(String description, GoalKind kind, Long parentId, String teamCode) {
+        SmartGoal goal = new SmartGoal();
+        goal.setDescription(description);
+        goal.setGoalKind(kind);
+        goal.setParentGoalId(parentId);
+        goal.setTeamCode(teamCode);
+        goal.setCreatedAt(LocalDateTime.now());
+        return goalRepository.save(goal);
+    }
+
+    private static String textOf(Object node) {
+        Object raw = node instanceof Map<?, ?> map ? map.get("description") : node;
+        if (raw == null) return null;
+        String text = String.valueOf(raw).trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    private static List<String> childTexts(Object children) {
+        if (!(children instanceof List<?> list)) return List.of();
+        return list.stream().map(SmartGoalService::textOf).filter(Objects::nonNull).toList();
+    }
+
+    /** Rewords a goal. Its kind, parent, team and mappings are unchanged. */
+    @Transactional
+    public SmartGoal updateGoalDescription(Long goalId, String description) {
+        String text = description == null ? "" : description.trim();
+        if (text.isEmpty()) throw new IllegalArgumentException("Description is required.");
+        SmartGoal goal = goalRepository.findById(goalId)
+            .orElseThrow(() -> new IllegalArgumentException("Goal not found: " + goalId));
+        goal.setDescription(text);
+        return goalRepository.save(goal);
+    }
+
     @Transactional
     public void deleteGoal(Long goalId) {
         List<SmartGoal> children = goalRepository.findByParentGoalIdOrderByCreatedAtAscIdAsc(goalId);

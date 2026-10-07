@@ -30,6 +30,7 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
     documentGroups,
     establishMapping,
     removeMapping,
+    coverage,
   } = tm;
 
   const mappedSourceCounts = countBy(mappingsForStage, 'sourceId');
@@ -48,23 +49,22 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
     <div className="stm-workspace">
       <section className="stm-column-wrap">
         {isProposalStage ? (
-          <div className="stm-column">
-            <div className="stm-column__header">
-              <span>SMART Goals</span>
-            </div>
-            <SmartGoalPanel
-              smartGoalsExtracted={smartGoalsExtracted}
-              smartGoals={smartGoals}
-              loading={loadingGoals}
-              extracting={extractingGoals}
-              selectedId={selectedSourceId}
-              linkedIds={linkedSourceIds}
-              mappedCounts={mappedSourceCounts}
-              onSelect={selectSource}
-              onExtractClick={onExtractGoalsClick}
-              readOnly={readOnly}
-            />
-          </div>
+          <SmartGoalPanel
+            heading="SMART Goals (Source · Anchor)"
+            smartGoalsExtracted={smartGoalsExtracted}
+            smartGoals={smartGoals}
+            loading={loadingGoals}
+            extracting={extractingGoals}
+            selectedId={selectedSourceId}
+            linkedIds={linkedSourceIds}
+            mappedCounts={mappedSourceCounts}
+            onSelect={selectSource}
+            onExtractClick={onExtractGoalsClick}
+            onAddGoal={tm.addGoal}
+            onUpdateGoal={tm.updateGoal}
+            onDeleteGoal={tm.deleteGoal}
+            readOnly={readOnly}
+          />
         ) : (
           <ComponentLibraryColumn
             heading={`${DOC_TYPE_LABELS[stage.sourceType]} Components (Source)`}
@@ -77,9 +77,9 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
             groupLabelsByItem={componentGroups}
             documentGroupsByItem={documentGroups}
             onSelect={selectSource}
-              onAdd={readOnly ? undefined : () => onAddComponentClick(stage.sourceType)}
+            onAdd={readOnly ? undefined : () => onAddComponentClick(stage.sourceType)}
             onPreview={onPreviewComponentClick}
-              onRemove={readOnly ? undefined : (id) => onRemoveComponentClick(stage.sourceType, id)}
+            onRemove={readOnly ? undefined : (id) => onRemoveComponentClick(stage.sourceType, id)}
             emptyHint={`Extract or add ${DOC_TYPE_LABELS[stage.sourceType]} components before establishing ${stage.label} mappings.`}
           />
         )}
@@ -92,13 +92,15 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
         selectedSourceId={selectedSourceId}
         selectedTargetIds={selectedTargetIds}
         mappingsForStage={mappingsForStage}
+        coverage={coverage}
         loading={loadingGoals || loadingComponents}
         onEstablish={establishMapping}
         onRemoveMapping={removeMapping}
+        onClearTargets={tm.clearTargetSelection}
       />
 
       <section className="stm-column-wrap">
-          <ComponentLibraryColumn
+        <ComponentLibraryColumn
           heading={`${DOC_TYPE_LABELS[stage.targetType]} Components (Target)`}
           docType={stage.targetType}
           items={targetItems}

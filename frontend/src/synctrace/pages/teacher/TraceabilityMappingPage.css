@@ -1130,7 +1130,7 @@
 
 .stm-workspace {
   display: grid;
-  grid-template-columns: 1fr 260px 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px) minmax(0, 1fr);
   gap: 1rem;
   align-items: stretch;
 }
@@ -1323,6 +1323,16 @@
   flex-shrink: 0;
 }
 
+.stm-component-card__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.stm-component-card__linked {
+  color: var(--ok);
+  text-transform: none;
+}
+
 /* ── Small text-only action buttons (no icons) ───────────────────────────── */
 
 .stm-mini-btn {
@@ -1411,6 +1421,135 @@
   flex: 1;
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+/* Teacher editing of SMART goals. */
+.stm-goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.stm-goal-actions__hint {
+  flex: 1 1 100%;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.stm-goal-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stm-goal-child__text {
+  line-height: 1.4;
+}
+
+.stm-goal-cluster__add {
+  align-self: flex-start;
+}
+
+.stm-goal-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stm-goal-editor__input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, var(--line-soft));
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding: 0.45rem 0.55rem;
+}
+
+.stm-goal-editor__input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 40%, transparent);
+}
+
+.stm-goal-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.stm-mini-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.stm-mini-btn--primary {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
+}
+
+.stm-mini-btn--danger,
+.stm-mini-btn--danger:hover {
+  color: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 45%, var(--line-soft));
+}
+
+/* Review step of the Extract SMART Goals dialog. */
+.stm-goal-review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stm-goal-review__goal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 0.6rem;
+  background: var(--bg-surface-2);
+}
+
+.stm-goal-review__row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.stm-goal-review__kind {
+  flex: 1;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stm-goal-review__children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1rem;
+  border-left: 2px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stm-goal-review__children li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.stm-goal-review__add {
+  align-self: flex-start;
 }
 
 /* ── Mapping controls (middle column) ────────────────────────────────────── */
@@ -1507,40 +1646,134 @@
   overflow-y: auto;
 }
 
-.stm-controls__list-item {
+.stm-controls__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  background: var(--bg-surface-2);
+  font-size: 0.78rem;
+}
+
+.stm-controls__group--selected {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
+}
+
+.stm-controls__item {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+}
+
+.stm-controls__item-detail {
+  color: var(--text-muted);
+}
+
+.stm-controls__links {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stm-controls__links li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+
+.stm-controls__link-arrow {
+  flex-shrink: 0;
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.stm-controls__slot-label--row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.stm-controls__slot .stm-controls__links {
+  margin-top: 0.35rem;
+  padding-left: 0;
+}
+
+.stm-controls__slot-note {
+  display: block;
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--warn);
+}
+
+.stm-controls__links .stm-controls__slot-note {
+  margin-top: 0;
+}
+
+/* ── Stage coverage summary (top of the mapping controls) ────────────────── */
+
+.stm-coverage {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.stm-coverage__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  padding: 0.4rem 0.55rem;
+  padding: 0.35rem 0.2rem;
   background: var(--bg-surface-2);
+  text-align: center;
 }
 
-.stm-controls__pair {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.78rem;
+.stm-coverage__value {
+  font-size: 0.95rem;
+  font-weight: 800;
   color: var(--text-main);
-  min-width: 0;
 }
 
-.stm-controls__pair span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 92px;
+.stm-coverage__stat--ok .stm-coverage__value {
+  color: var(--ok);
 }
 
-.stm-controls__pair-sep {
-  flex-shrink: 0;
-  color: var(--text-muted);
-  font-size: 0.68rem;
+.stm-coverage__stat--warn .stm-coverage__value {
+  color: var(--warn);
+}
+
+.stm-coverage__label {
+  font-size: 0.62rem;
   font-weight: 700;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  max-width: none !important;
+  color: var(--text-muted);
+}
+
+.stm-coverage__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--warn);
+  text-align: center;
+}
+
+.stm-coverage__note--ok {
+  color: var(--ok);
 }
 
 /* ── Add Component dialog form ───────────────────────────────────────────── */

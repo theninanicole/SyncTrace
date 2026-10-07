@@ -42,14 +42,14 @@ function StudentTraceabilityResults({ teamCode }) {
         </div>
         <div className="student-section-heading__actions">
           <button
-            className="btn btn--soft"
+            className="btn btn--soft student-results__ai"
             type="button"
             onClick={runAiAnalysis}
             disabled={runningAiAnalysis || loading || !teamCode}
           >
             {runningAiAnalysis ? 'Analyzing...' : 'Run AI Analysis'}
           </button>
-          <button className="btn btn--soft" type="button" onClick={refresh} disabled={loading || runningAiAnalysis || !teamCode}>
+          <button className="btn btn--soft student-results__refresh" type="button" onClick={refresh} disabled={loading || runningAiAnalysis || !teamCode}>
             {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>

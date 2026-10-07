@@ -3,7 +3,7 @@ import AppModal from '../../../../components/common/AppModal';
 import { getEvaluationHistory } from '../../../../api';
 import { extractSubmissionMeta, formatDateTime } from '../../../../utils/dashboardUtils';
 
-function ExtractComponentsDialog({ isOpen, onClose, teamCode, extracting, onExtract }) {
+function ExtractComponentsDialog({ isOpen, onClose, teamCode, stage, extracting, onExtract }) {
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [historyItems, setHistoryItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -21,13 +21,20 @@ function ExtractComponentsDialog({ isOpen, onClose, teamCode, extracting, onExtr
       .finally(() => setLoading(false));
   }, [isOpen, teamCode]);
 
+  // Limit to the documents on either side of the selected stage (e.g. SRS → SDD shows only SRS and SDD).
+  const allowedTypes = useMemo(
+    () => (stage ? [stage.sourceType, stage.targetType] : null),
+    [stage]
+  );
+
   const docs = useMemo(() => {
     return historyItems
       .map((item) => ({ ...item, meta: extractSubmissionMeta(item.fileName) }))
       .filter((item) => item.meta.documentType && item.meta.documentType !== 'PROPOSAL'
+        && (!allowedTypes || allowedTypes.includes(item.meta.documentType))
         && (!teamCode || item.meta.teamCode.toUpperCase() === teamCode.toUpperCase()))
       .sort((a, b) => new Date(b.evaluatedAt) - new Date(a.evaluatedAt));
-  }, [historyItems, teamCode]);
+  }, [historyItems, teamCode, allowedTypes]);
 
   if (!isOpen) return null;
 
@@ -51,7 +58,9 @@ function ExtractComponentsDialog({ isOpen, onClose, teamCode, extracting, onExtr
       isOpen={isOpen}
       onClose={onClose}
       title="Extract Components"
-      subtitle="Select one or more evaluated documents to extract components from."
+      subtitle={stage
+        ? `Select one or more evaluated ${stage.label} documents to extract components from.`
+        : 'Select one or more evaluated documents to extract components from.'}
       footer={
         <div className="modal-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
           <span className="tm-muted">{checkedIds.size} document(s) selected</span>
@@ -74,7 +83,9 @@ function ExtractComponentsDialog({ isOpen, onClose, teamCode, extracting, onExtr
         </div>
       ) : docs.length === 0 ? (
         <div className="empty-state">
-          <p>{teamCode ? `No evaluated documents found for ${teamCode}.` : 'No evaluated documents found.'}</p>
+          <p>
+            {teamCode ? `No evaluated ${stage ? `${stage.label} ` : ''}documents found for ${teamCode}.` : 'No evaluated documents found.'}
+          </p>
         </div>
       ) : (
         <div className="tm-team-list">

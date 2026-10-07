@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getSmartGoals,
+  createSmartGoal,
+  updateSmartGoal,
+  deleteSmartGoal,
   getLatestMappingActivity,
   extractSmartGoalsFromProposal,
+  saveReviewedSmartGoals,
   getTraceComponents,
   extractTraceComponents,
   createTraceComponent,
@@ -15,7 +19,14 @@ import {
 import { notifyMappingsChanged, useMappingsChangedRefresh } from '../utils/mappingEvents';
 import { getEvaluationHistory } from '../../api';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
-import { STAGES, COMPONENT_DOC_TYPES, artifactKindLabel, formatArtifactKind, groupGoalsIntoClusters } from '../constants';
+import {
+  STAGES,
+  COMPONENT_DOC_TYPES,
+  artifactKindLabel,
+  formatArtifactKind,
+  groupGoalsIntoClusters,
+  componentLabel,
+} from '../constants';
 
 /**
  * The staged mapping chain (stage, sourceId, targetId) is shared per team on the server, so
@@ -71,6 +82,12 @@ function emptyComponentLibrary() {
     acc[dt] = [];
     return acc;
   }, {});
+}
+
+/** Short label for a mapping end: G1, G2… for SMART goals, the document code for components. */
+function mappingItemLabel(item) {
+  if (!item) return 'component';
+  return item.code || componentLabel(item);
 }
 
 function computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage }) {
@@ -205,8 +222,13 @@ export function useStagedTraceability(showToast, teamCode) {
     loadMappings();
   }, [loadMappings]);
 
-  // Edits and saves by other users (or other tabs) show up without a reload.
-  useMappingsChangedRefresh(teamCode, loadMappings, { pollMs: 30000 });
+  // Edits and saves by other users (or other tabs), including teacher changes to SMART
+  // goals, show up without a reload.
+  const refreshShared = useCallback(() => {
+    loadMappings();
+    loadSmartGoals();
+  }, [loadMappings, loadSmartGoals]);
+  useMappingsChangedRefresh(teamCode, refreshShared, { pollMs: 30000 });
 
   // One-time upload of this browser's pre-sharing chain into an empty shared workspace.
   useEffect(() => {
@@ -240,8 +262,10 @@ export function useStagedTraceability(showToast, teamCode) {
   // only the cluster (keyed by the GENERAL/orphan-SPECIFIC id) is a mappable source.
   const sourceItems = useMemo(() => {
     if (stage.sourceType === 'PROPOSAL') {
-      return groupGoalsIntoClusters(smartGoals).map((cluster) => ({
+      return groupGoalsIntoClusters(smartGoals).map((cluster, index) => ({
         id: cluster.id,
+        // Numbered like the SMART goal column, Results matrix and Issues panel (G1, G2, …).
+        code: `G${index + 1}`,
         description: cluster.primary.description,
         goalKind: cluster.primary.goalKind,
       }));
@@ -260,6 +284,19 @@ export function useStagedTraceability(showToast, teamCode) {
     () => mappings.filter((m) => m.stage === selectedStage),
     [mappings, selectedStage]
   );
+
+  // Coverage counts source items with at least one target; a source may have many.
+  const coverage = useMemo(() => {
+    const mappedSourceIds = new Set(mappingsForStage.map((m) => m.sourceId));
+    const total = sourceItems.length;
+    const mapped = sourceItems.filter((s) => mappedSourceIds.has(s.id)).length;
+    return {
+      total,
+      mapped,
+      unmapped: total - mapped,
+      percent: total === 0 ? 0 : Math.round((mapped / total) * 100),
+    };
+  }, [sourceItems, mappingsForStage]);
 
   const stageStatus = useMemo(
     () => computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage }),
@@ -285,19 +322,36 @@ export function useStagedTraceability(showToast, teamCode) {
     });
   }
 
+  function clearTargetSelection() {
+    setSelectedTargetIds(new Set());
+  }
+
   async function establishMapping() {
     if (!selectedSourceId || selectedTargetIds.size === 0) return;
     if (!teamCode) {
       showToast?.('Select a team before mapping.', 'error');
       return;
     }
+    // Many-to-many: a source can gain more targets and a target can serve many sources.
+    // Only the exact same source → target pair is rejected as a duplicate.
+    const existingTargetIds = new Set(
+      mappingsForStage.filter((m) => m.sourceId === selectedSourceId).map((m) => m.targetId)
+    );
+    const duplicateIds = [...selectedTargetIds].filter((id) => existingTargetIds.has(id));
     const newMappings = [...selectedTargetIds]
-      .filter((targetId) => !mappingsForStage.some(
-        (m) => m.sourceId === selectedSourceId && m.targetId === targetId
-      ))
+      .filter((targetId) => !existingTargetIds.has(targetId))
       .map((targetId) => ({ stage: selectedStage, sourceId: selectedSourceId, targetId }));
+
+    const sourceLabel = mappingItemLabel(sourceItems.find((s) => s.id === selectedSourceId));
+    const targetLabels = (ids) => ids
+      .map((id) => mappingItemLabel(targetItems.find((t) => t.id === id)))
+      .join(', ');
+
     if (newMappings.length === 0) {
-      showToast?.('These components are already mapped.', 'info');
+      showToast?.(
+        `${sourceLabel} → ${targetLabels(duplicateIds)} ${duplicateIds.length === 1 ? 'is' : 'are'} already mapped.`,
+        'error'
+      );
       return;
     }
     try {
@@ -308,7 +362,13 @@ export function useStagedTraceability(showToast, teamCode) {
       });
       setSelectedTargetIds(new Set());
       notifyMappingsChanged(teamCode);
-      showToast?.(`${newMappings.length} mapping${newMappings.length === 1 ? '' : 's'} established.`, 'success');
+      const skipped = duplicateIds.length > 0
+        ? ` Skipped ${targetLabels(duplicateIds)} (already mapped).`
+        : '';
+      showToast?.(
+        `Mapped ${sourceLabel} → ${targetLabels(newMappings.map((m) => m.targetId))}.${skipped}`,
+        'success'
+      );
     } catch (err) {
       showToast?.(err.message || 'Failed to establish mapping.', 'error');
     }
@@ -349,24 +409,93 @@ export function useStagedTraceability(showToast, teamCode) {
     }
   }
 
+  /**
+   * Runs extraction and returns the draft goal tree for review, or null on failure.
+   * Nothing is saved until saveReviewedGoals() is called with the reviewed tree.
+   */
   async function extractSmartGoals(fileId, fileName) {
     setExtractingGoals(true);
     setLastError(null);
     try {
       const sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
       const result = await extractSmartGoalsFromProposal(fileId, fileName, 'auto', sessionId, teamCode || undefined);
-      await loadSmartGoals();
-      showToast?.(
-        result.count > 0 ? `Extracted ${result.count} SMART goal(s).` : 'No SMART goals found in this proposal.',
-        result.count > 0 ? 'success' : 'info'
-      );
-      return true;
+      if (!result.goals?.length) showToast?.('No SMART goals found in this proposal.', 'info');
+      return result.goals || [];
     } catch (err) {
       setLastError(err.message || 'Failed to extract SMART goals.');
       showToast?.(err.message || 'Failed to extract SMART goals.', 'error');
-      return false;
+      return null;
     } finally {
       setExtractingGoals(false);
+    }
+  }
+
+  async function saveReviewedGoals(goals) {
+    try {
+      const { created } = await saveReviewedSmartGoals(teamCode, goals);
+      await loadSmartGoals();
+      notifyMappingsChanged(teamCode);
+      showToast?.(
+        created > 0
+          ? `Saved ${created} SMART goal${created === 1 ? '' : 's'}.`
+          : 'These SMART goals are already saved.',
+        created > 0 ? 'success' : 'info'
+      );
+      return true;
+    } catch (err) {
+      showToast?.(err.message || 'Failed to save SMART goals.', 'error');
+      return false;
+    }
+  }
+
+  // Teacher edits to SMART goals are saved immediately and shared with the team.
+  async function addGoal(description, parentGoalId = null) {
+    if (!teamCode) {
+      showToast?.('Select a team before adding SMART goals.', 'error');
+      return false;
+    }
+    try {
+      await createSmartGoal(description.trim(), {
+        goalKind: parentGoalId ? 'SPECIFIC' : 'GENERAL',
+        parentGoalId,
+        teamCode,
+      });
+      await loadSmartGoals();
+      notifyMappingsChanged(teamCode);
+      showToast?.(parentGoalId ? 'Specific objective added.' : 'SMART goal added.', 'success');
+      return true;
+    } catch (err) {
+      showToast?.(err.message || 'Failed to add SMART goal.', 'error');
+      return false;
+    }
+  }
+
+  async function updateGoal(goalId, description) {
+    try {
+      const updated = await updateSmartGoal(goalId, description.trim());
+      setSmartGoals((prev) => prev.map((g) => (g.id === goalId ? { ...g, description: updated.description } : g)));
+      notifyMappingsChanged(teamCode);
+      showToast?.('SMART goal updated.', 'success');
+      return true;
+    } catch (err) {
+      showToast?.(err.message || 'Failed to update SMART goal.', 'error');
+      return false;
+    }
+  }
+
+  async function deleteGoal(goalId) {
+    try {
+      await deleteSmartGoal(goalId);
+      // The server also deletes a general goal's specific objectives and every mapping that
+      // references the deleted goals, so reload both rather than guessing locally.
+      if (selectedSourceId === goalId) setSelectedSourceId(null);
+      await Promise.all([loadSmartGoals(), loadMappings()]);
+      notifyMappingsChanged(teamCode);
+      showToast?.('SMART goal deleted.', 'success');
+      return true;
+    } catch (err) {
+      showToast?.(err.message || 'Failed to delete SMART goal.', 'error');
+      return false;
     }
   }
 
@@ -483,6 +612,10 @@ export function useStagedTraceability(showToast, teamCode) {
     loadingGoals,
     extractingGoals,
     extractSmartGoals,
+    saveReviewedGoals,
+    addGoal,
+    updateGoal,
+    deleteGoal,
 
     components,
     loadingComponents,
@@ -498,12 +631,14 @@ export function useStagedTraceability(showToast, teamCode) {
     selectedTargetIds,
     selectSource,
     selectTarget,
+    clearTargetSelection,
 
     mappings,
     mappingsForStage,
     establishMapping,
     removeMapping,
 
+    coverage,
     stageStatus,
     saveState,
     verification,
