@@ -16,6 +16,7 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
   const isBusy = tm.saveState === 'saving' || tm.saveState === 'verifying';
+  const isProposalStage = tm.stage.sourceType === 'PROPOSAL';
 
   return (
     <section className="card student-traceability-card">
@@ -29,15 +30,17 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         <div className="student-header-actions">
           {hasEvaluatedDocument && (
             <>
-              <button className="btn btn--soft" type="button" onClick={() => setIsExtractGoalsOpen(true)}>
-                Extract SMART Goals
-              </button>
-              <button className="btn btn--soft" type="button" onClick={() => setIsExtractComponentsOpen(true)}>
+              {isProposalStage && (
+                <button className="btn btn--soft student-mapping__extract-goals" type="button" onClick={() => setIsExtractGoalsOpen(true)}>
+                  Extract SMART Goals
+                </button>
+              )}
+              <button className="btn btn--soft student-mapping__extract-components" type="button" onClick={() => setIsExtractComponentsOpen(true)}>
                 Extract Components
               </button>
             </>
           )}
-          <button className="btn btn--primary" type="button" onClick={tm.saveMapping} disabled={isBusy || !teamCode}>
+          <button className="btn btn--primary student-mapping__save" type="button" onClick={tm.saveMapping} disabled={isBusy || !teamCode}>
             {tm.saveState === 'saving' ? 'Saving mapping...' : tm.saveState === 'verifying' ? 'Verifying...' : 'Save Mapping'}
           </button>
         </div>
@@ -86,12 +89,14 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         teamCode={teamCode}
         extracting={tm.extractingGoals}
         onExtract={tm.extractSmartGoals}
+        onSave={tm.saveReviewedGoals}
       />
 
       <ExtractComponentsDialog
         isOpen={isExtractComponentsOpen}
         onClose={() => setIsExtractComponentsOpen(false)}
         teamCode={teamCode}
+        stage={tm.stage}
         extracting={tm.extractingComponents}
         onExtract={tm.extractComponents}
       />

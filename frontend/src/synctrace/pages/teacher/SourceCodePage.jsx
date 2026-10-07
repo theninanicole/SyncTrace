@@ -17,7 +17,12 @@ function generateSessionId() {
     : Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function SourceCodePage({ onProgressRefresh }) {
+/**
+ * @param {string} [teamCode] When set (student view), locks the page to this team
+ *   and hides the team picker.
+ */
+function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) {
+  const isTeamLocked = Boolean(lockedTeamCode);
   const { toast, showToast, hideToast } = useToast();
   const [teams, setTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -48,12 +53,27 @@ function SourceCodePage({ onProgressRefresh }) {
     setLoadingTeams(true);
     try {
       const data = await getTeamRepositories();
+      if (isTeamLocked) {
+        // Latest form response for the team wins; fall back to a bare team entry so
+        // students without a registered repo can still paste a URL.
+        const ownRows = data.filter((t) => t.teamCode === lockedTeamCode);
+        const ownTeam = ownRows[ownRows.length - 1] || { teamCode: lockedTeamCode, githubUrl: '' };
+        setTeams([ownTeam]);
+        setSelectedTeam(ownTeam);
+        return;
+      }
       setTeams(data);
       if (data.length > 0) {
         setSelectedTeam(data[0]);
       }
     } catch (err) {
-      showToast?.(err.message, 'error');
+      if (isTeamLocked) {
+        const ownTeam = { teamCode: lockedTeamCode, githubUrl: '' };
+        setTeams([ownTeam]);
+        setSelectedTeam(ownTeam);
+      } else {
+        showToast?.(err.message, 'error');
+      }
     } finally {
       setLoadingTeams(false);
     }
@@ -173,43 +193,48 @@ function SourceCodePage({ onProgressRefresh }) {
   };
 
   return (
-    <div className="sc-root">
+    <div className={`sc-root${isTeamLocked ? ' sc-root--embedded' : ''}`}>
       <ToastMessage toast={toast} onClose={hideToast} />
 
-      <PanelHeader
-        title="Source Code"
-        subtitle="Pull team GitHub files into Implementation components you can map to goals"
-        actions={
-          <div className="teacher-header-actions">
-            <button className="btn btn--soft" onClick={loadTeams} disabled={loadingTeams}>
-              Refresh Teams
-            </button>
+      {/* Student view embeds this page under its own header with the team fixed. */}
+      {!isTeamLocked && (
+        <>
+          <PanelHeader
+            title="Source Code"
+            subtitle="Pull team GitHub files into Implementation components you can map to goals"
+            actions={
+              <div className="teacher-header-actions">
+                <button className="btn btn--soft" onClick={loadTeams} disabled={loadingTeams}>
+                  Refresh Teams
+                </button>
+              </div>
+            }
+          />
+
+          <div className="tm-team-filter-row">
+            <label className="team-select">
+              <Users size={14} aria-hidden="true" />
+              <select
+                value={selectedTeam?.teamCode || ''}
+                onChange={(e) => {
+                  const team = teams.find(t => t.teamCode === e.target.value);
+                  setSelectedTeam(team || null);
+                }}
+                disabled={loadingTeams || ingesting || analyzing}
+                aria-label="Select team"
+              >
+                {teams.map((team) => (
+                  <option key={team.teamCode} value={team.teamCode}>
+                    {team.teamCode} {team.section && `(${team.section})`}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-        }
-      />
+        </>
+      )}
 
-      <div className="tm-team-filter-row">
-        <label className="team-select">
-          <Users size={14} aria-hidden="true" />
-          <select
-            value={selectedTeam?.teamCode || ''}
-            onChange={(e) => {
-              const team = teams.find(t => t.teamCode === e.target.value);
-              setSelectedTeam(team || null);
-            }}
-            disabled={loadingTeams || ingesting || analyzing}
-            aria-label="Select team"
-          >
-            {teams.map((team) => (
-              <option key={team.teamCode} value={team.teamCode}>
-                {team.teamCode} {team.section && `(${team.section})`}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="sc-section">
+      <div className="sc-section sc-section--ingest">
         <h3>GitHub Repository Ingestion</h3>
         <div className="sc-input-row">
           <input
@@ -275,7 +300,7 @@ function SourceCodePage({ onProgressRefresh }) {
         )}
       </div>
 
-      <div className="sc-section">
+      <div className="sc-section sc-section--alignment">
         <div className="sc-section__header">
           <h3>Alignment Analysis</h3>
           <button
@@ -334,6 +359,7 @@ function SourceCodePage({ onProgressRefresh }) {
         component={previewComponent}
         onClose={() => setPreviewComponent(null)}
         showToast={showToast}
+        readOnly={isTeamLocked}
         onRenamed={(updated) => {
           setPreviewComponent(updated);
           setIngestedComponents((prev) =>

@@ -38,6 +38,11 @@ public class ProposalPromptService {
             Rules:
             - Top-level items should be GENERAL when the proposal has general objectives.
             - Put each general objective's related specific objectives in its "children" array.
+            - Each SPECIFIC objective must appear exactly ONCE in the whole output. Never repeat the
+              same specific objective under more than one GENERAL objective.
+            - If the proposal lists several general objectives followed by one shared list of specific
+              objectives, place each specific objective under the single general objective it most
+              directly supports.
             - If the proposal only lists flat goals with no general/specific split, return them as
               SPECIFIC objects (no children) at the top level.
             - If none found, return [].

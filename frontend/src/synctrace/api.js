@@ -60,6 +60,17 @@ export const createSmartGoal = async (description, options = {}) => {
     return data;
 };
 
+export const updateSmartGoal = async (goalId, description) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to update goal.');
+    return data;
+};
+
 export const deleteSmartGoal = async (goalId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}`, {
         method: 'DELETE',
@@ -223,6 +234,18 @@ export const extractSmartGoalsFromProposal = async (fileId, fileName, model, ses
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to extract SMART goals.');
+    return data;
+};
+
+/** Saves the goal tree reviewed after extraction: [{ goalKind, description, children: [{ description }] }]. */
+export const saveReviewedSmartGoals = async (teamCode, goals) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/proposals/save-goals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode: teamCode || null, goals }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to save SMART goals.');
     return data;
 };
 

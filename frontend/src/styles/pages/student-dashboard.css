@@ -69,6 +69,50 @@
   margin-top: 0.8rem;
 }
 
+/* --- Nav --- */
+
+.student-sidebar__nav {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.4rem;
+}
+
+.student-nav-btn {
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--sidebar-text);
+  text-align: left;
+  padding: 0.62rem 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 180ms ease, color 160ms ease, transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.student-nav-btn:hover {
+  transform: translateX(2px);
+  box-shadow: 0 6px 16px rgba(16, 32, 51, 0.12);
+}
+
+.student-nav-btn--active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* --- Traceability view tabs --- */
+
+.student-trace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.student-trace-panel .student-traceability-card:first-child {
+  margin-top: 0;
+}
+
 /* --- Profile --- */
 
 .student-profile {

@@ -5,6 +5,7 @@ import StudentReportsTable from '../../components/student/StudentReportsTable';
 import StudentSidebar from '../../components/student/StudentSidebar';
 import StudentTraceabilityResults from '../../components/student/StudentTraceabilityResults';
 import StudentTraceabilityMapping from '../../components/student/StudentTraceabilityMapping';
+import SourceCodePage from '../../synctrace/pages/teacher/SourceCodePage';
 import ToastMessage from '../../components/common/ToastMessage';
 import TutorialOverlay from '../../components/common/TutorialOverlay';
 import { useStudentReports } from '../../hooks/useStudentReports';
@@ -16,6 +17,12 @@ import '../../styles/components/layout.css';
 import '../../styles/components/tutorial.css';
 import { getStudentReportById } from '../../api';
 import { useToast } from '../../hooks/useToast';
+
+const TRACEABILITY_TABS = [
+  { key: 'mapping', label: 'Mapping', subtitle: 'Map your team\'s artifacts to the SMART goals they support.' },
+  { key: 'results', label: 'Results', subtitle: 'See how your goals trace across documents and implementation.' },
+  { key: 'source', label: 'Source Code', subtitle: 'Pull your GitHub files into Implementation components and check them against your SDD.' },
+];
 
 function StudentDashboardPage({ studentData }) {
   const vm = useStudentReports(studentData.groupCode);
@@ -29,6 +36,23 @@ function StudentDashboardPage({ studentData }) {
 
   const [selectedReport, setSelectedReport]       = useState(null);
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
+  const [currentView, setCurrentView]             = useState('evaluations');
+  const [hasOpenedTraceability, setHasOpenedTraceability] = useState(false);
+  const [traceTab, setTraceTab]                   = useState('mapping');
+  // Tabs stay mounted once opened so unsaved mapping edits and ingestion state survive switching.
+  const [visitedTraceTabs, setVisitedTraceTabs]   = useState(() => new Set(['mapping']));
+
+  function openTraceTab(key) {
+    setTraceTab(key);
+    setVisitedTraceTabs((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }
+
+  function navigate(view) {
+    setCurrentView(view);
+    if (view === 'traceability') setHasOpenedTraceability(true);
+  }
+
+  const activeTraceTab = TRACEABILITY_TABS.find((t) => t.key === traceTab);
 
   async function handleOpenReport(reportSummary) {
     vm.markViewed(reportSummary.id);
@@ -57,6 +81,8 @@ function StudentDashboardPage({ studentData }) {
         studentData={studentData}
         teamMembers={vm.teamMembers}
         onTutorialStart={tutorial.startTutorial}
+        currentView={currentView}
+        onNavigate={navigate}
       />
 
       <TutorialOverlay
@@ -68,7 +94,7 @@ function StudentDashboardPage({ studentData }) {
         onClose={tutorial.closeTutorial}
       />
 
-      <main className="layout__main">
+      <main className="layout__main" hidden={currentView !== 'evaluations'}>
         <PanelHeader
           title="My Team Evaluations"
           subtitle="View feedback sent by your professor."
@@ -133,14 +159,54 @@ function StudentDashboardPage({ studentData }) {
             onOpen={handleOpenReport}
           />
         </div>
-
-        <StudentTraceabilityMapping
-          teamCode={studentData.groupCode}
-          showToast={showToast}
-          hasEvaluatedDocument={vm.allReportCount > 0}
-        />
-        <StudentTraceabilityResults teamCode={studentData.groupCode} />
       </main>
+
+      {hasOpenedTraceability && (
+        <main className="layout__main" hidden={currentView !== 'traceability'}>
+          <PanelHeader title="Traceability" subtitle={activeTraceTab.subtitle} />
+
+          <nav className="student-trace-tabs" aria-label="Traceability sections">
+            {TRACEABILITY_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                className={`student-doc-tab student-trace-tab--${tab.key}${traceTab === tab.key ? ' student-doc-tab--active' : ''}`}
+                onClick={() => openTraceTab(tab.key)}
+                aria-pressed={traceTab === tab.key}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {visitedTraceTabs.has('mapping') && (
+            <div className="student-trace-panel student-trace-panel--mapping" hidden={traceTab !== 'mapping'}>
+              <StudentTraceabilityMapping
+                teamCode={studentData.groupCode}
+                showToast={showToast}
+                hasEvaluatedDocument={vm.allReportCount > 0}
+              />
+            </div>
+          )}
+          {visitedTraceTabs.has('results') && (
+            <div className="student-trace-panel student-trace-panel--results" hidden={traceTab !== 'results'}>
+              <StudentTraceabilityResults teamCode={studentData.groupCode} />
+            </div>
+          )}
+          {visitedTraceTabs.has('source') && (
+            <div className="student-trace-panel student-trace-panel--source" hidden={traceTab !== 'source'}>
+              {studentData.groupCode ? (
+                <SourceCodePage teamCode={studentData.groupCode} />
+              ) : (
+                <div className="card student-traceability-locked">
+                  <h3 className="student-empty__title">No team connected</h3>
+                  <p className="student-empty__text">Source code ingestion is available once your team is connected.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      )}
 
       <StudentReportModal
         report={selectedReport}

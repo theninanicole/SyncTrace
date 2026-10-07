@@ -108,7 +108,13 @@ function parseDiagramCritiques(bodyText) {
         }
     }
     if (currentCritique) critiques.push(currentCritique);
-    return critiques;
+    // Show diagrams in the order they were analyzed (page order), even when the
+    // AI grouped its entries by diagram type. Stable sort keeps same-page entries
+    // in their original order; notes without an [IMG-n] go last.
+    return critiques
+        .map((c, pos) => ({ c, pos }))
+        .sort((a, b) => (a.c.index ?? Infinity) - (b.c.index ?? Infinity) || a.pos - b.pos)
+        .map(({ c }) => c);
 }
 
 function extractDiagramCritiques(sections) {

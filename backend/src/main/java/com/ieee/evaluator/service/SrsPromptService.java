@@ -51,7 +51,9 @@ public class SrsPromptService {
                  written requirements?
 
             4. REPORT findings under "Diagram Analysis" in the output.
-               Use this format for each diagram found:
+               Use this format for each diagram found. List entries in page order (ascending
+               [IMG-X], the order the images were analyzed); do NOT group or sort them by
+               diagram type or component:
 
                * [IMG-X] - <Diagram Type>:
                  - Elements: <exact IDs/labels from the document, comma-separated — e.g. UC-01 Login, UC-02 Register>
