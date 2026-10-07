@@ -10,9 +10,11 @@ import com.ieee.evaluator.synctrace.model.DiagnosticRecommendation;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
+import com.ieee.evaluator.synctrace.model.TraceabilityMappingActivity;
 import com.ieee.evaluator.synctrace.repository.ContinuityAnalysisRunRepository;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
+import com.ieee.evaluator.synctrace.repository.TraceabilityMappingActivityRepository;
 import com.ieee.evaluator.synctrace.service.TraceabilityClusterService.GoalCluster;
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
@@ -30,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -37,21 +40,23 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
- * Pure unit tests (no Spring context). The report is built from the same sources as the
- * Traceability Results page, so these check that every format carries the actual matrix,
- * goal-linked findings with their recommendations, the readiness summary and only the
- * components that are mapped.
+ * Pure unit tests (no Spring context). The exported matrix must show exactly what the matrix on
+ * the Traceability Results page shows: only document columns mapped in some goal, the same chip
+ * labels, the same Passed / Failed / Not analyzed status, and nothing from an analysis that the
+ * mapping has since outdated.
  */
 @ExtendWith(MockitoExtension.class)
 class AuditExportServiceTest {
 
     private static final String TEAM = "2627-sem2-it411-08";
+    private static final LocalDateTime ANALYZED_AT = LocalDateTime.of(2026, 9, 27, 10, 0);
 
     @Mock private TraceabilityClusterService clusterService;
     @Mock private ContinuityReadinessService readinessService;
     @Mock private ContinuityFindingRepository findingRepository;
     @Mock private DiagnosticRecommendationRepository recommendationRepository;
     @Mock private ContinuityAnalysisRunRepository analysisRunRepository;
+    @Mock private TraceabilityMappingActivityRepository mappingActivityRepository;
 
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private AuditExportService service;
@@ -59,40 +64,38 @@ class AuditExportServiceTest {
     @BeforeEach
     void setUp() {
         service = new AuditExportService(clusterService, readinessService, findingRepository,
-            recommendationRepository, analysisRunRepository, objectMapper);
+            recommendationRepository, analysisRunRepository, mappingActivityRepository, objectMapper);
         lenient().when(readinessService.getTeamReadinessSummary(TEAM)).thenReturn(Map.of(
             "status", "AT_RISK", "readinessScore", 45, "averageCoveragePercent", 50,
             "severityCounts", Map.of("HIGH", 1)));
+        lenient().when(mappingActivityRepository.findTopByTeamCodeIgnoreCaseOrderByPerformedAtDesc(TEAM))
+            .thenReturn(Optional.empty());
     }
 
     @Test
-    void jsonContainsTheTraceabilityMatrixAndGoalLinkedFindings() throws Exception {
+    void jsonMatrixHasOnlyTheColumnsShownOnTheResultsPage() throws Exception {
         stubTwoGoalTeam(true, "SMART Goal is missing required SRS ACTIVITY component.");
 
         JsonNode report = objectMapper.readTree(service.exportAuditReport(TEAM, "json"));
 
         JsonNode matrix = report.get("traceabilityMatrix");
-        assertEquals(2, matrix.size());
-        assertEquals("G1", matrix.get(0).get("code").asText());
-        assertEquals("Build the login module", matrix.get(0).get("goal").asText());
-        assertEquals("Validate credentials", matrix.get(0).get("specificObjectives").get(0).asText());
-        assertEquals("UC-01", matrix.get(0).get("cells").get("SRS").get(0).get("code").asText());
-        assertEquals("AD-01", matrix.get(0).get("cells").get("SRS").get(1).get("code").asText());
-        assertEquals(0, matrix.get(0).get("cells").get("SDD").size());
-        assertEquals("Failed", matrix.get(0).get("status").asText());
-        assertEquals("Passed", matrix.get(1).get("status").asText());
+        // SPMP, STD and Implementation have nothing mapped in any goal, so the page hides them.
+        assertEquals("[\"SRS\",\"SDD\"]", matrix.get("columns").toString());
+        JsonNode rows = matrix.get("rows");
+        assertEquals(2, rows.size());
+        assertEquals("G1", rows.get(0).get("code").asText());
+        assertEquals("Build the login module", rows.get(0).get("goal").asText());
+        assertEquals("UC-01", rows.get(0).get("cells").get("SRS").get(0).get("label").asText());
+        assertEquals("AD-01", rows.get(0).get("cells").get("SRS").get(1).get("label").asText());
+        assertEquals(0, rows.get(0).get("cells").get("SDD").size());
+        assertFalse(rows.get(0).get("cells").has("SPMP"));
+        assertEquals("Failed", rows.get(0).get("status").asText());
+        assertEquals("Passed", rows.get(1).get("status").asText());
 
         JsonNode finding = report.get("findings").get(0);
         assertEquals("G1", finding.get("goal").asText());
         assertEquals("Add the missing activity diagram.", finding.get("recommendation").get("recommendation").asText());
-
-        JsonNode summary = report.get("summary");
-        assertEquals("AT_RISK", summary.get("readinessStatus").asText());
-        assertEquals(45, summary.get("readinessScore").asInt());
-        assertEquals(2, summary.get("goals").asInt());
-        // Only mapped components are listed, not the whole component library.
         assertEquals(3, report.get("mappedComponents").size());
-        assertEquals(3, summary.get("mappedComponents").asInt());
     }
 
     @Test
@@ -101,51 +104,87 @@ class AuditExportServiceTest {
 
         JsonNode report = objectMapper.readTree(service.exportAuditReport(TEAM, "json"));
 
-        assertEquals("Not analyzed", report.get("traceabilityMatrix").get(0).get("status").asText());
+        assertEquals("Not analyzed", report.get("traceabilityMatrix").get("rows").get(0).get("status").asText());
         assertTrue(report.get("lastAnalyzedAt").isNull());
     }
 
     @Test
-    void csvHasBomSummaryMatrixAndFindingsWithRecommendations() throws Exception {
+    void analysisOutdatedByALaterMappingChangeIsNotShown() throws Exception {
+        stubTwoGoalTeam(true, "SMART Goal is missing required SRS ACTIVITY component.");
+        TraceabilityMappingActivity activity = new TraceabilityMappingActivity();
+        activity.setTeamCode(TEAM);
+        activity.setPerformedAt(ANALYZED_AT.plusHours(2));
+        when(mappingActivityRepository.findTopByTeamCodeIgnoreCaseOrderByPerformedAtDesc(TEAM))
+            .thenReturn(Optional.of(activity));
+
+        JsonNode report = objectMapper.readTree(service.exportAuditReport(TEAM, "json"));
+
+        // Same as the Results page: statuses fall back to Not analyzed and findings are hidden.
+        assertTrue(report.get("analysisOutdated").asBoolean());
+        assertEquals("Not analyzed", report.get("traceabilityMatrix").get("rows").get(0).get("status").asText());
+        assertEquals(0, report.get("findings").size());
+
+        String csv = csvText(service.exportAuditReport(TEAM, "csv"));
+        assertTrue(csv.contains("out of date"), csv);
+        assertTrue(csv.contains("The mapping changed after the last AI Analysis"), csv);
+    }
+
+    @Test
+    void csvMatrixMatchesTheResultsPage() throws Exception {
         stubTwoGoalTeam(true, "SMART Goal is missing required SRS ACTIVITY component.");
 
         byte[] bytes = service.exportAuditReport(TEAM, "csv");
 
         assertEquals((byte) 0xEF, bytes[0]);
-        assertEquals((byte) 0xBB, bytes[1]);
-        assertEquals((byte) 0xBF, bytes[2]);
-        String csv = new String(bytes, 3, bytes.length - 3, StandardCharsets.UTF_8);
+        String csv = csvText(bytes);
         assertTrue(csv.contains("Readiness status,At Risk"), csv);
-        assertTrue(csv.contains("Traceability Matrix\nGoal,SMART Goal,Specific Objectives,SRS,SDD,SPMP,STD,Implementation,Status,Issues"), csv);
-        assertTrue(csv.contains("G1,Build the login module,Validate credentials,\"UC-01, AD-01\",Missing,Missing,Missing,Missing,Failed,"), csv);
-        assertTrue(csv.contains("G2,Generate reports,,Missing,CL-01,Missing,Missing,Missing,Passed,"), csv);
+        assertTrue(csv.contains("Traceability Matrix\nGoal,SMART Goal,SRS,SDD,Status\n"), csv);
+        assertTrue(csv.contains("G1,Build the login module,\"UC-01, AD-01\",Missing,Failed\n"), csv);
+        assertTrue(csv.contains("G2,Generate reports,Missing,CL-01,Passed\n"), csv);
+        assertFalse(csv.contains("SPMP,STD"), csv);
         assertTrue(csv.contains("G1,HIGH,Proposal,SRS,SMART Goal is missing required SRS ACTIVITY component."), csv);
-        assertTrue(csv.contains("Add the missing activity diagram."), csv);
         assertTrue(csv.contains("UC-01,UC-01 Login,SRS,Use Case,G1"), csv);
     }
 
     @Test
-    void pdfContainsTheMatrixAndFindings() throws Exception {
+    void noMappedDocumentsShowsTheSameMessageAsThePage() throws Exception {
+        SmartGoal goal = goal(1L, "Build the login module", SmartGoal.GoalKind.GENERAL, null);
+        when(clusterService.clustersForTeam(TEAM)).thenReturn(List.of(new GoalCluster(goal, List.of(), Map.of())));
+        when(analysisRunRepository.findByTeamCodeIgnoreCase(TEAM)).thenReturn(Optional.empty());
+
+        String csv = csvText(service.exportAuditReport(TEAM, "csv"));
+        JsonNode report = objectMapper.readTree(service.exportAuditReport(TEAM, "json"));
+
+        assertTrue(csv.contains("Traceability Matrix\nNo mapped documents to display.\n"), csv);
+        assertEquals("No mapped documents to display.", report.get("traceabilityMatrix").get("message").asText());
+        assertEquals(0, report.get("traceabilityMatrix").get("rows").size());
+    }
+
+    @Test
+    void pdfShowsTheMatrixWithOnlyVisibleColumns() throws Exception {
         stubTwoGoalTeam(true, "SMART Goal is missing required SRS ACTIVITY component.");
 
-        byte[] pdf = service.exportAuditReport(TEAM, "pdf");
+        String content = pdfText(service.exportAuditReport(TEAM, "pdf"));
 
-        assertEquals("%PDF", new String(pdf, 0, 4, StandardCharsets.US_ASCII));
-        PdfReader reader = new PdfReader(pdf);
-        StringBuilder text = new StringBuilder();
-        PdfTextExtractor extractor = new PdfTextExtractor(reader);
-        for (int page = 1; page <= reader.getNumberOfPages(); page++) {
-            text.append(extractor.getTextFromPage(page)).append('\n');
-        }
-        reader.close();
-        String content = text.toString();
         assertTrue(content.contains("Traceability Matrix"), content);
         assertTrue(content.contains("Build the login module"), content);
         assertTrue(content.contains("UC-01, AD-01"), content);
         assertTrue(content.contains("CL-01"), content);
         assertTrue(content.contains("Failed"), content);
+        assertFalse(content.contains("SPMP"), content);
+        assertFalse(content.contains("Implementation"), content);
         assertTrue(content.contains("Add the missing activity diagram."), content);
-        assertTrue(content.contains("At Risk"), content);
+    }
+
+    @Test
+    void chipLabelsFollowTheFrontendRules() {
+        assertEquals("UC-01", new AuditExportService.ComponentRef(1L, "UC-01", "Login", "SRS", "USE_CASE").label());
+        // componentLabel() in the frontend gives "UC-3" here (no zero padding).
+        assertEquals("UC-3", new AuditExportService.ComponentRef(1L, null, "uc 3 Register account", "SRS", "USE_CASE").label());
+        assertEquals("Short name", new AuditExportService.ComponentRef(1L, "", "Short name", "SRS", "USE_CASE").label());
+        // name.slice(0, 27) + '…', exactly as componentLabel() truncates.
+        assertEquals("A very long component name …",
+            new AuditExportService.ComponentRef(1L, null, "A very long component name that keeps going", "SRS", "OTHER_SRS").label());
     }
 
     @Test
@@ -174,6 +213,21 @@ class AuditExportServiceTest {
 
     // ── fixtures ──────────────────────────────────────────────────────────────
 
+    private static String csvText(byte[] bytes) {
+        return new String(bytes, 3, bytes.length - 3, StandardCharsets.UTF_8);
+    }
+
+    private static String pdfText(byte[] pdf) throws Exception {
+        PdfReader reader = new PdfReader(pdf);
+        StringBuilder text = new StringBuilder();
+        PdfTextExtractor extractor = new PdfTextExtractor(reader);
+        for (int page = 1; page <= reader.getNumberOfPages(); page++) {
+            text.append(extractor.getTextFromPage(page)).append('\n');
+        }
+        reader.close();
+        return text.toString();
+    }
+
     /** G1 (GENERAL + one SPECIFIC) with UC-01 and AD-01 in SRS; G2 with CL-01 in SDD. */
     private void stubTwoGoalTeam(boolean analyzed, String findingDescription) {
         SmartGoal login = goal(1L, "Build the login module", SmartGoal.GoalKind.GENERAL, null);
@@ -194,14 +248,14 @@ class AuditExportServiceTest {
         if (analyzed) {
             ContinuityAnalysisRun run = new ContinuityAnalysisRun();
             run.setTeamCode(TEAM);
-            run.setLastAnalyzedAt(LocalDateTime.of(2026, 9, 27, 10, 0));
+            run.setLastAnalyzedAt(ANALYZED_AT);
             when(analysisRunRepository.findByTeamCodeIgnoreCase(TEAM)).thenReturn(Optional.of(run));
         } else {
             when(analysisRunRepository.findByTeamCodeIgnoreCase(TEAM)).thenReturn(Optional.empty());
         }
 
         if (findingDescription == null) {
-            when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM)).thenReturn(List.of());
+            lenient().when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM)).thenReturn(List.of());
             return;
         }
         ContinuityFinding finding = new ContinuityFinding();
@@ -212,7 +266,7 @@ class AuditExportServiceTest {
         finding.setDocTypeFrom(DocType.PROPOSAL);
         finding.setDocTypeTo(DocType.SRS);
         finding.setDescription(findingDescription);
-        when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM)).thenReturn(List.of(finding));
+        lenient().when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(TEAM)).thenReturn(List.of(finding));
 
         DiagnosticRecommendation rec = new DiagnosticRecommendation();
         rec.setId(50L);
@@ -220,7 +274,7 @@ class AuditExportServiceTest {
         rec.setRootCause("This happened because no activity diagram is mapped.");
         rec.setRecommendation("Add the missing activity diagram.");
         rec.setPriority("HIGH");
-        when(recommendationRepository.findByFindingIdIn(anyList())).thenReturn(List.of(rec));
+        lenient().when(recommendationRepository.findByFindingIdIn(anyList())).thenReturn(List.of(rec));
     }
 
     private static SmartGoal goal(long id, String description, SmartGoal.GoalKind kind, Long parentId) {
