@@ -10,4 +10,6 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
+# Timestamps are zone-less LocalDateTime values; keep the server clock on the same
+# UTC+8 wall time as local dev so stored times match and display correctly.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-Duser.timezone=GMT+08:00", "-jar", "/app/app.jar"]
