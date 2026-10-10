@@ -2,38 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import AppModal from '../../../../components/common/AppModal';
 import { getEvaluationHistory } from '../../../../api';
 import { extractSubmissionMeta, formatDateTime } from '../../../../utils/dashboardUtils';
-
-let draftKey = 0;
-const nextKey = () => `draft-${++draftKey}`;
-
-/** Server draft → editable rows with stable keys. */
-function toEditableDraft(goals) {
-  return goals.map((goal) => ({
-    key: nextKey(),
-    goalKind: goal.goalKind === 'GENERAL' ? 'GENERAL' : 'SPECIFIC',
-    description: goal.description || '',
-    children: (goal.children || []).map((child) => ({ key: nextKey(), description: child.description || '' })),
-  }));
-}
-
-/** Editable rows → save payload, dropping anything left blank. */
-function toSavePayload(draft) {
-  return draft
-    .filter((goal) => goal.description.trim())
-    .map((goal) => ({
-      goalKind: goal.goalKind,
-      description: goal.description.trim(),
-      children: goal.children
-        .filter((child) => child.description.trim())
-        .map((child) => ({ goalKind: 'SPECIFIC', description: child.description.trim() })),
-    }));
-}
+import { readSmartGoals, toEditableGoalDraft, toGoalPayload } from '../../../../utils/smartGoalsSection';
+import SmartGoalTreeEditor from '../../common/SmartGoalTreeEditor';
 
 function countGoals(payload) {
   return payload.reduce((sum, goal) => sum + 1 + goal.children.length, 0);
 }
 
 /**
+ * Goals come from the SMART Goals section of the selected proposal's evaluation report. A
+ * report without that section (evaluated before the section existed) falls back to AI
+ * extraction from the proposal document.
  * reviewBeforeSave (teacher side): extracted goals open in an editable review step and are
  * only saved on Save SMART Goals. Without it (student side) they are saved as extracted.
  */
@@ -70,7 +49,7 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
   if (!isOpen) return null;
 
   const reviewing = draft !== null;
-  const payload = reviewing ? toSavePayload(draft) : [];
+  const payload = reviewing ? toGoalPayload(draft) : [];
   const busy = extracting || saving;
 
   // Closing during review would silently drop the edits, so ask first.
@@ -83,10 +62,10 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
   async function handleExtract() {
     const doc = proposals.find((d) => d.id === selectedId);
     if (!doc) return;
-    const goals = await onExtract(doc.fileId, doc.fileName);
+    const goals = await onExtract(doc.fileId, doc.fileName, doc.evaluationResult);
     if (!goals) return;
     if (reviewBeforeSave) {
-      setDraft(toEditableDraft(goals));
+      setDraft(toEditableGoalDraft(goals));
       return;
     }
     if (goals.length === 0) return;
@@ -104,29 +83,8 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
     if (ok) onClose();
   }
 
-  const updateGoal = (key, changes) =>
-    setDraft((prev) => prev.map((g) => (g.key === key ? { ...g, ...changes } : g)));
-  const removeGoal = (key) => setDraft((prev) => prev.filter((g) => g.key !== key));
-  const addGeneral = () =>
-    setDraft((prev) => [...prev, { key: nextKey(), goalKind: 'GENERAL', description: '', children: [] }]);
-  const updateChild = (goalKey, childKey, description) =>
-    setDraft((prev) => prev.map((g) => (g.key !== goalKey ? g : {
-      ...g,
-      children: g.children.map((c) => (c.key === childKey ? { ...c, description } : c)),
-    })));
-  const removeChild = (goalKey, childKey) =>
-    setDraft((prev) => prev.map((g) => (g.key !== goalKey ? g : {
-      ...g,
-      children: g.children.filter((c) => c.key !== childKey),
-    })));
-  const addChild = (goalKey) =>
-    setDraft((prev) => prev.map((g) => (g.key !== goalKey ? g : {
-      ...g,
-      children: [...g.children, { key: nextKey(), description: '' }],
-    })));
-
   function renderSelect() {
-    if (extracting) return <p className="tm-muted">Extracting structured SMART goals from the proposal…</p>;
+    if (extracting) return <p className="tm-muted">Extracting structured SMART goals from the proposal document…</p>;
     if (loading) return <p className="tm-muted">Loading evaluated documents…</p>;
     if (loadError) return <div className="empty-state"><p>{loadError}</p></div>;
     if (proposals.length === 0) {
@@ -140,6 +98,7 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
       <div className="tm-team-list">
         {proposals.map((doc) => {
           const checked = selectedId === doc.id;
+          const hasGoalsSection = readSmartGoals(doc.evaluationResult).found;
           return (
             <label key={doc.id} className={`tm-team-doc ${checked ? 'tm-team-doc--checked' : ''}`}>
               <input
@@ -151,6 +110,7 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
               <span className="tm-badge" data-doctype="PROPOSAL">PROPOSAL</span>
               <span className="tm-team-doc__meta">
                 {doc.meta.teamCode || 'Unassigned'} · v{doc.version} · {formatDateTime(doc.evaluatedAt)}
+                {!hasGoalsSection && ' · no SMART Goals section in this report — goals will be extracted from the document by AI'}
               </span>
             </label>
           );
@@ -161,62 +121,12 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
 
   function renderReview() {
     return (
-      <div className="stm-goal-review">
-        {draft.length === 0 && (
-          <p className="tm-muted">No SMART goals were found. Add them manually below.</p>
-        )}
-        {draft.map((goal, index) => {
-          const isGeneral = goal.goalKind === 'GENERAL';
-          return (
-            <div key={goal.key} className="stm-goal-review__goal">
-              <div className="stm-goal-review__row">
-                <span className="tm-goal-kind tm-goal-kind--general">G{index + 1}</span>
-                <span className="stm-goal-review__kind">
-                  {isGeneral ? 'General objective' : 'Specific objective (no general objective)'}
-                </span>
-                <button className="stm-mini-btn" onClick={() => removeGoal(goal.key)} disabled={saving}>
-                  Remove
-                </button>
-              </div>
-              <textarea
-                className="stm-goal-editor__input"
-                rows={2}
-                value={goal.description}
-                placeholder={isGeneral ? 'General objective' : 'Specific objective'}
-                disabled={saving}
-                onChange={(e) => updateGoal(goal.key, { description: e.target.value })}
-              />
-              {goal.children.length > 0 && (
-                <ul className="stm-goal-review__children">
-                  {goal.children.map((child) => (
-                    <li key={child.key}>
-                      <textarea
-                        className="stm-goal-editor__input"
-                        rows={2}
-                        value={child.description}
-                        placeholder="Specific objective"
-                        disabled={saving}
-                        onChange={(e) => updateChild(goal.key, child.key, e.target.value)}
-                      />
-                      <button className="stm-mini-btn" onClick={() => removeChild(goal.key, child.key)} disabled={saving}>
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {isGeneral && (
-                <button className="stm-mini-btn stm-goal-cluster__add" onClick={() => addChild(goal.key)} disabled={saving}>
-                  Add specific objective
-                </button>
-              )}
-            </div>
-          );
-        })}
-        <button className="btn btn--soft stm-goal-review__add" onClick={addGeneral} disabled={saving}>
-          Add general objective
-        </button>
-      </div>
+      <SmartGoalTreeEditor
+        draft={draft}
+        onChange={setDraft}
+        disabled={saving}
+        emptyMessage="No SMART goals were found. Add them manually below."
+      />
     );
   }
 
@@ -227,7 +137,7 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
       title={reviewing ? 'Review SMART Goals' : 'Extract SMART Goals from Proposal'}
       subtitle={reviewing
         ? 'Edit, remove or add objectives. Nothing is saved until you click Save SMART Goals.'
-        : 'Select the evaluated proposal to extract structured General and Specific objectives from.'}
+        : 'Select the evaluated proposal. Its General and Specific objectives are taken from the SMART Goals section of the evaluation report.'}
       footer={reviewing ? (
         <div className="modal-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
           <span className="tm-muted">{countGoals(payload)} objective(s) to save</span>

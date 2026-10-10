@@ -19,6 +19,7 @@ import {
 import { notifyMappingsChanged, useMappingsChangedRefresh } from '../utils/mappingEvents';
 import { getEvaluationHistory } from '../../api';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
+import { readSmartGoals } from '../../utils/smartGoalsSection';
 import {
   STAGES,
   COMPONENT_DOC_TYPES,
@@ -410,10 +411,19 @@ export function useStagedTraceability(showToast, teamCode) {
   }
 
   /**
-   * Runs extraction and returns the draft goal tree for review, or null on failure.
+   * Reads the goals for a proposal and returns the draft goal tree for review, or null on failure.
    * Nothing is saved until saveReviewedGoals() is called with the reviewed tree.
    */
-  async function extractSmartGoals(fileId, fileName) {
+  async function extractSmartGoals(fileId, fileName, evaluationReport) {
+    // The proposal's evaluation report is the basis: its SMART Goals section, as the teacher
+    // last edited it. Only a report without that section is extracted from the document by AI.
+    const fromReport = readSmartGoals(evaluationReport);
+    if (fromReport.found) {
+      if (fromReport.goals.length === 0) {
+        showToast?.('The SMART Goals section of this evaluation report is empty.', 'info');
+      }
+      return fromReport.goals;
+    }
     setExtractingGoals(true);
     setLastError(null);
     try {

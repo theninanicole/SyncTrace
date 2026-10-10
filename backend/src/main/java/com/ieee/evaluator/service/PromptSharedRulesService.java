@@ -175,6 +175,39 @@ public class PromptSharedRulesService {
         * <Criterion 5>: X/20 — (Evidence: "...") — <justification tied to score tier>
         """;
 
+    /**
+     * Added to the output format for PROPOSAL documents only, right after Diagram Analysis.
+     * It is kept out of the configurable STEP 6 text so a professor's override cannot drop it:
+     * SyncTrace reads this section of the saved report when extracting SMART goals for
+     * traceability mapping.
+     */
+    public static final String PROPOSAL_SMART_GOALS_FORMAT = """
+        SMART Goals:
+        * G1: <general objective, worded as in the proposal>
+          - G1.1: <specific objective that belongs under G1>
+          - G1.2: <specific objective that belongs under G1>
+        * G2: <general objective, worded as in the proposal>
+          - G2.1: <specific objective that belongs under G2>
+        """;
+
+    public static final String PROPOSAL_SMART_GOALS_RULES = """
+        Rules for the SMART Goals section (mandatory — output it immediately after the Diagram Analysis section):
+          - List the objectives from the proposal's Objectives section only (a heading such as
+            "Objectives", "Objective", "Goals", or "General/Specific Objectives"). Ignore the
+            Introduction, Background, Scope, Methodology, and other sections.
+          - Preserve wording close to the document. Do not invent, merge, or improve objectives,
+            and do not add scores or commentary here.
+          - GENERAL objectives (high-level aims) are the numbered G entries. SPECIFIC objectives
+            (concrete functions/transactions) are the indented sub-items of the general objective
+            they most directly support.
+          - Each specific objective appears exactly ONCE. Never repeat it under more than one
+            general objective.
+          - If the proposal lists only flat objectives with no general/specific split, list each
+            one as its own G entry with no sub-items.
+          - Keep each objective on a single line.
+          - If the proposal states no objectives, output exactly: "* None found."
+        """;
+
     // ═════════════════════════════════════════════════════════════════════════
     // Public accessor — used by PromptStepProfileController /defaults endpoint
     // ═════════════════════════════════════════════════════════════════════════
@@ -189,6 +222,15 @@ public class PromptSharedRulesService {
             case STEP_5_REVISION_FOLLOWUP -> DEFAULT_STEP_5_REVISION_FOLLOWUP;
             case STEP_6_OUTPUT_FORMAT     -> DEFAULT_STEP_6_OUTPUT_FORMAT;
         };
+    }
+
+    /** Places a section right after the Diagram Analysis block of the output format (at the end if there is none). */
+    private static String insertAfterDiagramAnalysis(String outputFormat, String section) {
+        String format = outputFormat.stripTrailing();
+        int diagram = format.indexOf("Diagram Analysis");
+        int blockEnd = diagram == -1 ? -1 : format.indexOf("\n\n", diagram);
+        if (blockEnd == -1) return format + "\n\n" + section;
+        return format.substring(0, blockEnd) + "\n\n" + section + format.substring(blockEnd);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -249,6 +291,11 @@ public class PromptSharedRulesService {
         String formattedStep6 = step6OutputFormat.contains("%s")
                 ? step6OutputFormat.formatted(revisionFormat)
                 : step6OutputFormat;
+
+        if (detectedType == DocumentType.PROPOSAL) {
+            formattedStep6 = insertAfterDiagramAnalysis(formattedStep6, PROPOSAL_SMART_GOALS_FORMAT.stripTrailing())
+                    + "\n\n" + PROPOSAL_SMART_GOALS_RULES;
+        }
 
         // ── Custom instructions block ─────────────────────────────────────────
         String customBlock = "";

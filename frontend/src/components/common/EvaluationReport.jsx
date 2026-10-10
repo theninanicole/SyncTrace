@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import AnnotationBubble from './AnnotationBubble';
+import { REPORT_SECTION_HEADINGS, SMART_GOALS_HEADING, orderReportSections, parseSmartGoalsBody } from '../../utils/smartGoalsSection';
 
 // ---------------------------------------------------------------------------
 // Annotation injection
@@ -134,7 +135,7 @@ function parseEvaluationSections(text) {
     if (normalized.startsWith('"') && normalized.endsWith('"'))
         normalized = normalized.slice(1, -1).trim();
 
-    const KW = 'Summary|Rubric Evaluation|Strengths|Weaknesses|Missing Sections|Recommendations|Conclusion|Revision Analysis|Remaining Issues|Next Steps|Diagram Analysis';
+    const KW = REPORT_SECTION_HEADINGS.join('|');
     const splitRe = new RegExp(
         `(?:^|\\n)(?=\\s*#{1,3}\\s*(?:\\*\\*)?(?:${KW})(?:\\*\\*)?|\\s*\\*\\*(?:${KW}):?\\*\\*|\\s*(?:${KW}):?\\s*(?:\\n|$))`
     );
@@ -169,7 +170,7 @@ function parseEvaluationSections(text) {
         })
         .filter(Boolean);
 
-    return { headerContent, sections };
+    return { headerContent, sections: orderReportSections(sections) };
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +371,31 @@ const DiagramAnalysisSection = memo(function DiagramAnalysisSection({ body, onIm
     );
 });
 
+/** SMART Goals of a proposal report: general objectives (G1, G2, …) with their specific objectives. */
+const SmartGoalsSection = memo(function SmartGoalsSection({ body, onImageClick, annotationMap, canDelete, onDelete }) {
+    const goals = useMemo(() => parseSmartGoalsBody(body), [body]);
+    if (goals.length === 0) return <p className="eval-card__note">No SMART goals listed.</p>;
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {goals.map((goal, idx) => (
+                <div key={idx}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', color: 'var(--text-main)' }}>
+                        <span className="tm-goal-kind tm-goal-kind--general">G{idx + 1}</span>
+                        <span>{renderInline(goal.description, onImageClick, annotationMap, canDelete, onDelete)}</span>
+                    </div>
+                    {goal.children.length > 0 && (
+                        <ul className="eval-card__list" style={{ marginLeft: '1.5rem' }}>
+                            {goal.children.map((child, cIdx) => (
+                                <li key={cIdx}>{renderInline(child.description, onImageClick, annotationMap, canDelete, onDelete)}</li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+});
+
 const PageThumbnail = memo(function PageThumbnail({ img, idx, onClick }) {
     const handleClick      = useCallback(() => onClick(idx), [idx, onClick]);
     const handleMouseEnter = useCallback((e) => { e.currentTarget.style.transform = 'scale(1.04)'; e.currentTarget.style.boxShadow = '0 4px 14px var(--shadow)'; }, []);
@@ -506,6 +532,8 @@ function EvaluationReport({ text, images = [], annotations = [], canDelete = fal
                     <div className="eval-card__body">
                         {section.heading === 'Diagram Analysis'
                             ? <DiagramAnalysisSection body={section.body} onImageClick={handleImageClick} annotationMap={annotationMap} canDelete={canDelete} onDelete={onDeleteAnnotation} />
+                            : section.heading === SMART_GOALS_HEADING
+                            ? <SmartGoalsSection body={section.body} onImageClick={handleImageClick} annotationMap={annotationMap} canDelete={canDelete} onDelete={onDeleteAnnotation} />
                             : renderBody(section.body, handleImageClick, annotationMap, canDelete, onDeleteAnnotation)
                         }
                     </div>
