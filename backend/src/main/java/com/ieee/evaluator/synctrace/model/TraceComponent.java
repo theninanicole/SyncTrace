@@ -54,6 +54,13 @@ public class TraceComponent {
 
     private Boolean aiExtracted = false;
 
+    /**
+     * Position of an extracted component within its evaluation's Diagram Analysis, as the
+     * report shows it. Null for components that were not extracted from an evaluation.
+     */
+    @Column(name = "display_order")
+    private Integer displayOrder;
+
     private LocalDateTime createdAt;
 
     public enum DocType {

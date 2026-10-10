@@ -28,22 +28,22 @@ function ItemLine({ item, fallback }) {
 
 /**
  * Group the stage's mapping rows by source so one source with several targets reads as
- * one relationship block. Sources keep the source column's order; rows whose source is no
- * longer listed (removed, or unmapped in the preceding stage) are grouped at the end.
+ * one relationship block. Sources and targets keep their column's order; rows whose source is
+ * no longer listed (removed, or unmapped in the preceding stage) are grouped at the end.
  */
-function groupBySource(mappingsForStage, sourceItems, targetById) {
+function groupBySource(mappingsForStage, sourceItems, targetItems) {
   const groups = new Map();
   mappingsForStage.forEach((m) => {
     if (!groups.has(m.sourceId)) groups.set(m.sourceId, []);
     groups.get(m.sourceId).push(m);
   });
   const order = new Map(sourceItems.map((s, i) => [s.id, i]));
-  const byLabel = (a, b) => (itemCode(targetById.get(a.targetId)) || '').localeCompare(
-    itemCode(targetById.get(b.targetId)) || '', undefined, { numeric: true, sensitivity: 'base' },
-  );
+  const targetOrder = new Map(targetItems.map((t, i) => [t.id, i]));
+  const byTarget = (a, b) =>
+    (targetOrder.get(a.targetId) ?? Infinity) - (targetOrder.get(b.targetId) ?? Infinity);
   return [...groups.entries()]
     .sort(([a], [b]) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity))
-    .map(([sourceId, rows]) => [sourceId, [...rows].sort(byLabel)]);
+    .map(([sourceId, rows]) => [sourceId, [...rows].sort(byTarget)]);
 }
 
 function MappingControls({
@@ -73,7 +73,7 @@ function MappingControls({
   const newTargetCount = selectedTargets.filter((t) => !linkedTargetIds.has(t.id)).length;
   const canEstablish = Boolean(selectedSource && selectedTargets.length > 0);
 
-  const groups = groupBySource(mappingsForStage, sourceItems, targetById);
+  const groups = groupBySource(mappingsForStage, sourceItems, targetItems);
 
   return (
     <div className="stm-controls">

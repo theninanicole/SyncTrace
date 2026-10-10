@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -274,6 +275,11 @@ public class TraceComponentController {
             findings.add(new String[] { currentFinding.toString(), currentImageRef });
         }
 
+        // Same order as the report's Diagram Analysis: by page image, even when the AI grouped
+        // its entries by diagram type. The sort is stable, so entries of one image keep their
+        // written order; entries without an [IMG-n] go last.
+        findings.sort(Comparator.comparingInt(finding -> imageNumber(finding[1])));
+
         // Reserve every code the document declares before numbering the uncoded diagrams,
         // so a fallback like UC-01 never duplicates a later diagram's explicit UC-01.
         for (String[] finding : findings) {
@@ -286,8 +292,17 @@ public class TraceComponentController {
             components.addAll(createComponentsFromFinding(
                 finding[0], historyId, finding[1], extractedImages, codeCounters));
         }
+        for (int i = 0; i < components.size(); i++) {
+            components.get(i).setDisplayOrder(i);
+        }
 
         return components;
+    }
+
+    private static int imageNumber(String imageRef) {
+        if (imageRef == null) return Integer.MAX_VALUE;
+        Matcher matcher = IMG_TAG.matcher(imageRef);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : Integer.MAX_VALUE;
     }
 
     private List<TraceComponent> createComponentsFromFinding(

@@ -83,4 +83,23 @@ class TraceComponentExtractionTest {
         assertEquals("UC-01 — Use Case Diagram", components.get(1).getName());
         assertEquals("img", components.get(1).getImageData());
     }
+
+    @Test
+    void ordersComponentsLikeTheReportsDiagramAnalysis() {
+        // The AI grouped its entries by diagram type; the report shows them by page image.
+        String evaluation = """
+            Diagram Analysis:
+            * [IMG-5] - Use Case Diagram: Enrollment.
+            * [IMG-9] - Use Case Diagram: Grading.
+            * [IMG-2] - Activity Diagram: Login flow.
+            * [IMG-7] - Sequence Diagram: Submit grade.
+            """;
+
+        List<TraceComponent> components = extract(evaluation, java.util.Collections.nCopies(9, "img"));
+
+        assertEquals(List.of("AD-01", "UC-01", "SQ-01", "UC-02"),
+            components.stream().map(TraceComponent::getCodeName).toList());
+        assertEquals(List.of(0, 1, 2, 3),
+            components.stream().map(TraceComponent::getDisplayOrder).toList());
+    }
 }

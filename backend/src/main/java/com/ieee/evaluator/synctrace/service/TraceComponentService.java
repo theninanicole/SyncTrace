@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,6 +30,16 @@ import java.util.regex.Pattern;
 public class TraceComponentService {
 
     private static final Pattern NUMBERED_CODE = Pattern.compile("^([A-Z]+)-(\\d{1,3})$");
+
+    /**
+     * Library order: extracted components follow the Diagram Analysis of the evaluation they
+     * came from; everything else (manual, GitHub, extractions that predate displayOrder)
+     * keeps the order it was added in.
+     */
+    private static final Comparator<TraceComponent> LIBRARY_ORDER = Comparator
+        .comparing(TraceComponent::getSourceHistoryId, Comparator.nullsLast(Comparator.naturalOrder()))
+        .thenComparing(TraceComponent::getDisplayOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+        .thenComparing(TraceComponent::getId, Comparator.nullsLast(Comparator.naturalOrder()));
 
     private final TraceComponentRepository componentRepository;
     private final GoalComponentMappingRepository mappingRepository;
@@ -62,7 +73,7 @@ public class TraceComponentService {
             components = componentRepository.findAll();
         }
 
-        return components.stream().map(this::toSummary).toList();
+        return components.stream().sorted(LIBRARY_ORDER).map(this::toSummary).toList();
     }
 
     public Optional<TraceComponent> getComponentById(Long id) {
@@ -217,6 +228,12 @@ public class TraceComponentService {
                 }
                 if (found.getImageData() == null && candidate.getImageData() != null) {
                     found.setImageData(candidate.getImageData());
+                    dirty = true;
+                }
+                // The evaluation's Diagram Analysis may have been reordered or added to since.
+                if (candidate.getDisplayOrder() != null
+                        && !candidate.getDisplayOrder().equals(found.getDisplayOrder())) {
+                    found.setDisplayOrder(candidate.getDisplayOrder());
                     dirty = true;
                 }
                 if (dirty) {

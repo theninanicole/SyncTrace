@@ -22,13 +22,11 @@ function ComponentLibraryColumn({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const matches = !q ? items : items.filter(
+    // Items keep the order they arrive in: extracted components follow the Diagram Analysis
+    // of their evaluation report.
+    return !q ? items : items.filter(
       (c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q)
     );
-    // Alphabetical by the label shown on the card; numeric-aware so UC-2 precedes UC-10.
-    return [...matches].sort((a, b) => componentLabel(a).localeCompare(
-      componentLabel(b), undefined, { numeric: true, sensitivity: 'base' },
-    ));
   }, [items, query]);
 
   const groupedItems = useMemo(() => {
