@@ -27,7 +27,8 @@ import {
   DOC_TYPES,
   extractSubmissionMeta,
   filterSubmissions,
-  normalizeSection,
+  mergeSectionOptions,
+  sameSection,
   sortSubmissions,
 } from '../utils/dashboardUtils';
 
@@ -290,7 +291,60 @@ export function useTeacherDashboard(showToast) {
     } catch { /* keep UI usable */ }
   }
 
-  const analyzedFileIds = useMemo(() => new Set(historyLogs.map((h) => h.fileId)), [historyLogs]);
+  // Files evaluated in this session. The history list only shows the latest reports, and the
+  // realtime feed is not always delivered, so a finished evaluation is recorded here at once
+  // and the submissions table switches to "Re-Evaluate" without a page refresh.
+  const [evaluatedThisSession, setEvaluatedThisSession] = useState(() => new Set());
+  const evaluationWatchersRef = useRef(new Map()); // fileId -> interval id
+
+  const markEvaluated = (fileId) => {
+    if (!fileId) return;
+    setEvaluatedThisSession((prev) => (prev.has(fileId) ? prev : new Set(prev).add(fileId)));
+  };
+
+  const analyzedFileIds = useMemo(
+    () => new Set([...historyLogs.map((h) => h.fileId), ...evaluatedThisSession]),
+    [historyLogs, evaluatedThisSession],
+  );
+
+  /**
+   * The modal was closed while an evaluation was still running. The backend keeps going and
+   * saves the result, so check for it in the background and update the row when it lands.
+   */
+  function watchForEvaluation(fileId) {
+    if (!fileId || evaluationWatchersRef.current.has(fileId)) return;
+    const POLL_MS = 8000;
+    const MAX_CHECKS = 38; // about 5 minutes
+    let checks = 0;
+    const intervalId = setInterval(async () => {
+      checks += 1;
+      try {
+        const latest = await fetchTeacherHistory(fileId, 1);
+        if (Array.isArray(latest) && latest.length > 0) {
+          stopWatching(fileId);
+          markEvaluated(fileId);
+          loadHistory().catch(() => {});
+          return;
+        }
+      } catch { /* try again on the next tick */ }
+      if (checks >= MAX_CHECKS) stopWatching(fileId);
+    }, POLL_MS);
+    evaluationWatchersRef.current.set(fileId, intervalId);
+  }
+
+  function stopWatching(fileId) {
+    const intervalId = evaluationWatchersRef.current.get(fileId);
+    if (intervalId) clearInterval(intervalId);
+    evaluationWatchersRef.current.delete(fileId);
+  }
+
+  useEffect(() => {
+    const watchers = evaluationWatchersRef.current;
+    return () => {
+      watchers.forEach((intervalId) => clearInterval(intervalId));
+      watchers.clear();
+    };
+  }, []);
 
   useEffect(() => {
       loadSubmissions();
@@ -325,12 +379,14 @@ export function useTeacherDashboard(showToast) {
     const isSearchingStudent = query.length > 0;
     const scoped = files.filter((item) => {
       const meta = extractSubmissionMeta(item.name);
-      if (selectedSection  && meta.section  !== normalizeSection(selectedSection))            return false;
+      if (selectedSection  && !sameSection(meta.section, selectedSection))                    return false;
       if (selectedTeamCode && meta.teamCode !== selectedTeamCode.toUpperCase())               return false;
       return true;
     });
+    // The class list and the submission form may write a section differently ("G4" / "G04"),
+    // so compare by section key, the same way team codes are compared ignoring case.
     const scopedRoster = roster.filter((s) => {
-      if (selectedSection  && s.section              !== selectedSection)             return false;
+      if (selectedSection  && !sameSection(s.section, selectedSection))                       return false;
       if (selectedTeamCode && s.groupCode?.toUpperCase() !== selectedTeamCode.toUpperCase()) return false;
       return true;
     });
@@ -382,13 +438,13 @@ export function useTeacherDashboard(showToast) {
     if (roster.length > 0) {
       return {
         students:  [...students].sort((a, b) => a.localeCompare(b)),
-        sections:  [...new Set(roster.map((s) => s.section).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+        sections:  mergeSectionOptions(roster.map((s) => s.section)),
         teamCodes: [...new Set(roster.map((s) => s.groupCode).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
       };
     }
     return {
       students:  [...students].sort((a, b) => a.localeCompare(b)),
-      sections:  [...sections].sort((a, b) => a.localeCompare(b)),
+      sections:  mergeSectionOptions([...sections]),
       teamCodes: [...teamCodes].sort((a, b) => a.localeCompare(b)),
     };
   }, [historyLogs, roster]);
@@ -403,7 +459,7 @@ export function useTeacherDashboard(showToast) {
       if (reportStatusFilter === 'pending' &&  log.isSent) return false;
       if (reportDocTypeFilter && docType !== reportDocTypeFilter) return false;
       if (reportSelectedStudent  && meta.studentName !== reportSelectedStudent)                       return false;
-      if (reportSelectedSection  && meta.section     !== normalizeSection(reportSelectedSection))    return false;
+      if (reportSelectedSection  && !sameSection(meta.section, reportSelectedSection))              return false;
       if (reportSelectedTeamCode && meta.teamCode    !== reportSelectedTeamCode.toUpperCase())       return false;
       if (query) {
         const searchable = [log.fileName, log.isSent ? 'sent' : 'pending', log.evaluatedAt]
@@ -530,6 +586,8 @@ export function useTeacherDashboard(showToast) {
 
   function openAnalyzeModal(file) {
     if (analysisAbortRef.current && selectedFileRef.current?.id !== file?.id) {
+      // The previous file's evaluation keeps running on the server; update its row when saved.
+      if (!analysisAbortRef.current.signal.aborted) watchForEvaluation(selectedFileRef.current?.id);
       analysisAbortRef.current.abort();
       analysisAbortRef.current = null;
       setIsAnalyzing(false);
@@ -544,6 +602,15 @@ export function useTeacherDashboard(showToast) {
   }
 
   function closeAnalyzeModal() {
+    const closingFileId = selectedFileRef.current?.id;
+    const stillRunning = Boolean(analysisAbortRef.current && !analysisAbortRef.current.signal.aborted);
+    if (stillRunning) {
+      // Closing only stops waiting here; the server finishes and saves the evaluation.
+      watchForEvaluation(closingFileId);
+    } else {
+      // Pick up the saved report so the row and AI Reports are current without a refresh.
+      loadHistory().catch(() => {});
+    }
     if (analysisAbortRef.current) { analysisAbortRef.current.abort(); analysisAbortRef.current = null; }
     closeSse();
     setIsAnalyzing(false);
@@ -595,6 +662,9 @@ export function useTeacherDashboard(showToast) {
       } else {
         setAiResult(data.analysis);
         setAiImages(data.images || []);
+        // Saved on the server: show the row as evaluated right away.
+        markEvaluated(fileToAnalyze.id);
+        stopWatching(fileToAnalyze.id);
       }
       
     } catch (err) {
