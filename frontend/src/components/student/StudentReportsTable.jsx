@@ -8,9 +8,6 @@ function StudentReportsTable({ reports, loading, viewedIds = [], onOpen }) {
     return (
       <div className="student-empty">
         <h3 className="student-empty__title">No evaluations yet</h3>
-        <p className="student-empty__text">
-          Your professor hasn't sent evaluations for this filter yet. Check back later or try a different document type.
-        </p>
       </div>
     );
   }

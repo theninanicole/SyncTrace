@@ -31,7 +31,7 @@ class ComponentCodeHelperTest {
         List<ComponentCodeHelper.CodedElement> own =
             ComponentCodeHelper.extractOwnElements(finding, ArtifactKind.USE_CASE);
 
-        assertEquals(List.of("UC-01", "UC-02"), own.stream().map(ComponentCodeHelper.CodedElement::codeName).toList());
+        assertEquals(List.of("UC-1", "UC-02"), own.stream().map(ComponentCodeHelper.CodedElement::codeName).toList());
     }
 
     @Test
@@ -41,13 +41,46 @@ class ComponentCodeHelperTest {
         List<ComponentCodeHelper.CodedElement> own =
             ComponentCodeHelper.extractOwnElements(finding, ArtifactKind.ACTIVITY);
 
-        assertEquals("AD-04", own.get(0).codeName());
+        assertEquals("ACT-4", own.get(0).codeName());
+    }
+
+    @Test
+    void keepsTheDocumentsOwnIdEvenWithAPrefixThatIsNotBuiltIn() {
+        assertEquals("SD-04", ownCode("* [IMG-3] - SD-04 Login Sequence Diagram:", ArtifactKind.SEQUENCE));
+        assertEquals("CD-02", ownCode("* [IMG-3] - Class Diagram CD-02:", ArtifactKind.CLASS));
+        assertEquals("ERD-1", ownCode("* [IMG-3] - ERD-1 Data Design:", ArtifactKind.DATA_MODEL));
+        assertEquals("BR-2", ownCode("* [IMG-3] - Wireframe BR_2:", ArtifactKind.WIREFRAME));
+    }
+
+    @Test
+    void listsElementsWithIdsThatAreNotBuiltIn() {
+        String finding = """
+            * [IMG-9] - Sequence Diagram:
+            - Elements: SD-01 Login, SD-02 Register, UC-01""";
+
+        assertEquals(List.of("SD-01", "SD-02"),
+            ComponentCodeHelper.extractOwnElements(finding, ArtifactKind.SEQUENCE).stream()
+                .map(ComponentCodeHelper.CodedElement::codeName).toList());
+    }
+
+    @Test
+    void doesNotMistakeCitationsOrPageImagesForTheDiagramsId() {
+        assertTrue(ComponentCodeHelper.extractOwnElements(
+            "* [IMG-3] - Activity Diagram for UC-01 and FR-02:", ArtifactKind.ACTIVITY).isEmpty());
+        assertTrue(ComponentCodeHelper.extractOwnElements(
+            "* [IMG-3] - Class Diagram per IEEE-1016:", ArtifactKind.CLASS).isEmpty());
+        assertTrue(ComponentCodeHelper.extractOwnElements(
+            "* [IMG-3] - Use Case Diagram for team 2627-SEM1-IT411-08:", ArtifactKind.USE_CASE).isEmpty());
+    }
+
+    private static String ownCode(String finding, ArtifactKind kind) {
+        return ComponentCodeHelper.extractOwnElements(finding, kind).get(0).codeName();
     }
 
     @Test
     void fallbackNumberingSkipsReservedCodes() {
         Map<String, Integer> counters = new HashMap<>();
-        ComponentCodeHelper.reserveCode("UC-02", counters);
+        ComponentCodeHelper.reserveCode("UC-2", counters);
 
         assertEquals("UC-03", ComponentCodeHelper.nextDiagramCode(ArtifactKind.USE_CASE, counters));
         assertEquals("AD-01", ComponentCodeHelper.nextDiagramCode(ArtifactKind.ACTIVITY, counters));

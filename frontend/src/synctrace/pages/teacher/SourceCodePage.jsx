@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Users } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
@@ -193,7 +192,7 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
   };
 
   return (
-    <div className={`sc-root${isTeamLocked ? ' sc-root--embedded' : ''}`}>
+    <div className="sc-root">
       <ToastMessage toast={toast} onClose={hideToast} />
 
       {/* Student view embeds this page under its own header with the team fixed. */}
@@ -201,7 +200,6 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
         <>
           <PanelHeader
             title="Source Code"
-            subtitle="Pull team GitHub files into Implementation components you can map to goals"
             actions={
               <div className="teacher-header-actions">
                 <button className="btn btn--soft" onClick={loadTeams} disabled={loadingTeams}>
@@ -213,7 +211,6 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
 
           <div className="tm-team-filter-row">
             <label className="team-select">
-              <Users size={14} aria-hidden="true" />
               <select
                 value={selectedTeam?.teamCode || ''}
                 onChange={(e) => {

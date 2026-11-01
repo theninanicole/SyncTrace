@@ -3,7 +3,7 @@ import AppModal from '../../../../components/common/AppModal';
 import { getEvaluationHistory } from '../../../../api';
 import { extractSubmissionMeta, formatDateTime } from '../../../../utils/dashboardUtils';
 
-function ExtractComponentsDialog({ isOpen, onClose, teamCode, stage, extracting, onExtract }) {
+function ExtractComponentsDialog({ isOpen, onClose, teamCode, stage, extracting, progress, onExtract }) {
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [historyItems, setHistoryItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,9 +73,7 @@ function ExtractComponentsDialog({ isOpen, onClose, teamCode, stage, extracting,
         </div>
       }
     >
-      {extracting ? (
-        <p className="tm-muted">Extracting components from the selected documents…</p>
-      ) : loading ? (
+      {loading ? (
         <p className="tm-muted">Loading evaluated documents…</p>
       ) : loadError ? (
         <div className="empty-state">
@@ -93,7 +91,7 @@ function ExtractComponentsDialog({ isOpen, onClose, teamCode, stage, extracting,
             const checked = checkedIds.has(doc.id);
             return (
               <label key={doc.id} className={`tm-team-doc ${checked ? 'tm-team-doc--checked' : ''}`}>
-                <input type="checkbox" checked={checked} onChange={() => toggle(doc.id)} />
+                <input type="checkbox" checked={checked} onChange={() => toggle(doc.id)} disabled={extracting} />
                 <span className="tm-badge" data-doctype={doc.meta.documentType}>{doc.meta.documentType}</span>
                 <span className="tm-team-doc__meta">
                   {doc.meta.teamCode || 'Unassigned'} · v{doc.version} · {formatDateTime(doc.evaluatedAt)}
@@ -101,6 +99,21 @@ function ExtractComponentsDialog({ isOpen, onClose, teamCode, stage, extracting,
               </label>
             );
           })}
+        </div>
+      )}
+      {extracting && (
+        <div className="stm-extract-progress">
+          <span className="stm-extract-progress__label">Progress</span>
+          <div
+            className="stm-extract-progress__bar"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress?.percent ?? 0}
+          >
+            <div className="stm-extract-progress__fill" style={{ width: `${progress?.percent ?? 0}%` }} />
+          </div>
+          <p className="tm-muted">{progress?.message || 'Extracting components…'} {progress?.percent ?? 0}%</p>
         </div>
       )}
     </AppModal>

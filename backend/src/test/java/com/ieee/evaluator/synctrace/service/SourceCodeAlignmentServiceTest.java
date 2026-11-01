@@ -7,7 +7,6 @@ import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
-import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,7 +33,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SourceCodeAlignmentServiceTest {
 
-    @Mock private TraceComponentRepository componentRepository;
     @Mock private ContinuityFindingRepository findingRepository;
     @Mock private DiagnosticRecommendationRepository recommendationRepository;
     @Mock private ProgressEmitter progressEmitter;
@@ -49,7 +47,7 @@ class SourceCodeAlignmentServiceTest {
     void setUp() {
         lenient().when(openAiProvider.getProviderName()).thenReturn("openai");
         service = new SourceCodeAlignmentService(
-                componentRepository, findingRepository, recommendationRepository, progressEmitter,
+                findingRepository, recommendationRepository, progressEmitter,
                 teamComponentResolver, List.of(openAiProvider));
     }
 
@@ -58,8 +56,7 @@ class SourceCodeAlignmentServiceTest {
         TraceComponent impl = new TraceComponent();
         impl.setDocType(DocType.IMPLEMENTATION);
 
-        when(componentRepository.findAll()).thenReturn(List.of(impl));
-        when(teamComponentResolver.filterByTeam(any(), eq(TEAM_CODE))).thenReturn(List.of(impl));
+        when(teamComponentResolver.findTeamComponents(TEAM_CODE)).thenReturn(List.of(impl));
 
         List<ContinuityFinding> findings = service.analyzeAlignment(TEAM_CODE, "openai", null);
 
@@ -79,8 +76,7 @@ class SourceCodeAlignmentServiceTest {
         impl.setName("Implementation");
         impl.setContent("public class Example {}");
 
-        when(componentRepository.findAll()).thenReturn(List.of(sdd, impl));
-        when(teamComponentResolver.filterByTeam(any(), eq(TEAM_CODE))).thenReturn(List.of(sdd, impl));
+        when(teamComponentResolver.findTeamComponents(TEAM_CODE)).thenReturn(List.of(sdd, impl));
         when(openAiProvider.complete(anyString())).thenReturn(
                 "```json\n[{\"description\":\"Missing validation logic\",\"severity\":\"HIGH\"}]\n```");
         when(findingRepository.saveAll(anyList()))
@@ -123,9 +119,8 @@ class SourceCodeAlignmentServiceTest {
         goalFinding.setDocTypeFrom(DocType.SDD);
         goalFinding.setDocTypeTo(DocType.IMPLEMENTATION);
 
-        when(componentRepository.findAll()).thenReturn(List.of(sdd, impl));
         String listedTeamCode = TEAM_CODE.toLowerCase();
-        when(teamComponentResolver.filterByTeam(any(), eq(listedTeamCode))).thenReturn(List.of(sdd, impl));
+        when(teamComponentResolver.findTeamComponents(listedTeamCode)).thenReturn(List.of(sdd, impl));
         when(openAiProvider.complete(anyString())).thenReturn("[{\"description\":\"Gap\",\"severity\":\"LOW\"}]");
         when(findingRepository.findByTeamCodeIgnoreCaseOrderByDetectedAtDescIdAsc(listedTeamCode))
                 .thenReturn(List.of(previousAlignment, goalFinding));

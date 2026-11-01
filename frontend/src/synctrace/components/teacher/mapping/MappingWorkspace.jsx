@@ -11,9 +11,10 @@ function countBy(mappingsForStage, key) {
   return counts;
 }
 
-function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPreviewComponentClick, onRemoveComponentClick, readOnly = false }) {
+function MappingWorkspace({ tm, onExtractGoalsClick, onExtractComponentsClick, onAddComponentClick, onPreviewComponentClick, onRemoveComponentClick, readOnly = false }) {
   const {
     stage,
+    components,
     smartGoalsExtracted,
     smartGoals,
     loadingGoals,
@@ -44,6 +45,11 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
   );
 
   const isProposalStage = stage.sourceType === 'PROPOSAL';
+
+  // Implementation components come from GitHub ingestion, not from an evaluation.
+  const extractFor = (docType) => (
+    docType !== 'IMPLEMENTATION' && !components?.[docType]?.length ? onExtractComponentsClick : undefined
+  );
 
   return (
     <div className="stm-workspace">
@@ -77,9 +83,10 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
             groupLabelsByItem={componentGroups}
             documentGroupsByItem={documentGroups}
             onSelect={selectSource}
-            onAdd={readOnly ? undefined : () => onAddComponentClick(stage.sourceType)}
+            onAdd={onAddComponentClick && (() => onAddComponentClick(stage.sourceType))}
+            onExtract={extractFor(stage.sourceType)}
             onPreview={onPreviewComponentClick}
-            onRemove={readOnly ? undefined : (id) => onRemoveComponentClick(stage.sourceType, id)}
+            onRemove={onRemoveComponentClick && ((id) => onRemoveComponentClick(stage.sourceType, id))}
             emptyHint={`Extract or add ${DOC_TYPE_LABELS[stage.sourceType]} components before establishing ${stage.label} mappings.`}
           />
         )}
@@ -111,9 +118,10 @@ function MappingWorkspace({ tm, onExtractGoalsClick, onAddComponentClick, onPrev
           groupLabelsByItem={componentGroups}
           documentGroupsByItem={documentGroups}
           onSelect={selectTarget}
-          onAdd={readOnly ? undefined : () => onAddComponentClick(stage.targetType)}
+          onAdd={onAddComponentClick && (() => onAddComponentClick(stage.targetType))}
+          onExtract={extractFor(stage.targetType)}
           onPreview={onPreviewComponentClick}
-          onRemove={readOnly ? undefined : (id) => onRemoveComponentClick(stage.targetType, id)}
+          onRemove={onRemoveComponentClick && ((id) => onRemoveComponentClick(stage.targetType, id))}
           emptyHint={`No ${DOC_TYPE_LABELS[stage.targetType]} components are currently available. Extract or add components before establishing ${stage.label} mappings.`}
         />
       </section>

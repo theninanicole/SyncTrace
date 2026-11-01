@@ -2,14 +2,15 @@ package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.model.EvaluationHistory;
 import com.ieee.evaluator.repository.EvaluationHistoryRepository;
+import com.ieee.evaluator.service.ProgressEmitter;
 import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.service.ComponentCodeHelper;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.service.TeamCodeResolver;
 import com.ieee.evaluator.synctrace.service.TeamComponentResolverService;
 import com.ieee.evaluator.synctrace.service.TraceComponentService;
-import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,21 +31,21 @@ public class TraceComponentController {
 
     private final TraceComponentService componentService;
     private final EvaluationHistoryRepository historyRepository;
-    private final TraceComponentRepository componentRepository;
     private final TeamComponentResolverService teamComponentResolver;
     private final SyncTraceAccessGuard accessGuard;
+    private final ProgressEmitter progressEmitter;
 
     public TraceComponentController(
             TraceComponentService componentService,
             EvaluationHistoryRepository historyRepository,
-            TraceComponentRepository componentRepository,
             TeamComponentResolverService teamComponentResolver,
-            SyncTraceAccessGuard accessGuard) {
+            SyncTraceAccessGuard accessGuard,
+            ProgressEmitter progressEmitter) {
         this.componentService = componentService;
         this.historyRepository = historyRepository;
-        this.componentRepository = componentRepository;
         this.teamComponentResolver = teamComponentResolver;
         this.accessGuard = accessGuard;
+        this.progressEmitter = progressEmitter;
     }
 
     @GetMapping
@@ -54,17 +55,7 @@ public class TraceComponentController {
             @RequestParam(required = false) String teamCode) {
         try {
             String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
-            var summaries = componentService.getComponents(docType, search);
-            if (effectiveTeamCode == null) {
-                return ResponseEntity.ok(summaries);
-            }
-            var allowedIds = componentRepository.findAllById(summaries.stream()
-                    .map(summary -> summary.id())
-                    .toList()).stream()
-                    .filter(component -> teamComponentResolver.belongsToTeam(component, effectiveTeamCode))
-                    .map(TraceComponent::getId)
-                    .collect(java.util.stream.Collectors.toSet());
-            return ResponseEntity.ok(summaries.stream().filter(summary -> allowedIds.contains(summary.id())).toList());
+            return ResponseEntity.ok(componentService.getComponents(docType, search, effectiveTeamCode));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
@@ -125,8 +116,12 @@ public class TraceComponentController {
             }
             String codeName = payload.get("codeName") != null ? String.valueOf(payload.get("codeName")) : null;
             String imageData = payload.get("imageData") != null ? String.valueOf(payload.get("imageData")) : null;
+            String requestedTeamCode = payload.get("teamCode") != null ? String.valueOf(payload.get("teamCode")) : null;
+            String teamCode = TeamCodeResolver.normalize(accessGuard.resolveEffectiveTeamCode(requestedTeamCode));
             return ResponseEntity.ok(
-                componentService.createComponent(docType, artifactKind, name, content, codeName, imageData));
+                componentService.createComponent(docType, artifactKind, name, content, codeName, imageData, teamCode));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid docType/artifactKind: " + e.getMessage()));
         } catch (Exception e) {
@@ -140,17 +135,31 @@ public class TraceComponentController {
         try {
             String name = payload.get("name");
             String codeName = payload.get("codeName");
-            if ((name == null || name.isBlank()) && (codeName == null || codeName.isBlank())) {
-                return ResponseEntity.badRequest().body(Map.of("error", "name or codeName is required"));
+            String artifactKind = payload.get("artifactKind");
+            boolean changesKind = artifactKind != null && !artifactKind.isBlank();
+            boolean changesName = name != null && !name.isBlank();
+            if (!changesName && (codeName == null || codeName.isBlank()) && !changesKind) {
+                return ResponseEntity.badRequest().body(Map.of("error", "name, codeName or artifactKind is required"));
+            }
+            requireStudentMayChange(componentId, changesKind);
+            // A GitHub component's name carries its team code, so it can't be left to students.
+            if (changesName && accessGuard.isStudent()) {
+                throw new SyncTraceAccessGuard.AccessDeniedException("Students can only change a component's code.");
             }
             TraceComponent updated = null;
-            if (name != null && !name.isBlank()) {
+            if (changesName) {
                 updated = componentService.renameComponent(componentId, name);
             }
             if (codeName != null && !codeName.isBlank()) {
                 updated = componentService.updateCodeName(componentId, codeName);
             }
+            if (changesKind) {
+                updated = componentService.updateArtifactKind(
+                    componentId, ArtifactKind.valueOf(artifactKind.trim().toUpperCase()));
+            }
             return ResponseEntity.ok(updated);
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
@@ -168,40 +177,72 @@ public class TraceComponentController {
     @DeleteMapping("/{componentId}")
     public ResponseEntity<?> deleteTraceComponent(@PathVariable Long componentId) {
         try {
+            requireStudentMayChange(componentId, false);
             componentService.deleteComponent(componentId);
             return ResponseEntity.ok(Map.of("message", "Component deleted successfully"));
+        } catch (SyncTraceAccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to delete component: " + e.getMessage()));
         }
     }
 
+    /** Students can only touch their own team's components; teachers aren't limited here. */
+    private void requireStudentMayChange(Long componentId, boolean extractedOnly) {
+        if (!accessGuard.isStudent()) return;
+
+        String teamCode = accessGuard.resolveEffectiveTeamCode(null);
+        TraceComponent component = componentService.getComponentById(componentId).orElse(null);
+        if (component == null) return;
+        if (!teamComponentResolver.belongsToTeam(component, teamCode)) {
+            throw new SyncTraceAccessGuard.AccessDeniedException("You can only change your own team's components.");
+        }
+        if (extractedOnly && !Boolean.TRUE.equals(component.getAiExtracted())) {
+            throw new SyncTraceAccessGuard.AccessDeniedException("Only extracted components can have their type changed.");
+        }
+    }
+
+    /** @param sessionId optional progress stream opened through GET /api/ai/progress/{sessionId} */
     @PostMapping("/extract")
-    public ResponseEntity<?> extractTraceComponents(@RequestBody Map<String, Long> payload) {
+    public ResponseEntity<?> extractTraceComponents(
+            @RequestBody Map<String, Long> payload,
+            @RequestParam(required = false) String sessionId) {
         try {
             Long historyId = payload.get("historyId");
             if (historyId == null) {
+                progressEmitter.error(sessionId, "historyId is required");
                 return ResponseEntity.badRequest().body(Map.of("error", "historyId is required"));
             }
 
+            progressEmitter.emit(sessionId, "LOADING", "Loading the evaluated document…", 10);
             EvaluationHistory history = historyRepository.findById(historyId)
                 .orElseThrow(() -> new RuntimeException("Evaluation record not found"));
 
             String evaluationResult = history.getEvaluationResult();
             if (evaluationResult == null || evaluationResult.isBlank()) {
+                progressEmitter.complete(sessionId);
                 return ResponseEntity.ok(Map.of("components", List.of(), "count", 0));
             }
 
+            progressEmitter.emit(sessionId, "READING", "Reading the Diagram Analysis…", 30);
             List<TraceComponent> extractedComponents = extractComponentsFromEvaluation(
                 evaluationResult, historyId, history.getExtractedImages());
 
-            List<TraceComponent> savedComponents = componentService.persistExtractedComponents(extractedComponents);
+            int total = extractedComponents.size();
+            List<TraceComponent> savedComponents = componentService.persistExtractedComponents(
+                extractedComponents,
+                index -> progressEmitter.emit(sessionId, "SAVING",
+                    "Saving component " + (index + 1) + " of " + total + "…", 50 + 45 * index / total));
 
+            progressEmitter.emit(sessionId, "COMPLETE", "Extraction complete", 100);
+            progressEmitter.complete(sessionId);
             return ResponseEntity.ok(Map.of(
                 "components", savedComponents,
                 "count", savedComponents.size()
             ));
         } catch (Exception e) {
+            progressEmitter.error(sessionId, "Extraction failed: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Extraction failed: " + e.getMessage()));
         }
@@ -274,6 +315,9 @@ public class TraceComponentController {
         if (currentFinding.length() > 0) {
             findings.add(new String[] { currentFinding.toString(), currentImageRef });
         }
+
+        // Retired types (context diagrams, DFDs) aren't components, though reports still analyze them.
+        findings.removeIf(finding -> determineArtifactKindFromFinding(finding[0]).isRetired());
 
         // Same order as the report's Diagram Analysis: by page image, even when the AI grouped
         // its entries by diagram type. The sort is stable, so entries of one image keep their
@@ -381,6 +425,7 @@ public class TraceComponentController {
 
     // The heading ("[IMG-28] - Use Case Diagram:") names the diagram's type; the body can
     // mention other kinds ("...supports the checkout use case"), so it is only a fallback.
+    // A diagram nothing identifies stays UNSPECIFIED for a person to type it.
     private ArtifactKind determineArtifactKindFromFinding(String findingText) {
         String heading = findingText.lines().findFirst().orElse("")
             .replaceAll("(?i)\\[\\s*IMG\\s*-?\\s*\\d+\\s*\\]", "");
@@ -388,7 +433,8 @@ public class TraceComponentController {
         if (colon >= 0) heading = heading.substring(0, colon);
         ArtifactKind fromHeading = classifyArtifactKind(heading);
         return fromHeading != null ? fromHeading : Optional.ofNullable(classifyArtifactKind(findingText))
-            .orElse(ArtifactKind.OTHER_SDD);
+            .filter(kind -> !kind.isRetired())
+            .orElse(ArtifactKind.UNSPECIFIED);
     }
 
     private ArtifactKind classifyArtifactKind(String text) {

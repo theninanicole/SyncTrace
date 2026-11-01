@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import AddComponentDialog from '../../synctrace/components/teacher/mapping/AddComponentDialog';
 import ComponentDetailModal from '../../synctrace/components/teacher/ComponentDetailModal';
 import ExtractComponentsDialog from '../../synctrace/components/teacher/mapping/ExtractComponentsDialog';
 import ExtractSmartGoalsDialog from '../../synctrace/components/teacher/mapping/ExtractSmartGoalsDialog';
@@ -15,17 +16,16 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
   const [previewComponent, setPreviewComponent] = useState(null);
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
+  const [addComponentDocType, setAddComponentDocType] = useState(null);
   const isBusy = tm.saveState === 'saving' || tm.saveState === 'verifying';
   const isProposalStage = tm.stage.sourceType === 'PROPOSAL';
 
   return (
     <section className="card student-traceability-card">
-      <div className="student-section-heading">
-        <div>
-          <h2 className="card__title">Traceability Mapping</h2>
-          <p className="student-section-heading__subtitle">
-            Map your team&apos;s published artifacts to the SMART goals they support, then save the mapping for review.
-          </p>
+      <div className="student-section-heading student-section-heading--mapping">
+        <div className="stm-context-row student-stm-context-row">
+          <MappingStageSelector stages={tm.stages} selectedStage={tm.selectedStage} onChange={tm.setSelectedStage} />
+          <MappingStatusBadge status={tm.stageStatus} />
         </div>
         <div className="student-header-actions">
           {hasEvaluatedDocument && (
@@ -46,11 +46,6 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         </div>
       </div>
 
-      <div className="stm-context-row student-stm-context-row">
-        <MappingStageSelector stages={tm.stages} selectedStage={tm.selectedStage} onChange={tm.setSelectedStage} />
-        <MappingStatusBadge status={tm.stageStatus} />
-      </div>
-
       {tm.mappingActivity && (
         <p className="tm-muted student-mapping-activity">
           Last mapping: {formatDateTime(tm.mappingActivity.performedAt)} by {tm.mappingActivity.performedBy}
@@ -60,14 +55,16 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
 
       {!teamCode ? (
         <div className="student-traceability-locked">
-          <h3 className="student-empty__title">Connect your team first</h3>
-          <p className="student-empty__text">Traceability mapping is unavailable until your team is connected.</p>
-        </div>
+          <h3 className="student-empty__title">No team connected</h3>
+                  </div>
       ) : (
         <MappingWorkspace
           tm={tm}
           readOnly
+          onAddComponentClick={setAddComponentDocType}
+          onExtractComponentsClick={hasEvaluatedDocument ? () => setIsExtractComponentsOpen(true) : undefined}
           onPreviewComponentClick={setPreviewComponent}
+          onRemoveComponentClick={(docType, id) => tm.removeComponent(docType, id)}
         />
       )}
 
@@ -77,10 +74,23 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         </div>
       )}
 
+      <AddComponentDialog
+        isOpen={Boolean(addComponentDocType)}
+        onClose={() => setAddComponentDocType(null)}
+        docType={addComponentDocType}
+        onAdd={(data) => tm.addComponent(addComponentDocType, data)}
+      />
+
       <ComponentDetailModal
         component={previewComponent}
+        stage={tm.stage}
         onClose={() => setPreviewComponent(null)}
-        readOnly
+        showToast={showToast}
+        onRenamed={(updated) => {
+          setPreviewComponent(updated);
+          tm.handleComponentUpdated(updated);
+        }}
+        extractedTypesOnly
       />
 
       <ExtractSmartGoalsDialog
@@ -98,6 +108,7 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         teamCode={teamCode}
         stage={tm.stage}
         extracting={tm.extractingComponents}
+        progress={tm.extractionProgress}
         onExtract={tm.extractComponents}
       />
     </section>

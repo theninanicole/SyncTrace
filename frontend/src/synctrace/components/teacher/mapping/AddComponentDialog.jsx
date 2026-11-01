@@ -49,7 +49,6 @@ function AddComponentDialog({ isOpen, onClose, docType, onAdd }) {
       isOpen={isOpen}
       onClose={onClose}
       title={`Add ${DOC_TYPE_LABELS[docType] || docType} Component`}
-      subtitle="Manually add a component to the library for this document type."
       footer={
         <div className="modal-actions" style={{ justifyContent: 'flex-end', width: '100%' }}>
           <button className="btn" onClick={onClose}>Cancel</button>

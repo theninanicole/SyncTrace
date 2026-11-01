@@ -64,7 +64,6 @@ function TraceabilityMappingPage({ focusStep }) {
 
       <PanelHeader
         title="Traceability Mapping"
-        subtitle="Establish traceability relationships between project artifacts, one staged mapping at a time."
         actions={
           <div className="teacher-header-actions">
             {isProposalStage && (
@@ -104,6 +103,7 @@ function TraceabilityMappingPage({ focusStep }) {
       <MappingWorkspace
         tm={tm}
         onExtractGoalsClick={() => setIsExtractGoalsOpen(true)}
+        onExtractComponentsClick={() => setIsExtractComponentsOpen(true)}
         onAddComponentClick={(docType) => setAddComponentDocType(docType)}
         onPreviewComponentClick={setPreviewComponent}
         onRemoveComponentClick={(docType, id) => tm.removeComponent(docType, id)}
@@ -131,6 +131,7 @@ function TraceabilityMappingPage({ focusStep }) {
         teamCode={selectedTeam}
         stage={tm.stage}
         extracting={tm.extractingComponents}
+        progress={tm.extractionProgress}
         onExtract={tm.extractComponents}
       />
 
@@ -143,11 +144,12 @@ function TraceabilityMappingPage({ focusStep }) {
 
       <ComponentDetailModal
         component={previewComponent}
+        stage={tm.stage}
         onClose={() => setPreviewComponent(null)}
         showToast={showToast}
         onRenamed={(updated) => {
           setPreviewComponent(updated);
-          tm.refreshComponents();
+          tm.handleComponentUpdated(updated);
         }}
       />
     </div>

@@ -92,7 +92,7 @@ export const getTraceComponents = async (docType, search, teamCode) => {
     return data;
 };
 
-export const createTraceComponent = async (docType, name, content, artifactKind, codeName, imageData) => {
+export const createTraceComponent = async (docType, name, content, artifactKind, codeName, imageData, teamCode) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,6 +100,7 @@ export const createTraceComponent = async (docType, name, content, artifactKind,
             docType, name, content, artifactKind,
             codeName: codeName || undefined,
             imageData: imageData || undefined,
+            teamCode: teamCode || undefined,
         }),
     });
     const data = await response.json();
@@ -130,8 +131,9 @@ export const deleteTraceComponent = async (componentId) => {
     return data;
 };
 
-export const extractTraceComponents = async (historyId) => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/extract`, {
+export const extractTraceComponents = async (historyId, sessionId) => {
+    const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/extract${query}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ historyId }),

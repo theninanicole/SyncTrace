@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Users } from 'lucide-react';
 import { fetchClassRoster } from '../../../services/dashboardService';
 import { getTeamRepositories } from '../../api';
 import './TeamSelect.css';
@@ -33,7 +32,6 @@ function TeamSelect({ value, onChange }) {
 
   return (
     <label className="team-select">
-      <Users size={14} aria-hidden="true" />
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}

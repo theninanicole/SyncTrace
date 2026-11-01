@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,6 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.IntConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,49 +31,36 @@ public class TraceComponentService {
 
     private static final Pattern NUMBERED_CODE = Pattern.compile("^([A-Z]+)-(\\d{1,3})$");
 
-    /**
-     * Library order: extracted components follow the Diagram Analysis of the evaluation they
-     * came from; everything else (manual, GitHub, extractions that predate displayOrder)
-     * keeps the order it was added in.
-     */
-    private static final Comparator<TraceComponent> LIBRARY_ORDER = Comparator
-        .comparing(TraceComponent::getSourceHistoryId, Comparator.nullsLast(Comparator.naturalOrder()))
-        .thenComparing(TraceComponent::getDisplayOrder, Comparator.nullsLast(Comparator.naturalOrder()))
-        .thenComparing(TraceComponent::getId, Comparator.nullsLast(Comparator.naturalOrder()));
-
     private final TraceComponentRepository componentRepository;
     private final GoalComponentMappingRepository mappingRepository;
     private final StagedTraceMappingRepository stagedMappingRepository;
     private final SmartGoalRepository goalRepository;
     private final ContinuityAnalysisResetService analysisResetService;
+    private final TeamComponentResolverService teamComponentResolver;
 
     public TraceComponentService(
             TraceComponentRepository componentRepository,
             GoalComponentMappingRepository mappingRepository,
             StagedTraceMappingRepository stagedMappingRepository,
             SmartGoalRepository goalRepository,
-            ContinuityAnalysisResetService analysisResetService) {
+            ContinuityAnalysisResetService analysisResetService,
+            TeamComponentResolverService teamComponentResolver) {
         this.componentRepository = componentRepository;
         this.mappingRepository = mappingRepository;
         this.stagedMappingRepository = stagedMappingRepository;
         this.goalRepository = goalRepository;
         this.analysisResetService = analysisResetService;
+        this.teamComponentResolver = teamComponentResolver;
     }
 
-    public List<TraceComponentSummaryDTO> getComponents(DocType docType, String search) {
-        List<TraceComponent> components;
+    /** @param teamCode limits the result to this team's components; null means every team's */
+    public List<TraceComponentSummaryDTO> getComponents(DocType docType, String search, String teamCode) {
+        String term = search == null || search.isBlank() ? "" : search;
+        List<TraceComponentSummaryDTO> summaries = teamCode == null
+            ? componentRepository.findSummaries(docType, term)
+            : teamComponentResolver.findTeamSummaries(teamCode, docType, term);
 
-        if (docType != null && search != null && !search.isBlank()) {
-            components = componentRepository.findByDocTypeAndNameContainingIgnoreCase(docType, search);
-        } else if (docType != null) {
-            components = componentRepository.findByDocTypeOrderByCreatedAtDesc(docType);
-        } else if (search != null && !search.isBlank()) {
-            components = componentRepository.findByNameContainingIgnoreCase(search);
-        } else {
-            components = componentRepository.findAll();
-        }
-
-        return components.stream().sorted(LIBRARY_ORDER).map(this::toSummary).toList();
+        return summaries.stream().map(this::withDisplayFields).toList();
     }
 
     public Optional<TraceComponent> getComponentById(Long id) {
@@ -100,12 +87,28 @@ public class TraceComponentService {
     public TraceComponent createComponent(
             DocType docType, ArtifactKind artifactKind, String name, String content, String codeName,
             String imageData) {
-        Optional<TraceComponent> existing = componentRepository.findByDocTypeAndNameIgnoreCase(docType, name.trim());
+        return createComponent(docType, artifactKind, name, content, codeName, imageData, null);
+    }
+
+    /** @param teamCode the team that owns this component; null leaves it without a team */
+    @Transactional
+    public TraceComponent createComponent(
+            DocType docType, ArtifactKind artifactKind, String name, String content, String codeName,
+            String imageData, String teamCode) {
+        String teamRef = teamCode == null ? null : TeamComponentResolverService.manualTeamRef(teamCode);
+        // Teams can name components alike, so a team only ever reuses its own.
+        Optional<TraceComponent> existing = teamRef == null
+            ? componentRepository.findByDocTypeAndNameIgnoreCase(docType, name.trim())
+            : componentRepository.findFirstByDocTypeAndNameIgnoreCaseAndSourceRefIgnoreCase(
+                docType, name.trim(), teamRef);
         if (existing.isPresent()) {
             return existing.get();
         }
 
         ArtifactKind kind = artifactKind != null ? artifactKind : ArtifactKind.defaultFor(docType);
+        if (kind.isRetired()) {
+            throw new IllegalArgumentException(kind + " is no longer a component type.");
+        }
         if (kind != ArtifactKind.UNSPECIFIED) {
             DocType inferred = kind.toDocType();
             if (inferred != null && inferred != docType) {
@@ -131,6 +134,7 @@ public class TraceComponentService {
         component.setImageData(imageData);
         component.setAiExtracted(false);
         component.setSourceType("MANUAL");
+        component.setSourceRef(teamRef);
         component.setSourceCapturedAt(LocalDateTime.now());
         component.setCreatedAt(LocalDateTime.now());
         return componentRepository.save(component);
@@ -170,20 +174,58 @@ public class TraceComponentService {
         return componentRepository.save(component);
     }
 
+    /**
+     * Corrects a component's type. A kind from another document family moves the component to
+     * that family's library; its mappings are dropped because they belong to the old family's
+     * stages and would otherwise fail validation. Code files and documents stay separate.
+     */
+    @Transactional
+    public TraceComponent updateArtifactKind(Long componentId, ArtifactKind kind) {
+        TraceComponent component = componentRepository.findById(componentId)
+            .orElseThrow(() -> new RuntimeException("Component not found"));
+
+        DocType newDocType = kind.toDocType();
+        if (newDocType == null || newDocType == DocType.PROPOSAL || kind.isRetired()) {
+            throw new IllegalArgumentException("artifactKind must be a concrete component type.");
+        }
+        boolean isCode = component.getDocType() == DocType.IMPLEMENTATION;
+        if (isCode != (newDocType == DocType.IMPLEMENTATION)) {
+            throw new IllegalArgumentException(
+                "Implementation components can only use implementation types, and other components cannot.");
+        }
+
+        // The analysis of every team linked to this component may depend on its type.
+        Set<String> affectedTeams = linkedTeams(componentId);
+        if (newDocType != component.getDocType()) {
+            mappingRepository.deleteByComponentId(componentId);
+            stagedMappingRepository.deleteComponentReferences(componentId);
+            component.setDocType(newDocType);
+        }
+        component.setArtifactKind(kind);
+        TraceComponent saved = componentRepository.save(component);
+        affectedTeams.forEach(analysisResetService::resetTeam);
+        return saved;
+    }
+
     @Transactional
     public void deleteComponent(Long componentId) {
         // Removing a linked component changes those goals' links, so their teams' analysis is stale.
-        Set<Long> linkedGoalIds = new HashSet<>();
-        mappingRepository.findByComponentId(componentId).forEach(m -> linkedGoalIds.add(m.getGoalId()));
-        Set<String> affectedTeams = new HashSet<>();
-        goalRepository.findAllById(linkedGoalIds).forEach(goal -> {
-            if (goal.getTeamCode() != null) affectedTeams.add(goal.getTeamCode());
-        });
+        Set<String> affectedTeams = linkedTeams(componentId);
 
         mappingRepository.deleteByComponentId(componentId);
         stagedMappingRepository.deleteComponentReferences(componentId);
         componentRepository.deleteById(componentId);
         affectedTeams.forEach(analysisResetService::resetTeam);
+    }
+
+    private Set<String> linkedTeams(Long componentId) {
+        Set<Long> linkedGoalIds = new HashSet<>();
+        mappingRepository.findByComponentId(componentId).forEach(m -> linkedGoalIds.add(m.getGoalId()));
+        Set<String> teams = new HashSet<>();
+        goalRepository.findAllById(linkedGoalIds).forEach(goal -> {
+            if (goal.getTeamCode() != null) teams.add(goal.getTeamCode());
+        });
+        return teams;
     }
 
     /**
@@ -194,11 +236,19 @@ public class TraceComponentService {
      */
     @Transactional
     public List<TraceComponent> persistExtractedComponents(List<TraceComponent> extracted) {
+        return persistExtractedComponents(extracted, index -> { });
+    }
+
+    /** @param onCandidate told the zero-based index of each candidate as it is processed */
+    @Transactional
+    public List<TraceComponent> persistExtractedComponents(List<TraceComponent> extracted, IntConsumer onCandidate) {
         List<TraceComponent> saved = new ArrayList<>();
+        int index = 0;
         // Components already matched or created in this batch; each can back only one candidate.
         Set<Long> claimed = new HashSet<>();
         Map<Long, List<TraceComponent>> historyComponents = new HashMap<>();
         for (TraceComponent candidate : extracted) {
+            onCandidate.accept(index++);
             if (candidate.getName() == null || candidate.getName().isBlank() || candidate.getDocType() == null) {
                 continue;
             }
@@ -263,7 +313,7 @@ public class TraceComponentService {
         String content = normalizeText(candidate.getContent());
         List<TraceComponent> sameDiagram = sameHistory.stream()
             .filter(c -> !claimed.contains(c.getId()))
-            .filter(c -> c.getDocType() == candidate.getDocType())
+            // Not narrowed by doc type: a type correction may have moved the component since.
             .filter(c -> normalizeText(c.getContent()).equals(content))
             .toList();
         if (sameDiagram.size() <= 1) return sameDiagram.stream().findFirst();
@@ -303,23 +353,23 @@ public class TraceComponentService {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ");
     }
 
-    public TraceComponentSummaryDTO toSummary(TraceComponent c) {
-        ArtifactKind kind = c.getArtifactKind() != null ? c.getArtifactKind() : ArtifactKind.UNSPECIFIED;
-        String code = ComponentCodeHelper.resolveDisplayCode(c.getCodeName(), c.getName(), c.getContent());
+    private TraceComponentSummaryDTO withDisplayFields(TraceComponentSummaryDTO c) {
+        ArtifactKind kind = c.artifactKind() != null ? c.artifactKind() : ArtifactKind.UNSPECIFIED;
+        String code = ComponentCodeHelper.resolveDisplayCode(c.codeName(), c.name(), c.content());
         return new TraceComponentSummaryDTO(
-            c.getId(),
-            c.getDocType(),
+            c.id(),
+            c.docType(),
             kind,
-            c.getName(),
-            c.getContent(),
+            c.name(),
+            c.content(),
             code,
-            c.getAiExtracted(),
-            c.getSourceHistoryId(),
-            c.getSourceType(),
-            c.getSourceRef(),
-            c.getSourceUrl(),
-            c.getSourceCapturedAt(),
-            c.getCreatedAt()
+            c.aiExtracted(),
+            c.sourceHistoryId(),
+            c.sourceType(),
+            c.sourceRef(),
+            c.sourceUrl(),
+            c.sourceCapturedAt(),
+            c.createdAt()
         );
     }
 

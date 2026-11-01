@@ -36,6 +36,12 @@ public class ProgressEmitter {
         emitter.onError(e       -> emitters.remove(sessionId));
 
         emitters.put(sessionId, emitter);
+        try {
+            // Commits the response, so the client's onopen proves this emitter is registered.
+            emitter.send(SseEmitter.event().comment("connected"));
+        } catch (IOException | IllegalStateException e) {
+            log.debug("Could not open SSE stream for sessionId={}: {}", sessionId, e.getMessage());
+        }
         log.debug("SSE emitter registered for sessionId={}", sessionId);
         return emitter;
     }

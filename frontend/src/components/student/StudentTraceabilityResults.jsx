@@ -1,3 +1,4 @@
+import { CircleAlert } from 'lucide-react';
 import { useState } from 'react';
 import TraceabilityResults from '../../synctrace/components/common/TraceabilityResults';
 import ComponentDetailModal from '../../synctrace/components/teacher/ComponentDetailModal';
@@ -32,14 +33,6 @@ function StudentTraceabilityResults({ teamCode }) {
     <section className="card student-traceability-card">
       <ToastMessage toast={toast} onClose={hideToast} />
       <div className="student-section-heading">
-        <div>
-          <h2 className="card__title">Traceability Results</h2>
-          <p className="student-section-heading__subtitle">
-            {teamCode
-              ? `Coverage for ${teamCode} across SMART goals, documents, and implementation.`
-              : 'Traceability coverage will appear after your team is connected.'}
-          </p>
-        </div>
         <div className="student-section-heading__actions">
           <button
             className="btn btn--soft student-results__ai"
@@ -69,7 +62,6 @@ function StudentTraceabilityResults({ teamCode }) {
       {!teamCode ? (
         <div className="student-traceability-locked">
           <h3 className="student-empty__title">No team connected</h3>
-          <p className="student-empty__text">Traceability results will appear here once your team is connected.</p>
         </div>
       ) : (
         <>
@@ -103,7 +95,7 @@ function StudentTraceabilityResults({ teamCode }) {
 
           <div className="tp-summary student-traceability-summary">
             <div className="tp-summary__text">
-              {metrics.missingCells} traceability gap{metrics.missingCells !== 1 ? 's' : ''} remain across {rows.length} goal{rows.length !== 1 ? 's' : ''}.
+              <CircleAlert size={15} aria-hidden="true" /> {metrics.missingCells} gap{metrics.missingCells !== 1 ? 's' : ''} · {rows.length} goal{rows.length !== 1 ? 's' : ''}
             </div>
           </div>
 

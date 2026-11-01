@@ -308,3 +308,17 @@
     flex-direction: column;
   }
 }
+
+.info-hint {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 0.2rem;
+  color: var(--text-muted);
+  cursor: help;
+  border-radius: 50%;
+}
+
+.info-hint:hover,
+.info-hint:focus-visible {
+  color: var(--brand);
+}

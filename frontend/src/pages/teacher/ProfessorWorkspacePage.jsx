@@ -1,4 +1,5 @@
 /* eslint-disable react/prop-types */
+import InfoHint from '../../components/common/InfoHint';
 import { useEffect, useState } from 'react';
 import AppModal from '../../components/common/AppModal';
 import PanelHeader from '../../components/common/PanelHeader';
@@ -359,7 +360,6 @@ export default function ProfessorWorkspacePage() {
 
       <PanelHeader
         title="Configure AI Logic"
-        subtitle="Configure evaluation behavior, templates, and render settings"
       />
 
       {/* ── Section Nav ──────────────────────────────────────────────────── */}
@@ -382,11 +382,7 @@ export default function ProfessorWorkspacePage() {
         <section className="pw-card">
           <div className="pw-card__header-row">
             <div>
-              <h3 className="pw-card__title">Class Context Profile</h3>
-              <p className="pw-muted">
-                Describe the current class — their tools, semester stage, and common weaknesses.
-                This paragraph is injected into every evaluation so the AI understands the academic context.
-              </p>
+              <h3 className="pw-card__title">Class Context Profile <InfoHint text="Describe the current class: tools, semester stage, and common weaknesses. Injected into every evaluation so the AI understands the academic context." /></h3>
             </div>
             <button className="pw-btn pw-btn--primary" onClick={() => config.saveClassContext(contextDraft)}>
               Save Context
@@ -407,11 +403,7 @@ export default function ProfessorWorkspacePage() {
       ════════════════════════════════════════════════════════════════════ */}
       {activeSection === 'docprofiles' && (
         <section className="pw-card">
-          <h3 className="pw-card__title">Document Type Profiles</h3>
-          <p className="pw-muted">
-            Override the default rubric and diagram analysis instructions per document type.
-            Leave blank to use the hardcoded defaults.
-          </p>
+          <h3 className="pw-card__title">Document Type Profiles <InfoHint text="Override the rubric and diagram analysis per document type. Leave blank to use the defaults." /></h3>
 
           <div className="pw-tabs">
             {DOC_TYPES.map((dt) => {
@@ -478,12 +470,7 @@ export default function ProfessorWorkspacePage() {
       ════════════════════════════════════════════════════════════════════ */}
       {activeSection === 'steps' && (
         <section className="pw-card">
-          <h3 className="pw-card__title">Prompt Steps</h3>
-          <p className="pw-muted">
-            Override the evaluation framework steps globally or per-document-type.
-            Resolution order: Per-doc-type override → Global override → Hardcoded default.
-            Steps 2 (Diagram) and 3 (Rubric) are managed in the Document Profiles tab.
-          </p>
+          <h3 className="pw-card__title">Prompt Steps <InfoHint text="Resolution order: per-document override → global override → default. Steps 2 (Diagram) and 3 (Rubric) are managed in Document Profiles." /></h3>
 
           {/* ── Sub-tabs: Global vs per-doc-type ── */}
           <div className="pw-tabs" style={{ marginBottom: '1rem' }}>
@@ -553,8 +540,7 @@ export default function ProfessorWorkspacePage() {
               {DOC_TYPES.includes(activeStepDocType) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   <p className="pw-muted" style={{ margin: '0 0 0.5rem' }}>
-                    These override the global step settings specifically for <strong>{activeStepDocType}</strong> documents.
-                    Leave blank to fall through to the global override (or hardcoded default).
+                    {activeStepDocType} overrides <InfoHint text="Leave blank to fall through to the global override or the default." />
                   </p>
                   {STEP_DEFINITIONS.map(({ key, label, description }) => {
                     const cardKey    = `${activeStepDocType}_${key}`;
@@ -623,11 +609,7 @@ export default function ProfessorWorkspacePage() {
       ════════════════════════════════════════════════════════════════════ */}
       {activeSection === 'templates' && (
         <section className="pw-card">
-          <h3 className="pw-card__title">Prompt Template Library</h3>
-          <p className="pw-muted">
-            Named reusable instruction sets. Select a template in the Analyze modal to populate
-            the Professor Directives field.
-          </p>
+          <h3 className="pw-card__title">Prompt Template Library <InfoHint text="Reusable instruction sets. Pick one in the Analyze modal to fill in Professor Directives." /></h3>
 
           {config.promptTemplates.length > 0 ? (
             <div className="pw-template-list">
@@ -693,8 +675,7 @@ export default function ProfessorWorkspacePage() {
         <section className="pw-card">
           <div className="pw-card__header-row">
             <div>
-              <h3 className="pw-card__title">Render Settings</h3>
-              <p className="pw-muted">Controls how PDF pages are rendered before being sent to the AI model.</p>
+              <h3 className="pw-card__title">Render Settings <InfoHint text="How PDF pages are rendered before being sent to the AI model." /></h3>
             </div>
             <button className="pw-btn pw-btn--primary" onClick={handleSaveRenderSettings} disabled={savingRender}>
               {savingRender ? 'Saving...' : 'Save Render Settings'}
@@ -703,13 +684,11 @@ export default function ProfessorWorkspacePage() {
 
           <div className="pw-render-grid">
             <div className="pw-field">
-              <label className="pw-label">Render DPI</label>
-              <span className="pw-hint">Recommended range: 150–300. Higher DPI improves diagram clarity.</span>
+              <label className="pw-label">Render DPI <InfoHint text="Recommended: 150–300. Higher DPI improves diagram clarity." /></label>
               <input className="pw-input" type="number" min="72" max="600" value={renderDpi} onChange={(e) => setRenderDpi(e.target.value)} />
             </div>
             <div className="pw-field">
-              <label className="pw-label">JPEG Quality</label>
-              <span className="pw-hint">Range: 0.5–1.0. Values below 0.80 may introduce artifacts.</span>
+              <label className="pw-label">JPEG Quality <InfoHint text="Range: 0.5–1.0. Values below 0.80 may introduce artifacts." /></label>
               <input className="pw-input" type="number" min="0.5" max="1.0" step="0.05" value={renderQuality} onChange={(e) => setRenderQuality(e.target.value)} />
             </div>
             <div className="pw-field">
@@ -739,9 +718,6 @@ export default function ProfessorWorkspacePage() {
           title={`System Defaults for ${activeDocType}`}
         >
           <div style={{ padding: '1rem', maxWidth: '800px' }}>
-            <p className="pw-muted" style={{ marginBottom: '1rem' }}>
-              These are the hardcoded system defaults. You can reference them or apply the whole template to your editor.
-            </p>
             <div className="pw-field">
               <label className="pw-label">Default Rubric Section</label>
               <textarea className="pw-textarea" readOnly rows={6} value={systemDefaults[activeDocType].rubricSection} style={{ backgroundColor: 'var(--bg-secondary)', cursor: 'text' }} />
