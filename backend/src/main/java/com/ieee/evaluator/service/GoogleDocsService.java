@@ -1,6 +1,6 @@
 package com.ieee.evaluator.service;
 
-import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.ByteArrayContent;
 import com.google.api.services.drive.Drive;
@@ -32,15 +32,15 @@ public class GoogleDocsService {
 
     private final Drive driveService;
     private final PdfImageExtractor pdfImageExtractor;
-    private final Credential driveOAuthCredential;
+    private final GoogleCredential googleCredential;
 
     public GoogleDocsService(
             Drive driveService,
             PdfImageExtractor pdfImageExtractor,
-            @Qualifier("driveOAuthCredential") Credential driveOAuthCredential) {
+            @Qualifier("googleCredential") GoogleCredential googleCredential) {
         this.driveService      = driveService;
         this.pdfImageExtractor = pdfImageExtractor;
-        this.driveOAuthCredential = driveOAuthCredential;
+        this.googleCredential  = googleCredential;
     }
 
     public record DocumentData(String text, List<String> images) {}
@@ -174,18 +174,17 @@ public class GoogleDocsService {
 
     /**
      * Downloads a binary file (DOCX, plain text) using a direct HTTP request
-     * with the Drive OAuth Bearer token — the same identity driveService uses —
-     * so any file the metadata lookup can see can also be downloaded. This works
-     * for files shared as "Anyone with the link" where the Drive API media
-     * download (.setAlt("media")) returns 403.
+     * with the service-account Bearer token. This works for files shared as
+     * "Anyone with the link" where the Drive API media download (.setAlt("media"))
+     * returns 403.
      */
     private byte[] downloadBlobBytesViaHttp(String fileId) throws Exception {
-        if (driveOAuthCredential.getAccessToken() == null ||
-            driveOAuthCredential.getExpiresInSeconds() != null &&
-            driveOAuthCredential.getExpiresInSeconds() <= 60) {
-            driveOAuthCredential.refreshToken();
+        if (googleCredential.getAccessToken() == null ||
+            googleCredential.getExpiresInSeconds() != null &&
+            googleCredential.getExpiresInSeconds() <= 60) {
+            googleCredential.refreshToken();
         }
-        String accessToken = driveOAuthCredential.getAccessToken();
+        String accessToken = googleCredential.getAccessToken();
 
         String downloadUrl = "https://www.googleapis.com/drive/v3/files/"
                 + fileId + "?alt=media";
@@ -261,22 +260,6 @@ public class GoogleDocsService {
     }
 
     private Exception toFriendlyDriveException(GoogleJsonResponseException e) {
-        String reason = e.getDetails() != null && e.getDetails().getErrors() != null
-                && !e.getDetails().getErrors().isEmpty()
-                ? e.getDetails().getErrors().get(0).getReason() : null;
-        log.warn("Drive API error code={} reason={} message={}",
-                e.getStatusCode(), reason, e.getDetails() != null ? e.getDetails().getMessage() : e.getMessage());
-
-        // Scope problems are not sharing problems — don't blame the student's file.
-        if ("insufficientPermissions".equals(reason) || "ACCESS_TOKEN_SCOPE_INSUFFICIENT".equals(reason)
-                || (e.getDetails() != null && e.getDetails().getMessage() != null
-                    && e.getDetails().getMessage().toLowerCase().contains("insufficient authentication scopes"))) {
-            return new Exception(
-                "DRIVE SCOPE ERROR: The server's Google OAuth token cannot create files in Drive " +
-                "(needed to convert DOCX). Regenerate GOOGLE_REFRESH_TOKEN with the " +
-                "'https://www.googleapis.com/auth/drive' scope and restart the backend."
-            );
-        }
         if (e.getStatusCode() == 403) {
             return new Exception(
                 "PERMISSION DENIED: The file is not accessible. " +

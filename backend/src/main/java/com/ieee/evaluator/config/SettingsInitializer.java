@@ -3,7 +3,6 @@ package com.ieee.evaluator.config;
 import com.ieee.evaluator.model.SystemSetting;
 import com.ieee.evaluator.repository.SystemSettingRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -14,13 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class SettingsInitializer {
 
     private final SystemSettingRepository repository;
-    private final String spreadsheetId;
 
-    public SettingsInitializer(
-            SystemSettingRepository repository,
-            @Value("${app.google.spreadsheet-id:}") String spreadsheetId) {
+    public SettingsInitializer(SystemSettingRepository repository) {
         this.repository = repository;
-        this.spreadsheetId = spreadsheetId;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -29,11 +24,7 @@ public class SettingsInitializer {
         log.info("Checking for required system settings...");
         
         // Google Sheets configuration
-        // Sign-in reads app.google.spreadsheet-id directly, so submissions must follow the same
-        // sheet. When it isn't set, keep the stored value (StartupConfigValidator warns about it).
-        if (spreadsheetId != null && !spreadsheetId.isBlank()) {
-            upsertSetting("GOOGLE_SHEET_ID", spreadsheetId.trim(), "GENERAL", "Google Sheet ID for submission tracking");
-        }
+        upsertSetting("GOOGLE_SHEET_ID", "1XXScbjk6pj7YRlTb4tOEVZ84Os4tlseZkk8GHbUQ9oQ", "GENERAL", "Google Sheet ID for submission tracking");
         upsertSetting("GOOGLE_RESPONSES_RANGE", "Submissions!A2:K", "GENERAL", "Range for form responses");
         
         // Column indices
