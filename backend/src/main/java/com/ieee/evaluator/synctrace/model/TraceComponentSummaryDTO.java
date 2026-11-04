@@ -15,6 +15,7 @@ public record TraceComponentSummaryDTO(
     String sourceType,
     String sourceRef,
     String sourceUrl,
+    Boolean sourceRemoved,
     LocalDateTime sourceCapturedAt,
     LocalDateTime createdAt
 ) {}

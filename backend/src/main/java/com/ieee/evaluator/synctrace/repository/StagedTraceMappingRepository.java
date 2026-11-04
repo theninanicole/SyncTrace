@@ -13,6 +13,10 @@ import java.util.List;
 public interface StagedTraceMappingRepository extends JpaRepository<StagedTraceMapping, Long> {
     List<StagedTraceMapping> findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(String teamCode);
 
+    long countByTargetIdIn(List<Long> componentIds);
+
+    long countBySourceIdInAndStageNot(List<Long> componentIds, String excludedStage);
+
     /** Component ids appear as targets in every stage and as sources in every stage but PROPOSAL_SRS. */
     @Modifying
     @Query("DELETE FROM StagedTraceMapping m WHERE m.targetId = :componentId "

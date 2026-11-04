@@ -24,7 +24,7 @@ public class SettingsInitializer {
         log.info("Checking for required system settings...");
         
         // Google Sheets configuration
-        upsertSetting("GOOGLE_SHEET_ID", "1F9HXKrystxcuKoknr6upzRzbe0QnoyQ7tzonPhCRhtc", "GENERAL", "Google Sheet ID for submission tracking");
+        upsertSetting("GOOGLE_SHEET_ID", "1XXScbjk6pj7YRlTb4tOEVZ84Os4tlseZkk8GHbUQ9oQ", "GENERAL", "Google Sheet ID for submission tracking");
         upsertSetting("GOOGLE_RESPONSES_RANGE", "Submissions!A2:K", "GENERAL", "Range for form responses");
         
         // Column indices

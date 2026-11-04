@@ -40,9 +40,6 @@ function TraceabilityResultsPage({ onNavigate }) {
 
       <PanelHeader
         title="Traceability Results"
-        subtitle={selectedTeam
-          ? `Traceability coverage for ${selectedTeam}`
-          : 'Traceability coverage across SMART goals and project artifacts'}
         actions={
           <div className="teacher-header-actions">
             <button

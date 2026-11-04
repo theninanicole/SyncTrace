@@ -116,8 +116,7 @@ function SmartGoalPanel({
     if (!smartGoalsExtracted) {
       return (
         <div className="stm-column-empty">
-          <p>No SMART Goals available yet.</p>
-          <p className="tm-muted">Extract the structured General and Specific objectives from the evaluated proposal to begin Proposal → SRS mapping.</p>
+          <p>No SMART goals yet</p>
           {!readOnly && <button className="btn btn--primary" onClick={onExtractClick}>Extract SMART Goals</button>}
         </div>
       );
@@ -126,7 +125,7 @@ function SmartGoalPanel({
     if (clusters.length === 0) {
       return (
         <div className="stm-column-empty">
-          <p>The proposal did not yield any SMART goals.</p>
+          <p>No SMART goals found</p>
           {!readOnly && <button className="btn btn--soft" onClick={onExtractClick}>Re-extract SMART Goals</button>}
         </div>
       );

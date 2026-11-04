@@ -137,10 +137,11 @@ function TraceabilityMatrix({
                                   type="button"
                                   className={`trm-chip ${col.key === 'IMPLEMENTATION' ? 'trm-chip--impl' : 'trm-chip--doc'}`}
                                   onClick={() => onComponentClick?.(c)}
-                                  title={c.name || label}
+                                  title={`${c.name || label}${c.sourceRemoved ? ' (Source removed)' : ''}`}
                                 >
                                   {col.key === 'IMPLEMENTATION' && <Link2 size={12} />}
                                   <span className="trm-chip__label">{label}</span>
+                                  {c.sourceRemoved && <span className="trm-chip__source-removed">Source removed</span>}
                                 </button>
                                 {i < components.length - 1 && <span className="trm-chip-sep" aria-hidden="true">,</span>}
                               </span>

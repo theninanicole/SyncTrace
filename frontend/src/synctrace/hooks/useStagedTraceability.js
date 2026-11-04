@@ -17,7 +17,7 @@ import {
   syncStagedMappings,
 } from '../api';
 import { notifyMappingsChanged, useMappingsChangedRefresh } from '../utils/mappingEvents';
-import { getEvaluationHistory } from '../../api';
+import { API_BASE_URL, getEvaluationHistory } from '../../api';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
 import { readSmartGoals } from '../../utils/smartGoalsSection';
 import {
@@ -101,6 +101,30 @@ function computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage 
 }
 
 /**
+ * Opens the extraction's progress stream. Resolves once the stream is connected, so no event
+ * is lost to the extraction finishing first; a stream that cannot connect only costs the live
+ * updates, never the extraction itself.
+ */
+function openProgressStream(sessionId, onProgress) {
+  const es = new EventSource(`${API_BASE_URL}/ai/progress/${sessionId}`);
+  es.addEventListener('progress', (e) => {
+    try {
+      onProgress(JSON.parse(e.data));
+    } catch { /* ignore parse errors */ }
+  });
+  es.addEventListener('done', () => es.close());
+  return new Promise((resolve) => {
+    const connected = () => resolve(es);
+    es.onopen = connected;
+    es.onerror = () => {
+      es.close();
+      connected();
+    };
+    setTimeout(connected, 2000);
+  });
+}
+
+/**
  * Staged traceability workspace. SMART goals, components and the source-to-target
  * mapping chain are all shared, backend-persisted data for the team; saveMapping()
  * publishes the chain to the goal-to-component links the results read.
@@ -117,6 +141,7 @@ export function useStagedTraceability(showToast, teamCode) {
   const [components, setComponents] = useState(emptyComponentLibrary);
   const [loadingComponents, setLoadingComponents] = useState(false);
   const [extractingComponents, setExtractingComponents] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState(null); // { message, percent } while extracting
 
   const [mappings, setMappings] = useState([]);
   const [mappingsLoaded, setMappingsLoaded] = useState(false);
@@ -387,6 +412,26 @@ export function useStagedTraceability(showToast, teamCode) {
     }
   }
 
+  function deselectComponent(componentId) {
+    if (selectedSourceId === componentId) setSelectedSourceId(null);
+    if (selectedTargetIds.has(componentId)) {
+      setSelectedTargetIds((prev) => {
+        const next = new Set(prev);
+        next.delete(componentId);
+        return next;
+      });
+    }
+  }
+
+  // A type change can move the component to another library and drop its mappings.
+  function handleComponentUpdated(updated) {
+    const stillInLibrary = components[updated.docType]?.some((c) => c.id === updated.id);
+    if (!stillInLibrary) deselectComponent(updated.id);
+    loadComponents();
+    loadMappings();
+    notifyMappingsChanged(teamCode);
+  }
+
   async function removeComponent(docType, componentId) {
     try {
       await deleteTraceComponent(componentId);
@@ -397,16 +442,10 @@ export function useStagedTraceability(showToast, teamCode) {
       // The server drops the component's links from the shared chain along with it.
       setMappings((prev) => prev.filter((m) => !referencesComponent(m, componentId)));
       notifyMappingsChanged(teamCode);
-      if (selectedSourceId === componentId) setSelectedSourceId(null);
-      if (selectedTargetIds.has(componentId)) {
-        setSelectedTargetIds((prev) => {
-          const next = new Set(prev);
-          next.delete(componentId);
-          return next;
-        });
-      }
+      deselectComponent(componentId);
+      showToast?.('Component deleted.', 'success');
     } catch (err) {
-      showToast?.(err.message || 'Failed to remove component.', 'error');
+      showToast?.(err.message || 'Failed to delete component.', 'error');
     }
   }
 
@@ -512,18 +551,30 @@ export function useStagedTraceability(showToast, teamCode) {
   async function extractComponents(historyIds) {
     if (!historyIds || historyIds.length === 0) return false;
     setExtractingComponents(true);
+    setExtractionProgress({ message: 'Starting extraction…', percent: 0 });
     setLastError(null);
     try {
       let totalFound = 0;
       let failed = 0;
-      for (const historyId of historyIds) {
+      for (const [index, historyId] of historyIds.entries()) {
+        const prefix = historyIds.length > 1 ? `Document ${index + 1} of ${historyIds.length} · ` : '';
+        const sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+        const es = await openProgressStream(sessionId, ({ message, percent }) => {
+          setExtractionProgress({
+            message: `${prefix}${message}`,
+            percent: Math.round(((index + percent / 100) / historyIds.length) * 100),
+          });
+        });
         try {
-          const result = await extractTraceComponents(historyId);
+          const result = await extractTraceComponents(historyId, sessionId);
           totalFound += result.count || 0;
         } catch {
           failed += 1;
+        } finally {
+          es.close();
         }
       }
+      setExtractionProgress({ message: 'Updating the component library…', percent: 100 });
       await loadComponents();
 
       if (failed === 0) {
@@ -541,6 +592,7 @@ export function useStagedTraceability(showToast, teamCode) {
       return false;
     } finally {
       setExtractingComponents(false);
+      setExtractionProgress(null);
     }
   }
 
@@ -552,7 +604,8 @@ export function useStagedTraceability(showToast, teamCode) {
         (data.description || '').trim() || data.name.trim(),
         data.type,
         (data.codeName || '').trim() || undefined,
-        data.imageData || undefined
+        data.imageData || undefined,
+        teamCode
       );
       await loadComponents();
       showToast?.(`${created.name} added to the ${docType} library.`, 'success');
@@ -630,10 +683,11 @@ export function useStagedTraceability(showToast, teamCode) {
     components,
     loadingComponents,
     extractingComponents,
+    extractionProgress,
     extractComponents,
     addComponent,
     removeComponent,
-    refreshComponents: loadComponents,
+    handleComponentUpdated,
 
     sourceItems,
     targetItems,

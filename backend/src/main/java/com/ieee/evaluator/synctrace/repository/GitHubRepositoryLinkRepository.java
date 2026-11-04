@@ -13,4 +13,8 @@ public interface GitHubRepositoryLinkRepository extends JpaRepository<GitHubRepo
     Optional<GitHubRepositoryLink> findByOwnerAndRepo(String owner, String repo);
 
     List<GitHubRepositoryLink> findAllByOrderByCreatedAtDesc();
+
+    List<GitHubRepositoryLink> findAllByActiveTrueOrderByCreatedAtDesc();
+
+    List<GitHubRepositoryLink> findAllByTeamCodeIgnoreCaseAndActiveTrueOrderByCreatedAtDesc(String teamCode);
 }

@@ -26,11 +26,26 @@ public class GitHubRepositoryLink {
     @Column(name = "repository_url", nullable = false, length = 600)
     private String repositoryUrl;
 
+    @Column(name = "team_code", length = 120)
+    private String teamCode;
+
+    @Column(name = "role", length = 20)
+    private String role = "OTHER";
+
     @Column(name = "default_branch", nullable = false)
     private String defaultBranch;
 
     @Column(nullable = false)
     private Boolean active = true;
+
+    @Column(name = "ingestion_status", length = 20)
+    private String ingestionStatus = "NOT_INGESTED";
+
+    @Column(name = "ingested_file_count")
+    private Integer ingestedFileCount = 0;
+
+    @Column(name = "last_ingest_error", columnDefinition = "TEXT")
+    private String lastIngestError;
 
     @Column(name = "last_ingested_at")
     private LocalDateTime lastIngestedAt;
@@ -52,6 +67,15 @@ public class GitHubRepositoryLink {
         }
         if (active == null) {
             active = true;
+        }
+        if (role == null || role.isBlank()) {
+            role = "OTHER";
+        }
+        if (ingestionStatus == null || ingestionStatus.isBlank()) {
+            ingestionStatus = "NOT_INGESTED";
+        }
+        if (ingestedFileCount == null) {
+            ingestedFileCount = 0;
         }
     }
 

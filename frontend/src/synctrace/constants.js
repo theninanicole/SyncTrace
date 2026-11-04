@@ -34,20 +34,15 @@ export const COMPONENT_DOC_TYPES = ['SRS', 'SDD', 'SPMP', 'STD', 'IMPLEMENTATION
 
 export const ARTIFACT_KINDS_BY_DOC_TYPE = {
   SRS: [
-    { value: 'USE_CASE', label: 'Use Case' },
+    { value: 'USE_CASE', label: 'Use Case Diagram' },
     { value: 'ACTIVITY', label: 'Activity Diagram' },
-    { value: 'WIREFRAME', label: 'Wireframe / UI Mockup' },
-    { value: 'CONTEXT_DIAGRAM', label: 'Context Diagram' },
-    { value: 'DATA_FLOW', label: 'Data Flow Diagram' },
-    { value: 'OTHER_SRS', label: 'Other SRS Artifact' },
+    { value: 'WIREFRAME', label: 'Wireframe' },
   ],
   SDD: [
-    { value: 'CLASS', label: 'Class Diagram' },
     { value: 'SEQUENCE', label: 'Sequence Diagram' },
+    { value: 'CLASS', label: 'Class Diagram' },
     { value: 'UI', label: 'UI Design' },
-    { value: 'DATA_MODEL', label: 'Data Design (ERD / Schema)' },
-    { value: 'NON_OO', label: 'Non-OO Component (Flowchart / Pseudocode)' },
-    { value: 'OTHER_SDD', label: 'Other SDD Artifact' },
+    { value: 'DATA_MODEL', label: 'Data Design / ERD' },
   ],
   SPMP: [
     { value: 'TASK', label: 'Task' },

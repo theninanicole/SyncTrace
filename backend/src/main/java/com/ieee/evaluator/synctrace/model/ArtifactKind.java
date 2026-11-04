@@ -61,11 +61,21 @@ public enum ArtifactKind {
         };
     }
 
+    /**
+     * No longer a valid artifact, so never offered, assigned or extracted. Rows saved before
+     * the list was narrowed still hold these values, so they must stay in the enum to load.
+     */
+    public boolean isRetired() {
+        return switch (this) {
+            case CONTEXT_DIAGRAM, DATA_FLOW, OTHER_SRS, NON_OO, OTHER_SDD -> true;
+            default -> false;
+        };
+    }
+
     public static ArtifactKind defaultFor(TraceComponent.DocType docType) {
         if (docType == null) return UNSPECIFIED;
         return switch (docType) {
-            case SRS -> OTHER_SRS;
-            case SDD -> OTHER_SDD;
+            case SRS, SDD -> UNSPECIFIED;
             case SPMP -> OTHER_SPMP;
             case STD -> OTHER_STD;
             case IMPLEMENTATION -> OTHER_IMPLEMENTATION;

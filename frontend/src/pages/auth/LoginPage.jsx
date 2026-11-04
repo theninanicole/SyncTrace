@@ -1,3 +1,4 @@
+import { Check, ShieldCheck, Zap } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import loginBackground from '../../assets/CIT-U.jpeg';
 import appLogo from '../../assets/logo.png';
@@ -38,20 +39,17 @@ function Login({ authError }) {
 
           <div className="hero-text-container">
             <h1 className="hero-title">IEEE 1058 Standard Compliant</h1>
-            <p className="hero-subtitle">
-              Evaluate and validate your software project documentation against the IEEE 1058 standard. Get instant compliance feedback and detailed reports.
-            </p>
 
             <div className="features-grid">
               <div className="feature-card">
-                <div className="feature-icon">01</div>
+                <div className="feature-icon"><Zap size={18} aria-hidden="true" /></div>
                 <div>
                   <div className="feature-title">Fast Access</div>
                   <div className="feature-desc">Quick sign-in process</div>
                 </div>
               </div>
               <div className="feature-card">
-                <div className="feature-icon">02</div>
+                <div className="feature-icon"><ShieldCheck size={18} aria-hidden="true" /></div>
                 <div>
                   <div className="feature-title">Secure</div>
                   <div className="feature-desc">Protected by Google</div>
@@ -110,22 +108,18 @@ function Login({ authError }) {
 
           <ul className="benefits-list">
             <li>
-              <span className="benefit-icon purple">01</span>
+              <span className="benefit-icon purple"><Check size={14} aria-hidden="true" /></span>
               Google-verified secure authentication
             </li>
             <li>
-              <span className="benefit-icon pink">02</span>
+              <span className="benefit-icon pink"><Check size={14} aria-hidden="true" /></span>
               Access all features instantly
             </li>
             <li>
-              <span className="benefit-icon orange">03</span>
+              <span className="benefit-icon orange"><Check size={14} aria-hidden="true" /></span>
               Your data is encrypted and protected
             </li>
           </ul>
-
-          <p className="terms-text">
-            Sign in with your verified Google account to access your IEEE Docs Evaluator workspace.
-          </p>
         </div>
       </div>
     </div>

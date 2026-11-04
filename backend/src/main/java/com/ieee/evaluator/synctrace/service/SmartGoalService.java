@@ -406,6 +406,7 @@ public class SmartGoalService {
             c.getSourceType(),
             c.getSourceRef(),
             c.getSourceUrl(),
+            c.getSourceRemoved(),
             c.getSourceCapturedAt(),
             c.getCreatedAt()
         );

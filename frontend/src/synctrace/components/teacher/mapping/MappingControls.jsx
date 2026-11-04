@@ -97,7 +97,7 @@ function MappingControls({
           </div>
           {isProposalStage && coverage.total > 0 && (
             <p className={`stm-coverage__note ${coverage.percent >= 90 ? 'stm-coverage__note--ok' : ''}`}>
-              {coverage.percent >= 90 ? 'Meets' : 'Below'} the 90% SMART goal coverage target.
+              {coverage.percent >= 90 ? 'Meets' : 'Below'} 90% target
             </p>
           )}
         </div>
@@ -110,7 +110,7 @@ function MappingControls({
             <>
               <span className="stm-controls__slot-value"><ItemLine item={selectedSource} /></span>
               {selectedSourceMappings.length === 0 ? (
-                <span className="stm-controls__slot-note">Not mapped yet — a potential traceability gap.</span>
+                <span className="stm-controls__slot-note">Not mapped</span>
               ) : (
                 <ul className="stm-controls__links">
                   {selectedSourceMappings.map((m) => (
@@ -125,7 +125,7 @@ function MappingControls({
             </>
           ) : (
             <span className="stm-controls__slot-value">
-              Select a {isProposalStage ? 'SMART goal' : 'source component'}
+              Select {isProposalStage ? 'a goal' : 'a source'}
             </span>
           )}
         </div>
@@ -148,18 +148,18 @@ function MappingControls({
               ))}
             </ul>
           ) : (
-            <span className="stm-controls__slot-value">Select one or more target components</span>
+            <span className="stm-controls__slot-value">Select targets</span>
           )}
         </div>
       </div>
 
       <button className="btn btn--primary stm-controls__establish" disabled={!canEstablish} onClick={onEstablish}>
-        {newTargetCount > 1 ? `Establish ${newTargetCount} Mappings` : 'Establish Mapping'}
+        {newTargetCount > 1 ? `Map ${newTargetCount}` : 'Map'}
       </button>
 
-      <div className="stm-controls__list-header">{stage.label} mappings ({mappingsForStage.length})</div>
+      <div className="stm-controls__list-header">Mappings ({mappingsForStage.length})</div>
       {groups.length === 0 ? (
-        <p className="tm-muted stm-controls__empty">No mappings yet for this stage.</p>
+        <p className="tm-muted stm-controls__empty">No mappings yet</p>
       ) : (
         <ul className="stm-controls__list">
           {groups.map(([sourceId, rows]) => (

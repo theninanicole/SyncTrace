@@ -145,7 +145,6 @@ function TeacherDashboardPage({ user, onOpenSyncTrace }) {
           <>
             <PanelHeader
               title="Live Submissions"
-              subtitle="Sourced directly from the Google Sheets tracker"
               actions={
                 <div className="teacher-header-actions">
                   <input
@@ -157,7 +156,7 @@ function TeacherDashboardPage({ user, onOpenSyncTrace }) {
                     aria-label="Search submissions"
                   />
                   <button className="btn btn--primary" onClick={vm.handleManualSync} disabled={vm.isSyncing}>
-                    {vm.isSyncing ? 'Fetching Updates...' : 'Sync Latest Submissions'}
+                    {vm.isSyncing ? 'Syncing...' : 'Sync'}
                   </button>
                 </div>
               }
@@ -192,7 +191,6 @@ function TeacherDashboardPage({ user, onOpenSyncTrace }) {
           <>
             <PanelHeader
               title="AI Evaluation History"
-              subtitle="Saved results from Supabase Database"
               actions={
                 <div className="teacher-header-actions">
                   <input
@@ -248,7 +246,6 @@ function TeacherDashboardPage({ user, onOpenSyncTrace }) {
           <>
             <PanelHeader
               title="System Settings"
-              subtitle="Manage API keys, tracker mappings, and submission columns"
             />
             <TeacherSettingsPanel
               settings={vm.settings}

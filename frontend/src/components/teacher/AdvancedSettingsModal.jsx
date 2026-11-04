@@ -107,7 +107,6 @@ export default function AdvancedSettingsModal({ settings = [], editedSettings = 
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         title="Advanced Settings"
-        subtitle="Retry behaviour and time limits for AI evaluation calls"
         footer={footer}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.25rem 0' }}>

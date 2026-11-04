@@ -1,3 +1,4 @@
+import { Eye, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { componentLabel } from '../../../constants';
 
@@ -14,6 +15,7 @@ function ComponentLibraryColumn({
   documentGroupsByItem,
   onSelect,
   onAdd,
+  onExtract,
   onPreview,
   onRemove,
   emptyHint,
@@ -46,7 +48,7 @@ function ComponentLibraryColumn({
   return (
     <div className="stm-column">
       <div className="stm-column__header">
-        <span>{heading}</span>
+        <span title={emptyHint}>{heading}</span>
         {onAdd && <button className="stm-mini-btn" onClick={onAdd}>Add</button>}
       </div>
 
@@ -65,9 +67,10 @@ function ComponentLibraryColumn({
         </div>
       ) : items.length === 0 ? (
         <div className="stm-column-empty">
-          <p>No {docType} components are currently available.</p>
-          <p className="tm-muted">{emptyHint}</p>
-          {onAdd && <button className="btn btn--soft" onClick={onAdd}>Add Component</button>}
+          <p>No {docType} components</p>
+          {onExtract
+            ? <button className="btn btn--primary" onClick={onExtract}>Extract Components</button>
+            : onAdd && <button className="btn btn--soft" onClick={onAdd}>Add Component</button>}
         </div>
       ) : filtered.length === 0 ? (
         <p className="tm-muted stm-column-noresults">No components match “{query}”.</p>
@@ -102,6 +105,7 @@ function ComponentLibraryColumn({
                           <span className="stm-component-card__name">{componentLabel(c)}</span>
                           {count > 0 && <span className="stm-mapped-count">{count}</span>}
                         </div>
+                        {c.sourceRemoved && <span className="stm-source-removed">Source removed</span>}
                         <span className="stm-component-card__type">
                           {c.type}
                           {isLinked && <span className="stm-component-card__linked"> · linked to selection</span>}
@@ -109,13 +113,21 @@ function ComponentLibraryColumn({
                       </button>
                       <div className="stm-component-card__actions">
                         {onPreview && (
-                          <button className="stm-mini-btn" onClick={() => onPreview(c)}>
-                            Preview
+                          <button className="stm-mini-btn stm-mini-btn--icon" title="Preview" aria-label={`Preview ${componentLabel(c)}`} onClick={() => onPreview(c)}>
+                            <Eye size={14} aria-hidden="true" />
                           </button>
                         )}
                         {onRemove && (
-                          <button className="stm-mini-btn" onClick={() => onRemove(c.id)}>
-                            Remove
+                          <button
+                            className="stm-mini-btn stm-mini-btn--danger stm-mini-btn--icon"
+                            title="Delete"
+                            aria-label={`Delete ${componentLabel(c)}`}
+                            onClick={() => {
+                              const links = count > 0 ? ` Its ${count} mapping(s) in this stage and any links in other stages will be removed too.` : '';
+                              if (window.confirm(`Delete ${componentLabel(c)}?${links} This cannot be undone.`)) onRemove(c.id);
+                            }}
+                          >
+                            <Trash2 size={14} aria-hidden="true" />
                           </button>
                         )}
                       </div>
