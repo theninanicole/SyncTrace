@@ -261,6 +261,14 @@
   white-space: nowrap;
 }
 
+.trm-chip__source-removed {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
 .trm-chip--doc:hover {
   border-color: color-mix(in srgb, var(--brand) 45%, var(--line-soft));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 35%, transparent);

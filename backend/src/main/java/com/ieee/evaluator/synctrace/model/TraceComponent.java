@@ -49,6 +49,9 @@ public class TraceComponent {
     @Column(name = "source_captured_at")
     private LocalDateTime sourceCapturedAt;
 
+    @Column(name = "source_removed")
+    private Boolean sourceRemoved = false;
+
     @Column(columnDefinition = "TEXT")
     private String imageData;
 

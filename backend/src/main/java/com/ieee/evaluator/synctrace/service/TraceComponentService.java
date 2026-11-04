@@ -368,6 +368,7 @@ public class TraceComponentService {
             c.sourceType(),
             c.sourceRef(),
             c.sourceUrl(),
+            c.sourceRemoved(),
             c.sourceCapturedAt(),
             c.createdAt()
         );

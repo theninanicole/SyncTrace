@@ -253,6 +253,7 @@ function ComponentDetailModal({ component, stage, onClose, onRenamed, showToast,
                     provenance.label
                   )}
                   {provenance.dateLabel && <span> &middot; {provenance.dateLabel}</span>}
+                  {merged.sourceRemoved && <span className="tm-source-removed"> · Source removed</span>}
                 </p>
               );
             })()}

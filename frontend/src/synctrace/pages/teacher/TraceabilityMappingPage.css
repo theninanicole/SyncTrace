@@ -1337,6 +1337,16 @@
   text-transform: none;
 }
 
+.stm-source-removed,
+.tm-source-removed {
+  display: inline-block;
+  margin-top: 0.25rem;
+  color: var(--danger-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
 /* ── Small text-only action buttons (no icons) ───────────────────────────── */
 
 .stm-mini-btn {

@@ -14,40 +14,48 @@ Add GitHub repository linking and implementation source ingestion with preproces
   - `sourceType`
   - `sourceRef`
   - `sourceUrl`
-  - `sourceHash`
   - `sourceCapturedAt`
 - Preserved existing `sourceHistoryId` and extraction flags for backward compatibility.
 
 ### GitHub repository linking
-- Added persistent GitHub repository link model and repository.
-- Added endpoints to list and link repositories.
-- Stores owner/repo/default branch and last ingestion timestamp.
+- Added team-scoped repository links with role labels, ingestion status, file count, last-ingested time, and failure reason.
+- Added link validation against GitHub, duplicate detection, role updates, and soft unlinking.
+- Unlinking retains implementation components and mappings while marking their source as removed.
+- Student operations are scoped to the student's own team.
 
 ### GitHub source ingestion
-- Added `GitHubSourceIngestionService`:
+- Added `GitHubIngestionService`:
   - Parses GitHub URLs.
   - Uses recursive tree traversal from GitHub API.
   - Fetches blob content for supported source files.
   - Applies preprocessing (comment stripping + whitespace normalization).
-  - Generates SHA-256 source hash.
+- Repository ingestion supports one repository or all linked repositories, with independent status and retry actions.
+- Repository-level failures roll back component changes so the last successful source snapshot remains available.
+- Empty repositories with no supported source files return a clear validation error.
 - Added ingestion endpoint to pull implementation components from a linked repository.
 
 ### Deduplication rules
-- Added dedup check via `sourceType + sourceHash` to skip duplicate implementation components across repeated ingests.
+- Repeated ingests update the existing team/file-path implementation component instead of adding a duplicate.
 
 ### Evaluation extraction provenance
 - Updated extraction flow to label sources as `EVALUATION_HISTORY`.
 - Added source ref/hash/captured timestamp for extracted components.
 
 ## API Additions
-- `GET /api/synctrace/github/repositories`
-- `POST /api/synctrace/github/repositories/link`
+- `GET /api/synctrace/github/repositories?teamCode=...`
+- `POST /api/synctrace/github/repositories` (also accepts the legacy `/link` path)
+- `PATCH /api/synctrace/github/repositories/{repositoryId}`
+- `GET /api/synctrace/github/repositories/{repositoryId}/impact`
+- `DELETE /api/synctrace/github/repositories/{repositoryId}`
 - `POST /api/synctrace/github/repositories/{repositoryId}/ingest`
+- `POST /api/synctrace/github/ingest` (single repository, all linked repositories, or legacy URL ingestion)
 
 ## Frontend API Module Updates
 - Added helper exports in `frontend/src/synctrace/api.js`:
   - `getLinkedGitHubRepositories`
   - `linkGitHubRepository`
+  - `updateGitHubRepositoryRole`
+  - `unlinkGitHubRepository`
   - `ingestGitHubRepository`
 
 ## Validation

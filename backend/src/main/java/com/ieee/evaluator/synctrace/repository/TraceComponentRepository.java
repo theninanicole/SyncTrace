@@ -19,7 +19,7 @@ public interface TraceComponentRepository extends JpaRepository<TraceComponent, 
     String SUMMARY_SELECT =
         "SELECT new com.ieee.evaluator.synctrace.model.TraceComponentSummaryDTO(" +
         "c.id, c.docType, c.artifactKind, c.name, c.content, c.codeName, c.aiExtracted, c.sourceHistoryId, " +
-        "c.sourceType, c.sourceRef, c.sourceUrl, c.sourceCapturedAt, c.createdAt) " +
+        "c.sourceType, c.sourceRef, c.sourceUrl, c.sourceRemoved, c.sourceCapturedAt, c.createdAt) " +
         "FROM TraceComponent c ";
 
     // An empty search matches everything.
@@ -62,4 +62,6 @@ public interface TraceComponentRepository extends JpaRepository<TraceComponent, 
         DocType docType, String name, String sourceRef);
     List<TraceComponent> findAllByDocTypeAndCodeNameIgnoreCase(DocType docType, String codeName);
     List<TraceComponent> findAllBySourceHistoryId(Long sourceHistoryId);
+
+    List<TraceComponent> findAllBySourceTypeAndSourceRefStartingWithIgnoreCase(String sourceType, String sourceRefPrefix);
 }

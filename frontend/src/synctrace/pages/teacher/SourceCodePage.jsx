@@ -1,11 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
 import { API_BASE_URL } from '../../../api';
-import { getTeamRepositories, ingestRepository, analyzeSourceCodeAlignment } from '../../api';
+import {
+  analyzeSourceCodeAlignment,
+  getGitHubRepositoryImpact,
+  getLinkedGitHubRepositories,
+  getTeamRepositories,
+  getTraceComponents,
+  ingestGitHubRepository,
+  linkGitHubRepository,
+  unlinkGitHubRepository,
+  updateGitHubRepositoryRole,
+} from '../../api';
 import { componentLabel } from '../../constants';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
+import LinkRepositoryDialog from '../../components/teacher/LinkRepositoryDialog';
+import RepositoryCard from '../../components/teacher/RepositoryCard';
+import UnlinkConfirmModal from '../../components/teacher/UnlinkConfirmModal';
 import '../../components/common/TeamSelect.css';
 import './SourceCodePage.css';
 import './TraceabilityMappingPage.css';
@@ -26,68 +39,114 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
   const [teams, setTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [loadingTeams, setLoadingTeams] = useState(true);
-  
+  const [repositories, setRepositories] = useState([]);
+  const [loadingRepositories, setLoadingRepositories] = useState(false);
+
   const [ingesting, setIngesting] = useState(false);
+  const [ingestingRepositoryId, setIngestingRepositoryId] = useState(null);
   const [ingestedComponents, setIngestedComponents] = useState([]);
   const [ingestionProgress, setIngestionProgress] = useState({ step: '', message: '', percent: 0 });
-  
+
   const [analyzing, setAnalyzing] = useState(false);
   const [findings, setFindings] = useState([]);
   const [alignmentProgress, setAlignmentProgress] = useState({ step: '', message: '', percent: 0 });
-  
-  const [githubUrl, setGithubUrl] = useState('');
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkingRepository, setLinkingRepository] = useState(false);
+  const [repositoryActionId, setRepositoryActionId] = useState(null);
+  const [unlinkTarget, setUnlinkTarget] = useState(null);
+  const [unlinkImpact, setUnlinkImpact] = useState(null);
+  const [loadingUnlinkImpact, setLoadingUnlinkImpact] = useState(false);
   const [previewComponent, setPreviewComponent] = useState(null);
 
-  useEffect(() => {
-    loadTeams();
-  }, []);
-
-  useEffect(() => {
-    if (selectedTeam && selectedTeam.githubUrl) {
-      setGithubUrl(selectedTeam.githubUrl);
-    }
-  }, [selectedTeam]);
-
-  async function loadTeams() {
+  const loadTeams = useCallback(async () => {
     setLoadingTeams(true);
     try {
       const data = await getTeamRepositories();
       if (isTeamLocked) {
-        // Latest form response for the team wins; fall back to a bare team entry so
-        // students without a registered repo can still paste a URL.
-        const ownRows = data.filter((t) => t.teamCode === lockedTeamCode);
+        const ownRows = data.filter((team) => team.teamCode === lockedTeamCode);
         const ownTeam = ownRows[ownRows.length - 1] || { teamCode: lockedTeamCode, githubUrl: '' };
         setTeams([ownTeam]);
         setSelectedTeam(ownTeam);
         return;
       }
       setTeams(data);
-      if (data.length > 0) {
-        setSelectedTeam(data[0]);
-      }
+      setSelectedTeam(data[0] || null);
     } catch (err) {
       if (isTeamLocked) {
         const ownTeam = { teamCode: lockedTeamCode, githubUrl: '' };
         setTeams([ownTeam]);
         setSelectedTeam(ownTeam);
       } else {
-        showToast?.(err.message, 'error');
+        showToast(err.message, 'error');
       }
     } finally {
       setLoadingTeams(false);
     }
+  }, [isTeamLocked, lockedTeamCode, showToast]);
+
+  useEffect(() => {
+    loadTeams();
+  }, [loadTeams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedTeam?.teamCode) {
+      setRepositories([]);
+      setIngestedComponents([]);
+      return () => { cancelled = true; };
+    }
+
+    setLoadingRepositories(true);
+    Promise.all([
+      getLinkedGitHubRepositories(selectedTeam.teamCode),
+      getTraceComponents('IMPLEMENTATION', '', selectedTeam.teamCode),
+    ])
+      .then(([linked, components]) => {
+        if (cancelled) return;
+        setRepositories(linked);
+        setIngestedComponents(
+          components.filter((component) =>
+            component.sourceType === 'GITHUB' && !component.sourceRemoved,
+          ),
+        );
+      })
+      .catch((err) => {
+        if (!cancelled) showToast(err.message, 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRepositories(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedTeam?.teamCode, showToast]);
+
+  async function refreshTeamData(teamCode = selectedTeam?.teamCode) {
+    if (!teamCode) return;
+    const [linked, components] = await Promise.all([
+      getLinkedGitHubRepositories(teamCode),
+      getTraceComponents('IMPLEMENTATION', '', teamCode),
+    ]);
+    setRepositories(linked);
+    setIngestedComponents(
+      components.filter((component) => component.sourceType === 'GITHUB' && !component.sourceRemoved),
+    );
   }
 
-  async function handleIngest() {
-    if (!selectedTeam || !githubUrl) {
-      showToast('Please select a team and enter a GitHub URL', 'error');
+  async function runIngestion({ repositoryId, all = false }) {
+    if (!selectedTeam) {
+      showToast('Please select a team', 'error');
       return;
     }
 
     const sessionId = generateSessionId();
     setIngesting(true);
+    setIngestingRepositoryId(repositoryId || null);
+    setRepositories((current) => current.map((repository) =>
+      all || repository.id === repositoryId
+        ? { ...repository, ingestionStatus: 'INGESTING', lastIngestError: null }
+        : repository,
+    ));
     setIngestionProgress({ step: 'RECEIVED', message: 'Starting ingestion...', percent: 0 });
-    setIngestedComponents([]);
 
     const es = new EventSource(`${API_BASE_URL}/ai/progress/${sessionId}`);
 
@@ -115,15 +174,104 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
     };
 
     try {
-      const data = await ingestRepository({ teamCode: selectedTeam.teamCode, githubUrl, sessionId });
-      setIngestedComponents(data.components || []);
-      showToast(`Ingested ${data.count} files`, 'success');
+      const data = await ingestGitHubRepository({
+        repositoryId,
+        all,
+        teamCode: selectedTeam.teamCode,
+        sessionId,
+      });
+      if (all) {
+        const succeeded = data.results.filter((result) => result.status === 'INGESTED').length;
+        const failed = data.results.length - succeeded;
+        showToast(
+          failed ? `Ingested ${succeeded} repository(s); ${failed} failed.`
+            : `Ingested ${succeeded} repository(s).`,
+          failed ? 'info' : 'success',
+        );
+      } else {
+        showToast(`Ingested ${data.count} files`, 'success');
+      }
       onProgressRefresh?.();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
+      try {
+        await refreshTeamData(selectedTeam.teamCode);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
       setIngesting(false);
+      setIngestingRepositoryId(null);
       es.close();
+    }
+  }
+
+  async function handleLinkRepository({ githubUrl, role }) {
+    if (!selectedTeam) return;
+    setLinkingRepository(true);
+    try {
+      await linkGitHubRepository({ teamCode: selectedTeam.teamCode, githubUrl, role });
+      setShowLinkDialog(false);
+      showToast('Repository linked successfully', 'success');
+      await refreshTeamData(selectedTeam.teamCode);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLinkingRepository(false);
+    }
+  }
+
+  async function handleRoleChange(repository, role) {
+    setRepositoryActionId(repository.id);
+    try {
+      const updated = await updateGitHubRepositoryRole({
+        repositoryId: repository.id,
+        teamCode: selectedTeam.teamCode,
+        role,
+      });
+      setRepositories((current) => current.map((item) => item.id === updated.id ? updated : item));
+      showToast('Repository role updated', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setRepositoryActionId(null);
+    }
+  }
+
+  async function handleUnlinkRequest(repository) {
+    setUnlinkTarget(repository);
+    setUnlinkImpact(null);
+    setLoadingUnlinkImpact(true);
+    try {
+      const impact = await getGitHubRepositoryImpact({
+        repositoryId: repository.id,
+        teamCode: selectedTeam.teamCode,
+      });
+      setUnlinkImpact(impact);
+    } catch (err) {
+      setUnlinkTarget(null);
+      showToast(err.message, 'error');
+    } finally {
+      setLoadingUnlinkImpact(false);
+    }
+  }
+
+  async function handleUnlinkConfirm() {
+    if (!unlinkTarget) return;
+    setRepositoryActionId(unlinkTarget.id);
+    try {
+      await unlinkGitHubRepository({
+        repositoryId: unlinkTarget.id,
+        teamCode: selectedTeam.teamCode,
+      });
+      setUnlinkTarget(null);
+      setUnlinkImpact(null);
+      showToast('Repository unlinked; existing components and mappings were preserved', 'success');
+      await refreshTeamData(selectedTeam.teamCode);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setRepositoryActionId(null);
     }
   }
 
@@ -232,24 +380,50 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
       )}
 
       <div className="sc-section sc-section--ingest">
-        <h3>GitHub Repository Ingestion</h3>
-        <div className="sc-input-row">
-          <input
-            type="text"
-            placeholder="https://github.com/owner/repo"
-            value={githubUrl}
-            onChange={(e) => setGithubUrl(e.target.value)}
-            disabled={ingesting}
-            className="sc-input"
-          />
-          <button
-            className="btn btn--primary"
-            onClick={handleIngest}
-            disabled={ingesting || !githubUrl}
-          >
-            {ingesting ? 'Ingesting...' : 'Ingest Repository'}
-          </button>
+        <div className="sc-section__header">
+          <h3>GitHub Repositories</h3>
+          <div className="sc-repository-toolbar">
+            {repositories.length > 0 && (
+              <button
+                type="button"
+                className="btn btn--soft"
+                onClick={() => runIngestion({ all: true })}
+                disabled={ingesting || loadingRepositories}
+              >
+                {ingesting && !ingestingRepositoryId ? 'Ingesting...' : 'Ingest All'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => setShowLinkDialog(true)}
+              disabled={!selectedTeam || ingesting || linkingRepository}
+            >
+              + Link Repository
+            </button>
+          </div>
         </div>
+
+        {loadingRepositories && <div className="sc-empty-state">Loading repositories...</div>}
+        {!loadingRepositories && repositories.length === 0 && (
+          <div className="sc-empty-state">
+            No repositories are linked to this team yet.
+          </div>
+        )}
+        {!loadingRepositories && repositories.length > 0 && (
+          <div className="sc-repository-list">
+            {repositories.map((repository) => (
+              <RepositoryCard
+                key={repository.id}
+                repository={repository}
+                busy={ingesting || linkingRepository || repositoryActionId === repository.id}
+                onIngest={(item) => runIngestion({ repositoryId: item.id })}
+                onRoleChange={handleRoleChange}
+                onUnlink={handleUnlinkRequest}
+              />
+            ))}
+          </div>
+        )}
 
         {ingesting && (
           <div className="sc-progress">
@@ -363,6 +537,26 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
             prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)),
           );
         }}
+      />
+
+      {showLinkDialog && selectedTeam && (
+        <LinkRepositoryDialog
+          teamCode={selectedTeam.teamCode}
+          initialUrl={selectedTeam.githubUrl || ''}
+          saving={linkingRepository}
+          onClose={() => setShowLinkDialog(false)}
+          onSubmit={handleLinkRepository}
+        />
+      )}
+      <UnlinkConfirmModal
+        repository={unlinkTarget}
+        impact={unlinkImpact}
+        loading={loadingUnlinkImpact}
+        onCancel={() => {
+          setUnlinkTarget(null);
+          setUnlinkImpact(null);
+        }}
+        onConfirm={handleUnlinkConfirm}
       />
     </div>
   );

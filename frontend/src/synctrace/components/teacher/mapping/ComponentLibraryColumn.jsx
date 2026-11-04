@@ -105,6 +105,7 @@ function ComponentLibraryColumn({
                           <span className="stm-component-card__name">{componentLabel(c)}</span>
                           {count > 0 && <span className="stm-mapped-count">{count}</span>}
                         </div>
+                        {c.sourceRemoved && <span className="stm-source-removed">Source removed</span>}
                         <span className="stm-component-card__type">
                           {c.type}
                           {isLinked && <span className="stm-component-card__linked"> · linked to selection</span>}
