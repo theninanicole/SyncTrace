@@ -79,7 +79,7 @@ class GitHubRepositoryLinkServiceTest {
     }
 
     @Test
-    void invalidGithubUrlsAreRejectedBeforeLinking() {
+    void invalidGithubUrlsAreRejectedBeforeLinking() throws Exception {
         assertThrows(GitHubRepositoryLinkService.InvalidRepositoryException.class,
                 () -> service.link("TEAM-1", "https://example.com/github.com/owner/repo", "OTHER"));
         verify(ingestionService, never()).resolveRepositoryBranch(anyString(), anyString(), any());
