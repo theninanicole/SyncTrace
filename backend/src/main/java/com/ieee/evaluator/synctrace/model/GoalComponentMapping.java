@@ -22,7 +22,7 @@ public class GoalComponentMapping {
     private Long componentId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "source", columnDefinition = "varchar(20) default 'MANUAL'")
+    @Column(name = "source")
     private MappingSource source = MappingSource.MANUAL;
 
     private LocalDateTime createdAt;
