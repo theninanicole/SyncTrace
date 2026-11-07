@@ -8,7 +8,9 @@ function label(items, id) {
 export default function SuggestionReviewPanel({ suggestions, sourceItems, targetItems, onDecide, onAcceptAll, onClose, state, progress, error }) {
   const [editing, setEditing] = useState(null);
   const [targets, setTargets] = useState([]);
+  const [targetSearch, setTargetSearch] = useState('');
   const toggle = (id) => setTargets((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+  const visibleTargets = targetItems.filter((target) => label(targetItems, target.id).toLowerCase().includes(targetSearch.toLowerCase()));
   const empty = state !== 'generating' && suggestions.length === 0;
   const unavailable = state === 'unavailable';
   return (
@@ -26,12 +28,19 @@ export default function SuggestionReviewPanel({ suggestions, sourceItems, target
             <span> ({Math.round(suggestion.score * 100)}%)</span>
             <p>{suggestion.reason}</p>
             {editing === suggestion.id ? (
-              <div>{targetItems.map((target) => (
+              <div className="tm-suggestion-panel__edit">
+                <input
+                  type="search"
+                  placeholder="Search targets"
+                  value={targetSearch}
+                  onChange={(event) => setTargetSearch(event.target.value)}
+                />
+                {visibleTargets.map((target) => (
                 <label key={target.id}><input type="checkbox" checked={targets.includes(target.id)} onChange={() => toggle(target.id)} /> {label(targetItems, target.id)}</label>
               ))}
                 <button type="button" disabled={!targets.length} onClick={() => { onDecide(suggestion.id, 'EDIT', targets); setEditing(null); }}>Accept edit</button>
               </div>
-            ) : <><button type="button" onClick={() => onDecide(suggestion.id, 'ACCEPT')}>Accept</button><button type="button" onClick={() => { setEditing(suggestion.id); setTargets([suggestion.targetComponentId]); }}>Edit</button><button type="button" onClick={() => onDecide(suggestion.id, 'REJECT')}>Reject</button></>}
+            ) : <><button type="button" onClick={() => onDecide(suggestion.id, 'ACCEPT')}>Accept</button><button type="button" onClick={() => { setEditing(suggestion.id); setTargets([suggestion.targetComponentId]); setTargetSearch(''); }}>Edit</button><button type="button" onClick={() => onDecide(suggestion.id, 'REJECT')}>Reject</button></>}
           </li>
         ))}
       </ul>

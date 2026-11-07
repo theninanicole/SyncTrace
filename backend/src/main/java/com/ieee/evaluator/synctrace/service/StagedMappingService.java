@@ -79,6 +79,16 @@ public class StagedMappingService {
     @Transactional
     public List<StagedTraceMapping> add(String teamCode, List<NewMapping> mappings, String createdBy,
             boolean restrictToTeam) {
+        return addInternal(teamCode, mappings, createdBy, restrictToTeam, StagedTraceMapping.Origin.MANUAL);
+    }
+
+    List<StagedTraceMapping> addWithOrigin(String teamCode, List<NewMapping> mappings, String createdBy,
+            boolean restrictToTeam, StagedTraceMapping.Origin origin) {
+        return addInternal(teamCode, mappings, createdBy, restrictToTeam, origin);
+    }
+
+    private List<StagedTraceMapping> addInternal(String teamCode, List<NewMapping> mappings, String createdBy,
+            boolean restrictToTeam, StagedTraceMapping.Origin origin) {
         Map<String, StagedTraceMapping> existing = new HashMap<>();
         for (StagedTraceMapping m : list(teamCode)) existing.put(key(m.getStage(), m.getSourceId(), m.getTargetId()), m);
 
@@ -101,7 +111,7 @@ public class StagedMappingService {
                 row.setTargetId(requested.targetId());
                 row.setCreatedBy(createdBy);
                 row.setCreatedAt(LocalDateTime.now());
-                row.setOrigin(requested.origin() == null ? StagedTraceMapping.Origin.MANUAL : requested.origin());
+                row.setOrigin(origin);
                 row = stagedRepository.save(row);
                 existing.put(k, row);
             }

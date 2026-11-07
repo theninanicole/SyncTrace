@@ -55,8 +55,7 @@ public class StagedMappingController {
         for (Object raw : rawMappings) {
             if (!(raw instanceof Map<?, ?> m)) throw new IllegalArgumentException("Each mapping must be an object.");
             mappings.add(new StagedMappingService.NewMapping(
-                (String) m.get("stage"), toLong(m.get("sourceId")), toLong(m.get("targetId")),
-                parseOrigin(m.get("origin"))));
+                (String) m.get("stage"), toLong(m.get("sourceId")), toLong(m.get("targetId"))));
         }
         List<StagedTraceMapping> rows = stagedMappingService.add(
             teamCode, mappings, accessGuard.currentUserEmail(), accessGuard.isStudent());
@@ -119,12 +118,4 @@ public class StagedMappingController {
         return null;
     }
 
-    private static StagedTraceMapping.Origin parseOrigin(Object value) {
-        if (value == null) return StagedTraceMapping.Origin.MANUAL;
-        try {
-            return StagedTraceMapping.Origin.valueOf(String.valueOf(value).toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid mapping origin.");
-        }
-    }
 }

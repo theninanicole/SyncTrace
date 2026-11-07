@@ -105,7 +105,7 @@ function computeStageStatus({ stage, sourceItems, targetItems, mappingsForStage 
  * is lost to the extraction finishing first; a stream that cannot connect only costs the live
  * updates, never the extraction itself.
  */
-function openProgressStream(sessionId, onProgress) {
+export function openProgressStream(sessionId, onProgress) {
   const es = new EventSource(`${API_BASE_URL}/ai/progress/${sessionId}`);
   es.addEventListener('progress', (e) => {
     try {

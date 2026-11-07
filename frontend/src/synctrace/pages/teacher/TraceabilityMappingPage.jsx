@@ -23,17 +23,19 @@ function TraceabilityMappingPage({ focusStep }) {
   const [selectedTeam, setSelectedTeam] = useSelectedTeam();
   const tm = useStagedTraceability(showToast, selectedTeam);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const suggestionState = useMappingSuggestions(selectedTeam, tm.selectedStage, async () => {});
+  const suggestionState = useMappingSuggestions(selectedTeam, tm.selectedStage, async () => {}, showToast);
 
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
   const [addComponentDocType, setAddComponentDocType] = useState(null);
   const [previewComponent, setPreviewComponent] = useState(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (focusStep === 'goals') setIsExtractGoalsOpen(true);
     if (focusStep === 'library') setIsExtractComponentsOpen(true);
   }, [focusStep]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const isProposalStage = tm.stage.sourceType === 'PROPOSAL';
   const isSaving = tm.saveState === 'saving';

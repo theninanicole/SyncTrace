@@ -16,7 +16,7 @@ import '../../synctrace/pages/teacher/TraceabilityMappingPage.css';
 function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument = false }) {
   const tm = useStagedTraceability(showToast, teamCode);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const suggestionState = useMappingSuggestions(teamCode, tm.selectedStage, async () => {});
+  const suggestionState = useMappingSuggestions(teamCode, tm.selectedStage, async () => {}, showToast);
   const [previewComponent, setPreviewComponent] = useState(null);
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);

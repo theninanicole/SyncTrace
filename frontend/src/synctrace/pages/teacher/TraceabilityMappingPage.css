@@ -162,6 +162,89 @@
 
 .tm-team-doc__result {
   margin-left: auto;
+}
+
+.tm-suggestion-panel {
+  position: fixed;
+  z-index: 20;
+  top: 5rem;
+  right: 1.5rem;
+  width: min(34rem, calc(100vw - 3rem));
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: 0 16px 40px var(--shadow);
+}
+
+.tm-suggestion-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.tm-suggestion-panel__header h3 {
+  margin: 0;
+}
+
+.tm-suggestion-panel ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.tm-suggestion-panel li {
+  padding: 0.75rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg-surface-2);
+}
+
+.tm-suggestion-panel li p {
+  margin: 0.35rem 0 0.65rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.tm-suggestion-panel button {
+  margin-right: 0.4rem;
+}
+
+.tm-suggestion-panel__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.tm-suggestion-panel__edit input[type="search"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+}
+
+.stm-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
 }
