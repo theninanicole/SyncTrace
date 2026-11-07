@@ -85,6 +85,7 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
           state={suggestionState.state}
           progress={suggestionState.progress}
           error={suggestionState.error}
+          generation={suggestionState.generation}
         />
       )}
 
