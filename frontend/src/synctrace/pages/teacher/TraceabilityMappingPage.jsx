@@ -119,6 +119,7 @@ function TraceabilityMappingPage({ focusStep }) {
           state={suggestionState.state}
           progress={suggestionState.progress}
           error={suggestionState.error}
+          generation={suggestionState.generation}
         />
       )}
 

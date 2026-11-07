@@ -230,8 +230,17 @@ async function mappingSuggestionRequest(path, options = {}) {
     return data;
 }
 
-export const generateSuggestions = (teamCode, stage, sessionId, repositoryId) =>
-    mappingSuggestionRequest('/generate', { method: 'POST', body: JSON.stringify({ teamCode, stage, sessionId, repositoryId }) });
+export const generateSuggestions = async (teamCode, stage, sessionId, repositoryId) => {
+    const result = await mappingSuggestionRequest('/generate', {
+        method: 'POST', body: JSON.stringify({ teamCode, stage, sessionId, repositoryId }),
+    });
+    return {
+        suggestions: result.suggestions || [],
+        partial: Boolean(result.partial),
+        sourcesProcessed: result.sourcesProcessed || 0,
+        sourcesTotal: result.sourcesTotal || 0,
+    };
+};
 export const getSuggestions = (teamCode, stage) =>
     mappingSuggestionRequest(`?teamCode=${encodeURIComponent(teamCode)}&stage=${encodeURIComponent(stage)}`);
 export const decideSuggestion = (teamCode, id, decision, targetIds) =>

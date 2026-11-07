@@ -9,11 +9,13 @@ export function useMappingSuggestions(teamCode, stage, onAccepted, showToast) {
   const [suggestions, setSuggestions] = useState([]);
   const [state, setState] = useState('idle');
   const [progress, setProgress] = useState(null);
+  const [generation, setGeneration] = useState(null);
   const [error, setError] = useState(null);
   const streamRef = useRef(null);
 
   const load = useCallback(async () => {
     if (!teamCode || !stage) return;
+    setGeneration(null);
     setSuggestions(await getSuggestions(teamCode, stage));
   }, [teamCode, stage]);
 
@@ -29,11 +31,12 @@ export function useMappingSuggestions(teamCode, stage, onAccepted, showToast) {
 
   const generate = useCallback(async () => {
     const sessionId = `mapping-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setState('generating'); setError(null); setProgress(null);
+    setState('generating'); setError(null); setProgress(null); setGeneration(null);
     try {
       streamRef.current = await openProgressStream(sessionId, setProgress);
-      const rows = await generateSuggestions(teamCode, stage, sessionId);
-      setSuggestions(rows); setState('ready'); return rows;
+      const result = await generateSuggestions(teamCode, stage, sessionId);
+      setGeneration(result);
+      setSuggestions(result.suggestions || []); setState('ready'); return result;
     } catch (err) {
       setState(err.code === 'AI_UNAVAILABLE' ? 'unavailable' : 'error');
       setError(err.message); throw err;
@@ -67,5 +70,7 @@ export function useMappingSuggestions(teamCode, stage, onAccepted, showToast) {
     setSuggestions([]);
   }, [teamCode, stage]);
 
-  return { suggestions, state, progress, error, generate, decide, acceptAll, discard, reload: load };
+  return {
+    suggestions, state, progress, error, generation, generate, decide, acceptAll, discard, reload: load,
+  };
 }

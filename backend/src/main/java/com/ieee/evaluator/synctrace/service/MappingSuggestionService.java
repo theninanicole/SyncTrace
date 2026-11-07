@@ -26,12 +26,15 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MappingSuggestionService {
     private static final int MAX_TARGETS_PER_SOURCE = 3;
+    private static final int MAX_CANDIDATES_PER_SOURCE = 40;
     private static final int MAX_IMPLEMENTATION_CANDIDATES = 30;
     private static final long GENERATION_DEADLINE_MS = 55_000;
     private static final int MAX_PROMPT_TEXT = 1_500;
 
     public record Candidate(Long id, String text) {}
     public record Decision(String decision, List<Long> targetIds) {}
+    public record GenerationResult(List<MappingSuggestion> suggestions, boolean partial,
+            int sourcesProcessed, int sourcesTotal) {}
     private record BatchResult(Long sourceId, List<JsonNode> suggestions) {}
 
     public static class AiUnavailableException extends RuntimeException {
@@ -77,7 +80,7 @@ public class MappingSuggestionService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    public List<MappingSuggestion> generate(String teamCode, String stageKey, String sessionId) {
+    public GenerationResult generate(String teamCode, String stageKey, String sessionId) {
         StagedMappingService.Stage stage = stage(stageKey);
         long started = System.currentTimeMillis();
         List<Candidate> sources = sources(teamCode, stage);
@@ -111,6 +114,7 @@ public class MappingSuggestionService {
             List<JsonNode> rawSuggestions = new ArrayList<>();
             int failed = 0;
             int processed = 0;
+            int successful = 0;
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(GENERATION_DEADLINE_MS);
             while (processed < futures.size()) {
                 long remaining = deadline - System.nanoTime();
@@ -128,6 +132,7 @@ public class MappingSuggestionService {
                 try {
                     BatchResult result = future.get();
                     rawSuggestions.addAll(result.suggestions());
+                    successful++;
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     failed++;
@@ -150,7 +155,7 @@ public class MappingSuggestionService {
             List<MappingSuggestion> saved = persistGenerated(teamCode, stageKey, generated, started);
             progressEmitter.emit(sessionId, "COMPLETE", "Suggestion generation complete", 100);
             progressEmitter.complete(sessionId);
-            return saved;
+            return new GenerationResult(saved, failed > 0, successful, futures.size());
         } catch (AiUnavailableException e) {
             progressEmitter.error(sessionId, e.getMessage());
             throw e;
@@ -317,14 +322,16 @@ public class MappingSuggestionService {
     }
 
     private List<Candidate> candidateTargets(Candidate source, List<Candidate> targets, String targetType) {
-        if (!"IMPLEMENTATION".equals(targetType) || targets.size() <= MAX_IMPLEMENTATION_CANDIDATES) {
+        int limit = "IMPLEMENTATION".equals(targetType)
+            ? MAX_IMPLEMENTATION_CANDIDATES : MAX_CANDIDATES_PER_SOURCE;
+        if (targets.size() <= limit) {
             return targets;
         }
         Set<String> sourceWords = words(source.text());
         return targets.stream()
             .sorted(Comparator.comparingInt((Candidate target) -> overlap(sourceWords, words(target.text())))
                 .reversed())
-            .limit(MAX_IMPLEMENTATION_CANDIDATES)
+            .limit(limit)
             .toList();
     }
 

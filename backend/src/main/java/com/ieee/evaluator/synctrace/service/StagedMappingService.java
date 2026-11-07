@@ -33,11 +33,7 @@ public class StagedMappingService {
         new Stage("SDD_IMPLEMENTATION", "SDD", "IMPLEMENTATION")
     );
 
-    public record NewMapping(String stage, Long sourceId, Long targetId, StagedTraceMapping.Origin origin) {
-        public NewMapping(String stage, Long sourceId, Long targetId) {
-            this(stage, sourceId, targetId, StagedTraceMapping.Origin.MANUAL);
-        }
-    }
+    public record NewMapping(String stage, Long sourceId, Long targetId) {}
 
     public record SyncResult(int linkCount, int added, int removed, boolean analysisCleared) {}
 

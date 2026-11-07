@@ -5,7 +5,10 @@ function label(items, id) {
   return item?.code || item?.name || item?.description || `#${id}`;
 }
 
-export default function SuggestionReviewPanel({ suggestions, sourceItems, targetItems, onDecide, onAcceptAll, onClose, state, progress, error }) {
+export default function SuggestionReviewPanel({
+  suggestions, sourceItems, targetItems, onDecide, onAcceptAll, onClose, state, progress, error,
+  generation,
+}) {
   const [editing, setEditing] = useState(null);
   const [targets, setTargets] = useState([]);
   const [targetSearch, setTargetSearch] = useState('');
@@ -17,6 +20,12 @@ export default function SuggestionReviewPanel({ suggestions, sourceItems, target
     <aside className="tm-suggestion-panel">
       <div className="tm-suggestion-panel__header"><h3>AI draft mappings</h3><button type="button" onClick={onClose}>Close</button></div>
       {state === 'generating' && <p>Generating suggestions… {progress?.percent || 0}%</p>}
+      {generation?.partial && (
+        <p role="status">
+          Showing suggestions for {generation.sourcesProcessed} of {generation.sourcesTotal} items.
+          {' '}Run Suggest Mappings again or map the rest manually.
+        </p>
+      )}
       {unavailable && <p>AI is unavailable. You can continue mapping manually.</p>}
       {error && !unavailable && <p role="alert">{error}</p>}
       {empty && !unavailable && <p>No likely matches were found.</p>}

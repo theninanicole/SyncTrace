@@ -10,10 +10,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import org.mockito.ArgumentCaptor;
 
 class MappingSuggestionServiceTest {
     private MappingSuggestionRepository suggestions;
@@ -68,7 +70,7 @@ class MappingSuggestionServiceTest {
             eq("TEAM"), eq("PROPOSAL_SRS"), eq(MappingSuggestion.Status.REJECTED)))
             .thenReturn(List.of(rejected(1L, 10L)));
 
-        assertTrue(service.generate("TEAM", "PROPOSAL_SRS", "session").isEmpty());
+        assertTrue(service.generate("TEAM", "PROPOSAL_SRS", "session").suggestions().isEmpty());
     }
 
     @Test
@@ -85,7 +87,7 @@ class MappingSuggestionServiceTest {
              {"sourceId":999,"targetId":10,"score":0.9}]
             """);
 
-        List<MappingSuggestion> result = service.generate("TEAM", "PROPOSAL_SRS", "session");
+        List<MappingSuggestion> result = service.generate("TEAM", "PROPOSAL_SRS", "session").suggestions();
 
         assertEquals(3, result.size());
         assertEquals(3, result.stream().map(MappingSuggestion::getTargetComponentId).distinct().count());
@@ -111,7 +113,12 @@ class MappingSuggestionServiceTest {
             return "[{\"sourceId\":2,\"targetId\":10,\"score\":0.9}]";
         });
 
-        assertEquals(1, service.generate("TEAM", "PROPOSAL_SRS", "session").size());
+        MappingSuggestionService.GenerationResult result =
+            service.generate("TEAM", "PROPOSAL_SRS", "session");
+        assertEquals(1, result.suggestions().size());
+        assertTrue(result.partial());
+        assertEquals(1, result.sourcesProcessed());
+        assertEquals(2, result.sourcesTotal());
     }
 
     @Test
@@ -137,10 +144,28 @@ class MappingSuggestionServiceTest {
         when(provider.complete(anyString()))
             .thenReturn("[{\"sourceId\":10,\"targetId\":20,\"score\":0.9}]");
 
-        List<MappingSuggestion> result = service.generate("TEAM", "SRS_SDD", "session");
+        List<MappingSuggestion> result = service.generate("TEAM", "SRS_SDD", "session").suggestions();
 
         assertEquals(1, result.size());
         assertEquals(10L, result.get(0).getSourceId());
+    }
+
+    @Test
+    void prunesNonImplementationTargetsToForty() throws Exception {
+        List<TraceComponentSummaryDTO> targetSummaries = new ArrayList<>();
+        for (long id = 10; id < 51; id++) {
+            targetSummaries.add(summary(id, "Target " + id));
+        }
+        when(resolver.findTeamSummaries("TEAM", DocType.SRS, "")).thenReturn(targetSummaries);
+        when(provider.complete(anyString())).thenReturn(
+            "[{\"sourceId\":1,\"targetId\":10,\"score\":0.9}]");
+
+        service.generate("TEAM", "PROPOSAL_SRS", "session");
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(provider).complete(prompt.capture());
+        assertEquals(40, prompt.getValue().substring(prompt.getValue().indexOf("Targets:\n") + 9)
+            .lines().filter(line -> line.matches("\\d+: .*")).count());
     }
 
     @Test
