@@ -69,7 +69,7 @@ function markLegacySeedDone(teamCode) {
 }
 
 function toWorkspaceMapping(row) {
-  return { id: row.id, stage: row.stage, sourceId: row.sourceId, targetId: row.targetId };
+  return { id: row.id, stage: row.stage, sourceId: row.sourceId, targetId: row.targetId, origin: row.origin || 'MANUAL' };
 }
 
 /** A component id can be a target in any stage and a source in any stage but PROPOSAL_SRS. */

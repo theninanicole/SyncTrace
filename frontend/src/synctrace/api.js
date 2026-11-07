@@ -217,6 +217,32 @@ export const syncStagedMappings = async (teamCode, stage) => {
     return data;
 };
 
+async function mappingSuggestionRequest(path, options = {}) {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/mapping-suggestions${path}`, {
+        headers: { 'Content-Type': 'application/json' }, ...options,
+    });
+    const data = response.status === 204 ? null : await response.json();
+    if (!response.ok) {
+        const error = new Error(data?.error || 'Mapping suggestion request failed.');
+        error.code = data?.code;
+        throw error;
+    }
+    return data;
+}
+
+export const generateSuggestions = (teamCode, stage, sessionId, repositoryId) =>
+    mappingSuggestionRequest('/generate', { method: 'POST', body: JSON.stringify({ teamCode, stage, sessionId, repositoryId }) });
+export const getSuggestions = (teamCode, stage) =>
+    mappingSuggestionRequest(`?teamCode=${encodeURIComponent(teamCode)}&stage=${encodeURIComponent(stage)}`);
+export const decideSuggestion = (teamCode, id, decision, targetIds) =>
+    mappingSuggestionRequest(`/${id}?teamCode=${encodeURIComponent(teamCode)}`, {
+        method: 'PATCH', body: JSON.stringify({ decision, targetIds }),
+    });
+export const acceptAllSuggestions = (teamCode, stage) =>
+    mappingSuggestionRequest('/accept-all', { method: 'POST', body: JSON.stringify({ teamCode, stage }) });
+export const discardSuggestions = (teamCode, stage) =>
+    mappingSuggestionRequest('/discard', { method: 'POST', body: JSON.stringify({ teamCode, stage }) });
+
 export const removeGoalComponent = async (goalId, componentId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
         method: 'DELETE',

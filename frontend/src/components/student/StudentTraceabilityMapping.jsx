@@ -7,12 +7,16 @@ import MappingStageSelector from '../../synctrace/components/teacher/mapping/Map
 import MappingStatusBadge from '../../synctrace/components/teacher/mapping/MappingStatusBadge';
 import MappingWorkspace from '../../synctrace/components/teacher/mapping/MappingWorkspace';
 import { useStagedTraceability } from '../../synctrace/hooks/useStagedTraceability';
+import { useMappingSuggestions } from '../../synctrace/hooks/useMappingSuggestions';
+import SuggestionReviewPanel from '../../synctrace/components/teacher/mapping/SuggestionReviewPanel';
 import { formatDateTime } from '../../utils/dashboardUtils';
 import { mappingStageLabel } from '../../synctrace/constants';
 import '../../synctrace/pages/teacher/TraceabilityMappingPage.css';
 
 function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument = false }) {
   const tm = useStagedTraceability(showToast, teamCode);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const suggestionState = useMappingSuggestions(teamCode, tm.selectedStage, async () => {});
   const [previewComponent, setPreviewComponent] = useState(null);
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
@@ -43,6 +47,9 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
           <button className="btn btn--primary student-mapping__save" type="button" onClick={tm.saveMapping} disabled={isBusy || !teamCode}>
             {tm.saveState === 'saving' ? 'Saving mapping...' : tm.saveState === 'verifying' ? 'Verifying...' : 'Save Mapping'}
           </button>
+          <button className="btn btn--soft" type="button" disabled={isBusy || !teamCode || tm.sourceItems.length === 0 || tm.targetItems.length === 0} onClick={() => { setSuggestionsOpen(true); suggestionState.generate().catch(() => {}); }}>
+            Suggest Mappings
+          </button>
         </div>
       </div>
 
@@ -65,6 +72,19 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
           onExtractComponentsClick={hasEvaluatedDocument ? () => setIsExtractComponentsOpen(true) : undefined}
           onPreviewComponentClick={setPreviewComponent}
           onRemoveComponentClick={(docType, id) => tm.removeComponent(docType, id)}
+        />
+      )}
+      {suggestionsOpen && (
+        <SuggestionReviewPanel
+          suggestions={suggestionState.suggestions}
+          sourceItems={tm.sourceItems}
+          targetItems={tm.targetItems}
+          onDecide={suggestionState.decide}
+          onAcceptAll={suggestionState.acceptAll}
+          onClose={() => { suggestionState.discard(); setSuggestionsOpen(false); }}
+          state={suggestionState.state}
+          progress={suggestionState.progress}
+          error={suggestionState.error}
         />
       )}
 

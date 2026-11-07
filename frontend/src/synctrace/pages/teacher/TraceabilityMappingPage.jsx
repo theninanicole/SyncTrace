@@ -12,6 +12,8 @@ import AddComponentDialog from '../../components/teacher/mapping/AddComponentDia
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import { useStagedTraceability } from '../../hooks/useStagedTraceability';
+import { useMappingSuggestions } from '../../hooks/useMappingSuggestions';
+import SuggestionReviewPanel from '../../components/teacher/mapping/SuggestionReviewPanel';
 import { formatDateTime } from '../../../utils/dashboardUtils';
 import { mappingStageLabel } from '../../constants';
 import './TraceabilityMappingPage.css';
@@ -20,6 +22,8 @@ function TraceabilityMappingPage({ focusStep }) {
   const { toast, showToast, hideToast } = useToast();
   const [selectedTeam, setSelectedTeam] = useSelectedTeam();
   const tm = useStagedTraceability(showToast, selectedTeam);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const suggestionState = useMappingSuggestions(selectedTeam, tm.selectedStage, async () => {});
 
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
@@ -77,6 +81,9 @@ function TraceabilityMappingPage({ focusStep }) {
             <button className="btn btn--primary" disabled={isBusy} onClick={tm.saveMapping}>
               {saveButtonLabel()}
             </button>
+            <button className="btn btn--soft" disabled={isBusy || !selectedTeam || missingArtifact} onClick={() => { setSuggestionsOpen(true); suggestionState.generate().catch(() => {}); }}>
+              Suggest Mappings
+            </button>
           </div>
         }
       />
@@ -98,6 +105,19 @@ function TraceabilityMappingPage({ focusStep }) {
         <div className="stm-warning-banner">
           <span>{missingWarning}</span>
         </div>
+      )}
+      {suggestionsOpen && (
+        <SuggestionReviewPanel
+          suggestions={suggestionState.suggestions}
+          sourceItems={tm.sourceItems}
+          targetItems={tm.targetItems}
+          onDecide={suggestionState.decide}
+          onAcceptAll={suggestionState.acceptAll}
+          onClose={() => { suggestionState.discard(); setSuggestionsOpen(false); }}
+          state={suggestionState.state}
+          progress={suggestionState.progress}
+          error={suggestionState.error}
+        />
       )}
 
       <MappingWorkspace

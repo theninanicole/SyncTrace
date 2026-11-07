@@ -117,6 +117,7 @@ function MappingControls({
                     <li key={m.id}>
                       <span className="stm-controls__link-arrow" aria-hidden="true">→</span>
                       <ItemLine item={targetById.get(m.targetId)} fallback={missingLabel} />
+                      {m.origin && m.origin !== 'MANUAL' && <span className="stm-origin-badge">{m.origin === 'AI_EDITED' ? 'AI-edited' : 'AI-accepted'}</span>}
                       <button className="stm-mini-btn" onClick={() => onRemoveMapping(m.id)}>Remove</button>
                     </li>
                   ))}
@@ -173,6 +174,7 @@ function MappingControls({
                   <li key={m.id}>
                     <span className="stm-controls__link-arrow" aria-hidden="true">→</span>
                     <ItemLine item={targetById.get(m.targetId)} fallback={missingLabel} />
+                    {m.origin && m.origin !== 'MANUAL' && <span className="stm-origin-badge">{m.origin === 'AI_EDITED' ? 'AI-edited' : 'AI-accepted'}</span>}
                     <button className="stm-mini-btn" onClick={() => onRemoveMapping(m.id)}>Remove</button>
                   </li>
                 ))}

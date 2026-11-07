@@ -29,6 +29,13 @@ public class GoalComponentMapping {
 
     public enum MappingSource {
         MANUAL,
+        AI_ACCEPTED,
+        AI_EDITED,
         AI_SUGGESTED
+    }
+
+    public MappingSource effectiveSource() {
+        return source == MappingSource.AI_SUGGESTED ? MappingSource.AI_ACCEPTED
+            : (source == null ? MappingSource.MANUAL : source);
     }
 }
