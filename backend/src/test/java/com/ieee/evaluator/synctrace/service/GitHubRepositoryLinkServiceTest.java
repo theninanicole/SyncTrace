@@ -49,7 +49,7 @@ class GitHubRepositoryLinkServiceTest {
                     String requestedBranch = invocation.getArgument(2);
                     return requestedBranch == null ? "main" : requestedBranch;
                 });
-        when(repositoryLinkRepository.save(any(GitHubRepositoryLink.class)))
+        lenient().when(repositoryLinkRepository.save(any(GitHubRepositoryLink.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
