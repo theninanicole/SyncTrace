@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -39,27 +38,27 @@ class SettingsInitializerTest {
     }
 
     @Test
-    void configuredSpreadsheetReplacesStoredSheetId() {
-        storeSheetId("old-sheet");
+    void initializeCreatesSheetIdWhenMissing() {
+        new SettingsInitializer(repository()).initializeDefaultSettings();
 
-        new SettingsInitializer(repository(), "configured-sheet").initializeDefaultSettings();
-
-        assertEquals("configured-sheet", stored.get("GOOGLE_SHEET_ID").getValue());
+        assertEquals("1XXScbjk6pj7YRlTb4tOEVZ84Os4tlseZkk8GHbUQ9oQ",
+                stored.get("GOOGLE_SHEET_ID").getValue());
     }
 
     @Test
-    void blankSpreadsheetKeepsStoredSheetId() {
+    void initializeReplacesOldSheetId() {
         storeSheetId("old-sheet");
 
-        new SettingsInitializer(repository(), " ").initializeDefaultSettings();
+        new SettingsInitializer(repository()).initializeDefaultSettings();
 
-        assertEquals("old-sheet", stored.get("GOOGLE_SHEET_ID").getValue());
+        assertEquals("1XXScbjk6pj7YRlTb4tOEVZ84Os4tlseZkk8GHbUQ9oQ",
+                stored.get("GOOGLE_SHEET_ID").getValue());
     }
 
     @Test
-    void blankSpreadsheetDoesNotCreateSheetId() {
-        new SettingsInitializer(repository(), "").initializeDefaultSettings();
+    void initializeKeepsGoogleResponsesRange() {
+        new SettingsInitializer(repository()).initializeDefaultSettings();
 
-        assertFalse(stored.containsKey("GOOGLE_SHEET_ID"));
+        assertEquals("Submissions!A2:K", stored.get("GOOGLE_RESPONSES_RANGE").getValue());
     }
 }
