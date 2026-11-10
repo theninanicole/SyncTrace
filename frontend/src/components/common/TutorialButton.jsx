@@ -1,3 +1,4 @@
+import { CircleHelp } from 'lucide-react';
 import '../../styles/components/tutorial.css';
 
 function TutorialButton({ onClick, label = 'Quick Tutorial' }) {
@@ -8,7 +9,7 @@ function TutorialButton({ onClick, label = 'Quick Tutorial' }) {
       onClick={onClick}
       aria-label={label}
     >
-      <span className="tutorial-button__icon">?</span>
+      <CircleHelp size={16} aria-hidden="true" />
       <span>{label}</span>
     </button>
   );

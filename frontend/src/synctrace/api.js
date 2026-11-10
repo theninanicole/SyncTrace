@@ -92,7 +92,7 @@ export const getTraceComponents = async (docType, search, teamCode) => {
     return data;
 };
 
-export const createTraceComponent = async (docType, name, content, artifactKind, codeName, imageData) => {
+export const createTraceComponent = async (docType, name, content, artifactKind, codeName, imageData, teamCode) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,6 +100,7 @@ export const createTraceComponent = async (docType, name, content, artifactKind,
             docType, name, content, artifactKind,
             codeName: codeName || undefined,
             imageData: imageData || undefined,
+            teamCode: teamCode || undefined,
         }),
     });
     const data = await response.json();
@@ -130,8 +131,9 @@ export const deleteTraceComponent = async (componentId) => {
     return data;
 };
 
-export const extractTraceComponents = async (historyId) => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/extract`, {
+export const extractTraceComponents = async (historyId, sessionId) => {
+    const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/components/extract${query}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ historyId }),
@@ -214,6 +216,41 @@ export const syncStagedMappings = async (teamCode, stage) => {
     if (!response.ok) throw new Error(data.error || 'Failed to save mapping.');
     return data;
 };
+
+async function mappingSuggestionRequest(path, options = {}) {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/mapping-suggestions${path}`, {
+        headers: { 'Content-Type': 'application/json' }, ...options,
+    });
+    const data = response.status === 204 ? null : await response.json();
+    if (!response.ok) {
+        const error = new Error(data?.error || 'Mapping suggestion request failed.');
+        error.code = data?.code;
+        throw error;
+    }
+    return data;
+}
+
+export const generateSuggestions = async (teamCode, stage, sessionId, repositoryId) => {
+    const result = await mappingSuggestionRequest('/generate', {
+        method: 'POST', body: JSON.stringify({ teamCode, stage, sessionId, repositoryId }),
+    });
+    return {
+        suggestions: result.suggestions || [],
+        partial: Boolean(result.partial),
+        sourcesProcessed: result.sourcesProcessed || 0,
+        sourcesTotal: result.sourcesTotal || 0,
+    };
+};
+export const getSuggestions = (teamCode, stage) =>
+    mappingSuggestionRequest(`?teamCode=${encodeURIComponent(teamCode)}&stage=${encodeURIComponent(stage)}`);
+export const decideSuggestion = (teamCode, id, decision, targetIds) =>
+    mappingSuggestionRequest(`/${id}?teamCode=${encodeURIComponent(teamCode)}`, {
+        method: 'PATCH', body: JSON.stringify({ decision, targetIds }),
+    });
+export const acceptAllSuggestions = (teamCode, stage) =>
+    mappingSuggestionRequest('/accept-all', { method: 'POST', body: JSON.stringify({ teamCode, stage }) });
+export const discardSuggestions = (teamCode, stage) =>
+    mappingSuggestionRequest('/discard', { method: 'POST', body: JSON.stringify({ teamCode, stage }) });
 
 export const removeGoalComponent = async (goalId, componentId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/goals/${goalId}/components/${componentId}`, {
@@ -314,18 +351,19 @@ export const getContinuitySummary = async (teamCode) => {
 
 // ── SyncTrace: GitHub Ingestion ───────────────────────────────────────────────
 
-export const getLinkedGitHubRepositories = async () => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories`);
+export const getLinkedGitHubRepositories = async (teamCode) => {
+    const query = teamCode ? `?teamCode=${encodeURIComponent(teamCode)}` : '';
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories${query}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch linked GitHub repositories.');
     return data;
 };
 
-export const linkGitHubRepository = async ({ teamCode, githubUrl }) => {
-    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories/link`, {
+export const linkGitHubRepository = async ({ teamCode, githubUrl, role = 'OTHER' }) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamCode, githubUrl }),
+        body: JSON.stringify({ teamCode, githubUrl, role }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -334,19 +372,43 @@ export const linkGitHubRepository = async ({ teamCode, githubUrl }) => {
     return data;
 };
 
-export const ingestGitHubRepository = async ({ repositoryId, teamCode, githubUrl, sessionId }) => {
-    const endpoint = repositoryId
-        ? `${API_BASE_URL}/synctrace/github/repositories/${repositoryId}/ingest`
-        : `${API_BASE_URL}/synctrace/github/ingest`;
+export const updateGitHubRepositoryRole = async ({ repositoryId, teamCode, role }) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/repositories/${repositoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamCode, role }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to update repository role.');
+    return data;
+};
 
-    const payload = repositoryId
-        ? { teamCode, sessionId }
-        : { teamCode, githubUrl, sessionId };
+export const getGitHubRepositoryImpact = async ({ repositoryId, teamCode }) => {
+    const query = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(
+        `${API_BASE_URL}/synctrace/github/repositories/${repositoryId}/impact?${query.toString()}`,
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to inspect repository impact.');
+    return data;
+};
 
-    const response = await authorizedFetch(endpoint, {
+export const unlinkGitHubRepository = async ({ repositoryId, teamCode }) => {
+    const query = new URLSearchParams({ teamCode });
+    const response = await authorizedFetch(
+        `${API_BASE_URL}/synctrace/github/repositories/${repositoryId}?${query.toString()}`,
+        { method: 'DELETE' },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to unlink repository.');
+    return data;
+};
+
+export const ingestGitHubRepository = async ({ repositoryId, teamCode, githubUrl, sessionId, all = false }) => {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/github/ingest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ repositoryId, teamCode, githubUrl, sessionId, all }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

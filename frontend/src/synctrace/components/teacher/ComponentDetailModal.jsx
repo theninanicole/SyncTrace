@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Loader2, Pencil, X } from 'lucide-react';
 import AppModal from '../../../components/common/AppModal';
 import { renameTraceComponent, getTraceComponent } from '../../api';
-import { componentLabel } from '../../constants';
+import { ARTIFACT_KINDS_BY_DOC_TYPE, DOC_TYPE_LABELS, componentLabel } from '../../constants';
 import { formatDate } from '../../../utils/dashboardUtils';
 
 function extractSourceMeta(content) {
@@ -41,10 +41,24 @@ function describeProvenance(component) {
   return { label: 'Manually added', url: null, dateLabel };
 }
 
-function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOnly = false }) {
+/**
+ * A type correction offers the documents of the stage being mapped, or only the component's own
+ * document outside a stage. It can change the document family, but never turns a document into
+ * code or back.
+ */
+function editableKindGroups(docType, stage) {
+  const isCode = docType === 'IMPLEMENTATION';
+  const offered = stage ? [stage.sourceType, stage.targetType] : [docType];
+  return Object.entries(ARTIFACT_KINDS_BY_DOC_TYPE)
+    .filter(([groupDocType]) => (groupDocType === 'IMPLEMENTATION') === isCode)
+    .filter(([groupDocType]) => offered.includes(groupDocType));
+}
+
+function ComponentDetailModal({ component, stage, onClose, onRenamed, showToast, readOnly = false, extractedTypesOnly = false }) {
   const [isEditing, setIsEditing]     = useState(false);
   const [draftName, setDraftName]     = useState('');
   const [saving, setSaving]           = useState(false);
+  const [savingKind, setSavingKind]   = useState(false);
   const [imageExpanded, setImageExpanded] = useState(false);
   // List views omit content/imageData to keep them lightweight — fetch the full
   // component (with image/source) only when it's actually opened here.
@@ -106,6 +120,30 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOn
     }
   }
 
+  async function handleKindChange(artifactKind) {
+    const newDocType = Object.keys(ARTIFACT_KINDS_BY_DOC_TYPE)
+      .find((docType) => ARTIFACT_KINDS_BY_DOC_TYPE[docType].some((o) => o.value === artifactKind));
+    if (newDocType !== merged.docType && !window.confirm(
+      `This moves ${label} from the ${DOC_TYPE_LABELS[merged.docType]} library to the ${DOC_TYPE_LABELS[newDocType]} library and removes its mappings. Continue?`
+    )) return;
+
+    setSavingKind(true);
+    try {
+      const updated = await renameTraceComponent(component.id, { artifactKind });
+      setDetail(updated);
+      onRenamed?.(updated);
+      showToast?.('Component type updated.', 'success');
+    } catch (err) {
+      showToast?.(err.message, 'error');
+    } finally {
+      setSavingKind(false);
+    }
+  }
+
+  const kindGroups = editableKindGroups(merged.docType, stage);
+  const hasListedKind = kindGroups.some(([, options]) => options.some((o) => o.value === detail?.artifactKind));
+  const canEditKind = !readOnly && (!extractedTypesOnly || detail?.aiExtracted);
+
   return (
     <AppModal
       isOpen={Boolean(component)}
@@ -147,11 +185,33 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOn
         )
       }
       subtitle={
-        <span className="tm-badge" data-doctype={component.docType}>{component.docType} COMPONENT</span>
+        <span className="tm-badge" data-doctype={merged.docType}>{merged.docType} COMPONENT</span>
       }
     >
       <div className="tm-detail">
         {loadError && <p className="tm-muted">{loadError}</p>}
+
+        {canEditKind && (
+          <div className="tm-detail__type">
+            <label className="tm-field-label" htmlFor="component-type">Component type</label>
+            <select
+              id="component-type"
+              className="tm-select"
+              value={hasListedKind ? detail.artifactKind : ''}
+              disabled={detail === null || savingKind}
+              onChange={(e) => handleKindChange(e.target.value)}
+            >
+              {!hasListedKind && <option value="" disabled>Select a type</option>}
+              {kindGroups.map(([docType, options]) => (
+                <optgroup key={docType} label={DOC_TYPE_LABELS[docType]}>
+                  {options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
 
         {!isImplementation && merged.imageData && (
           <img
@@ -193,6 +253,7 @@ function ComponentDetailModal({ component, onClose, onRenamed, showToast, readOn
                     provenance.label
                   )}
                   {provenance.dateLabel && <span> &middot; {provenance.dateLabel}</span>}
+                  {merged.sourceRemoved && <span className="tm-source-removed"> · Source removed</span>}
                 </p>
               );
             })()}

@@ -1,5 +1,6 @@
+import InfoHint from '../../../components/common/InfoHint';
 import { useMemo, useState } from 'react';
-import { ChevronRight, CircleAlert, CircleCheck, ListChecks, Search, TriangleAlert } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
@@ -41,24 +42,23 @@ function OverviewPage({ onOpenGroup }) {
 
       <PanelHeader
         title="Overview"
-        subtitle="Monitor traceability and project readiness across all groups"
       />
 
       <div className="ov-stats">
         <div className="ov-stat-card">
-          <span className="ov-stat-card__label"><ListChecks size={14} /> Total Groups</span>
+          <span className="ov-stat-card__label">Total Groups</span>
           <span className="ov-stat-card__value">{stats.total}</span>
         </div>
         <div className="ov-stat-card ov-stat-card--ok">
-          <span className="ov-stat-card__label"><CircleCheck size={14} /> Ready</span>
+          <span className="ov-stat-card__label">Ready</span>
           <span className="ov-stat-card__value">{stats.ready}</span>
         </div>
         <div className="ov-stat-card ov-stat-card--warn">
-          <span className="ov-stat-card__label"><TriangleAlert size={14} /> Needs Revision</span>
+          <span className="ov-stat-card__label">Needs Revision</span>
           <span className="ov-stat-card__value">{stats.revision}</span>
         </div>
         <div className="ov-stat-card ov-stat-card--critical">
-          <span className="ov-stat-card__label"><CircleAlert size={14} /> Critical Gaps</span>
+          <span className="ov-stat-card__label">Critical Gaps</span>
           <span className="ov-stat-card__value">{stats.critical}</span>
         </div>
       </div>
@@ -97,13 +97,9 @@ function OverviewPage({ onOpenGroup }) {
       ) : filteredGroups.length === 0 ? (
         <div className="empty-state ov-empty-help">
           <p className="ov-empty-help__title">
-            {groups.length === 0 ? 'No group cards yet — that is normal at the start.' : 'No groups match your search or filter.'}
+            {groups.length === 0 ? 'No groups yet' : 'No matching groups'}
+            {groups.length === 0 && <InfoHint text="Groups show up after you extract proposal goals, map document/code components, and teams have recognizable codes." />}
           </p>
-          {groups.length === 0 && (
-            <p>
-              Groups show up after you extract proposal goals, map document/code components, and teams have recognizable codes.
-            </p>
-          )}
         </div>
       ) : (
         <div className="ov-list">

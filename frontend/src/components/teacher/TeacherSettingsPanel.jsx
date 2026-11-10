@@ -1,4 +1,5 @@
 /* eslint-disable react/prop-types */
+import InfoHint from '../common/InfoHint';
 import { useEffect, useMemo, useState } from 'react';
 import AppModal from '../common/AppModal';
 import AdvancedSettingsModal from './AdvancedSettingsModal';
@@ -295,8 +296,7 @@ export default function TeacherSettingsPanel({
 
       {/* ── Trash Bin ─────────────────────────────────────────────────────── */}
       <section className="ssp-card ssp-card--danger-zone">
-        <h3 className="ssp-card__title">Trash Bin Management</h3>
-        <p className="ssp-muted">Select trashed items below to restore them. Empty Trash Bin clears everything currently hidden from the view.</p>
+        <h3 className="ssp-card__title">Trash Bin <InfoHint text="Select trashed items to restore them. Empty Trash Bin clears everything currently hidden from the view." /></h3>
         <div className="ssp-trash-actions">
           <button className="ssp-btn ssp-btn--ghost" type="button" onClick={() => setShowTrashBin((p) => !p)}>
             {showTrashBin ? 'Hide Trash' : 'View Trash'}
@@ -378,8 +378,7 @@ export default function TeacherSettingsPanel({
       <section className="ssp-card ssp-card--ai">
         <div className="ssp-card__header-row">
           <div>
-            <h3 className="ssp-card__title">AI Provider Configuration</h3>
-            <p className="ssp-muted">Changes are applied immediately on the next analysis request.</p>
+            <h3 className="ssp-card__title">AI Provider <InfoHint text="Changes apply on the next analysis request." /></h3>
           </div>
           <button className="ssp-btn ssp-btn--primary" type="button" onClick={handleSaveAiSettings} disabled={isSavingAll}>
             {isSavingAll ? 'Saving...' : 'Save AI Settings'}
@@ -428,8 +427,8 @@ export default function TeacherSettingsPanel({
               </label>
               <span className="ssp-field__hint ssp-field__hint--inline">
                 {selectedProviderHasStoredKey
-                  ? 'A key is already saved. Focus the input to replace it.'
-                  : `Enter your ${selectedProvider.label} API key.`}
+                  ? 'Key saved'
+                  : `${selectedProvider.label} API key`}
               </span>
               <input
                 id="ssp-provider-api-key"
@@ -503,7 +502,7 @@ export default function TeacherSettingsPanel({
               </span>
               {selectedProviderHasStoredKey && !selectedProviderHasNewKey && (
                 <span className="ssp-key-status-note">
-                  A key is already active. You only need to re-enter it if you want to rotate it.
+                  Key active
                 </span>
               )}
             </div>

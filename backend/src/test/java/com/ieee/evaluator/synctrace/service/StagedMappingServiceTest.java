@@ -3,6 +3,7 @@ package com.ieee.evaluator.synctrace.service;
 import com.ieee.evaluator.synctrace.model.GoalComponentMapping;
 import com.ieee.evaluator.synctrace.model.SmartGoal;
 import com.ieee.evaluator.synctrace.model.StagedTraceMapping;
+import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
 import com.ieee.evaluator.synctrace.repository.SmartGoalRepository;
 import com.ieee.evaluator.synctrace.repository.StagedTraceMappingRepository;
@@ -83,5 +84,53 @@ class StagedMappingServiceTest {
         assertEquals(0, result.added());
         verify(analysisReset).resetTeam("TEAM");
         assertTrue(result.analysisCleared());
+    }
+
+    @Test
+    void syncCarriesAiOriginIntoGoalComponentMapping() {
+        StagedTraceMappingRepository stagedRepository = mock(StagedTraceMappingRepository.class);
+        GoalComponentMappingRepository mappingRepository = mock(GoalComponentMappingRepository.class);
+        SmartGoalRepository goalRepository = mock(SmartGoalRepository.class);
+        SmartGoalService goalService = mock(SmartGoalService.class);
+        ContinuityAnalysisResetService analysisReset = mock(ContinuityAnalysisResetService.class);
+        StagedMappingService service = new StagedMappingService(stagedRepository, mappingRepository,
+            goalRepository, mock(TraceComponentRepository.class), goalService, null, analysisReset);
+        SmartGoal goal = new SmartGoal();
+        goal.setId(1L);
+        when(goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc("TEAM")).thenReturn(List.of(goal));
+        StagedTraceMapping mapping = link("PROPOSAL_SRS", 1, 10);
+        mapping.setOrigin(StagedTraceMapping.Origin.AI_ACCEPTED);
+        when(stagedRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc("TEAM"))
+            .thenReturn(List.of(mapping));
+        when(mappingRepository.findByGoalIdIn(any())).thenReturn(List.of());
+
+        service.sync("TEAM");
+
+        verify(goalService).addGoalComponents(1L, List.of(10L),
+            GoalComponentMapping.MappingSource.AI_ACCEPTED);
+    }
+
+    @Test
+    void genericAddDefaultsToManualOrigin() {
+        StagedTraceMappingRepository stagedRepository = mock(StagedTraceMappingRepository.class);
+        TraceComponentRepository componentRepository = mock(TraceComponentRepository.class);
+        StagedMappingService service = new StagedMappingService(stagedRepository,
+            mock(GoalComponentMappingRepository.class), mock(SmartGoalRepository.class),
+            componentRepository, mock(SmartGoalService.class), null,
+            mock(ContinuityAnalysisResetService.class));
+        TraceComponent component = new TraceComponent();
+        component.setDocType(TraceComponent.DocType.SRS);
+        when(stagedRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc("TEAM"))
+            .thenReturn(List.of());
+        TraceComponent target = new TraceComponent();
+        target.setDocType(TraceComponent.DocType.SDD);
+        when(componentRepository.findById(10L)).thenReturn(java.util.Optional.of(component));
+        when(componentRepository.findById(20L)).thenReturn(java.util.Optional.of(target));
+        when(stagedRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<StagedTraceMapping> rows = service.add("TEAM",
+            List.of(new StagedMappingService.NewMapping("SRS_SDD", 10L, 20L)), "user", false);
+
+        assertEquals(StagedTraceMapping.Origin.MANUAL, rows.get(0).getOrigin());
     }
 }

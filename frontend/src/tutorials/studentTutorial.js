@@ -88,7 +88,7 @@ export const studentTutorialSteps = [
   },
   {
     target: '.student-trace-panel--mapping .stm-workspace > .stm-column-wrap:first-child',
-    content: 'The left column holds the source items for the selected stage: SMART goals for Proposal → SRS, or document components for later stages. Click one to select it. Use the search box to filter and Preview to read a component\'s full content.',
+    content: 'The left column holds the source items for the selected stage: SMART goals for Proposal → SRS, or document components for later stages. Click one to select it. Use the search box to filter and the eye icon to read a component\'s full content.',
     placement: 'right',
   },
   {
@@ -98,7 +98,7 @@ export const studentTutorialSteps = [
   },
   {
     target: '.student-trace-panel--mapping .stm-controls',
-    content: 'The middle panel previews the source to target link. Click "Establish Mapping" to create it. Every mapping for this stage is listed below, where you can also remove one you made by mistake.',
+    content: 'The middle panel previews the source to target link. Click "Map" to create it. Every mapping for this stage is listed below, where you can also remove one you made by mistake.',
     placement: 'left',
   },
   {

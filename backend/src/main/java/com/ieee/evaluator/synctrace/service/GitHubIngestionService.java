@@ -11,14 +11,14 @@ import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -34,6 +34,7 @@ public class GitHubIngestionService {
     private static final String KEY_GITHUB_TOKEN = "GITHUB_TOKEN";
     private static final String KEY_FILE_EXTENSIONS = "GITHUB_FILE_EXTENSIONS";
     private static final String DEFAULT_EXTENSIONS = "java,js,jsx,py,ts,tsx,sql,html,css,json,xml,yml,yaml";
+    private static final int MAX_RATE_LIMIT_RETRIES = 2;
 
     private final SystemSettingService configService;
     private final TraceComponentRepository componentRepository;
@@ -54,7 +55,14 @@ public class GitHubIngestionService {
         this.objectMapper = new ObjectMapper();
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public List<TraceComponent> ingestRepository(String githubUrl, String teamCode, String sessionId) throws Exception {
+        return ingestRepository(githubUrl, teamCode, sessionId, true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public List<TraceComponent> ingestRepository(
+            String githubUrl, String teamCode, String sessionId, boolean completeProgress) throws Exception {
         String runKey = buildRunKey(githubUrl, teamCode);
         
         if (!inFlightIngestions.add(runKey)) {
@@ -66,13 +74,16 @@ public class GitHubIngestionService {
 
         try {
             List<TraceComponent> result = ingestRepositoryInternal(githubUrl, teamCode, sessionId);
-            
             emit(sessionId, "COMPLETE", "GitHub ingestion complete. Ingested " + result.size() + " files.", 100);
-            progressEmitter.complete(sessionId);
+            if (completeProgress) progressEmitter.complete(sessionId);
             
             return result;
         } catch (Exception e) {
-            progressEmitter.error(sessionId, e.getMessage());
+            if (completeProgress) {
+                progressEmitter.error(sessionId, e.getMessage());
+            } else {
+                emit(sessionId, "WARNING", "Repository ingestion failed: " + e.getMessage(), 100);
+            }
             throw e;
         } finally {
             inFlightIngestions.remove(runKey);
@@ -200,6 +211,11 @@ public class GitHubIngestionService {
         return normalizedUrl + "|" + normalizedTeam;
     }
 
+    public String resolveRepositoryBranch(String owner, String repo, String requestedBranch) throws Exception {
+        String defaultBranch = getDefaultBranch(owner, repo);
+        return requestedBranch == null || requestedBranch.isBlank() ? defaultBranch : requestedBranch;
+    }
+
     private String getDefaultBranch(String owner, String repo) throws Exception {
         String repoUrl = String.format("%s/repos/%s/%s", GITHUB_API_BASE, owner, repo);
         JsonNode repoResponse = fetchGitHubApi(repoUrl);
@@ -220,12 +236,11 @@ public class GitHubIngestionService {
         addAuthHeader(headers);
         
         HttpEntity<String> request = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(rawUrl, HttpMethod.GET, request, String.class);
+        ResponseEntity<String> response = exchangeWithRateLimitRetry(rawUrl, request);
 
         if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
-            throw new RuntimeException(
-                RATE_LIMIT_MARKER + ": GitHub rate limit exceeded while fetching file content. " +
-                "Add a GITHUB_TOKEN in System Settings for higher rate limits.");
+            throw new RuntimeException("GitHub denied access to file " + path
+                + ". Check repository visibility and configured GitHub credentials.");
         }
 
         if (!response.getStatusCode().is2xxSuccessful()) {
@@ -268,6 +283,7 @@ public class GitHubIngestionService {
             found.setSourceType("GITHUB");
             found.setSourceRef(sourceRef);
             found.setSourceUrl(sourceUrl);
+            found.setSourceRemoved(false);
             found.setSourceCapturedAt(LocalDateTime.now());
             if (dirty) {
                 return componentRepository.save(found);
@@ -286,6 +302,7 @@ public class GitHubIngestionService {
         component.setSourceType("GITHUB");
         component.setSourceRef(sourceRef);
         component.setSourceUrl(sourceUrl);
+        component.setSourceRemoved(false);
         component.setSourceCapturedAt(LocalDateTime.now());
         component.setCreatedAt(LocalDateTime.now());
         
@@ -317,12 +334,10 @@ public class GitHubIngestionService {
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         HttpEntity<String> request = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
+        ResponseEntity<String> response = exchangeWithRateLimitRetry(url, request);
 
         if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
-            throw new RuntimeException(
-                RATE_LIMIT_MARKER + ": GitHub API rate limit exceeded. Please add a GITHUB_TOKEN in System Settings for higher rate limits."
-            );
+            throw new RuntimeException("GitHub denied repository access. Check repository visibility and configured credentials.");
         }
 
         if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
@@ -336,6 +351,49 @@ public class GitHubIngestionService {
         }
 
         return objectMapper.readTree(response.getBody());
+    }
+
+    private ResponseEntity<String> exchangeWithRateLimitRetry(String url, HttpEntity<String> request) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                ResponseEntity<String> response =
+                        restTemplate.exchange(url, HttpMethod.GET, request, String.class);
+                if (!isRateLimited(response.getStatusCode(), response.getHeaders(), response.getBody())) {
+                    return response;
+                }
+                if (attempt >= MAX_RATE_LIMIT_RETRIES) {
+                    throw rateLimitException(url);
+                }
+            } catch (HttpClientErrorException.Forbidden e) {
+                if (!isRateLimited(e.getStatusCode(), e.getResponseHeaders(), e.getResponseBodyAsString())) {
+                    throw new RuntimeException("GitHub denied access to " + url, e);
+                }
+                if (attempt >= MAX_RATE_LIMIT_RETRIES) {
+                    throw rateLimitException(url);
+                }
+            }
+            pauseBeforeRetry(attempt);
+        }
+    }
+
+    private boolean isRateLimited(HttpStatusCode status, HttpHeaders headers, String body) {
+        if (status != HttpStatus.FORBIDDEN) return false;
+        return "0".equals(headers == null ? null : headers.getFirst("X-RateLimit-Remaining"))
+                || (body != null && body.toLowerCase(Locale.ROOT).contains("rate limit"));
+    }
+
+    private RuntimeException rateLimitException(String url) {
+        return new RuntimeException(RATE_LIMIT_MARKER + ": GitHub rate limit reached while requesting "
+                + url + ". Add a GITHUB_TOKEN in System Settings for higher limits.");
+    }
+
+    private void pauseBeforeRetry(int attempt) {
+        try {
+            Thread.sleep(250L * (attempt + 1));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("GitHub rate-limit retry was interrupted.", e);
+        }
     }
 
     private void addAuthHeader(HttpHeaders headers) {
@@ -381,15 +439,27 @@ public class GitHubIngestionService {
     }
 
     public static String[] parseGitHubUrl(String url) {
-        // Pattern: https://github.com/owner/repo or https://github.com/owner/repo/tree/branch
-        Pattern pattern = Pattern.compile("github\\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?");
-        Matcher matcher = pattern.matcher(url);
-        if (matcher.find()) {
-            String owner = matcher.group(1);
-            String repo = matcher.group(2);
-            String branch = matcher.group(3);
-            return new String[]{owner, repo, branch};
+        if (url == null || url.isBlank()) return null;
+        try {
+            URI uri = URI.create(url.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme())
+                    || !"github.com".equalsIgnoreCase(uri.getHost())) {
+                return null;
+            }
+            String[] path = uri.getPath().split("/");
+            if (path.length < 3 || path[1].isBlank() || path[2].isBlank()) return null;
+            String repo = path[2].replaceFirst("\\.git$", "");
+            if (repo.isBlank()) return null;
+            String branch = null;
+            if (path.length >= 5 && "tree".equals(path[3])) {
+                branch = String.join("/", Arrays.copyOfRange(path, 4, path.length));
+                if (branch.isBlank()) return null;
+            } else if (path.length > 3 && !path[3].isBlank()) {
+                return null;
+            }
+            return new String[]{path[1], repo, branch};
+        } catch (IllegalArgumentException e) {
+            return null;
         }
-        return null;
     }
 }

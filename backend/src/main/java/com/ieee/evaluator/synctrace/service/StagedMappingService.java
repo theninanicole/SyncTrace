@@ -75,6 +75,16 @@ public class StagedMappingService {
     @Transactional
     public List<StagedTraceMapping> add(String teamCode, List<NewMapping> mappings, String createdBy,
             boolean restrictToTeam) {
+        return addInternal(teamCode, mappings, createdBy, restrictToTeam, StagedTraceMapping.Origin.MANUAL);
+    }
+
+    List<StagedTraceMapping> addWithOrigin(String teamCode, List<NewMapping> mappings, String createdBy,
+            boolean restrictToTeam, StagedTraceMapping.Origin origin) {
+        return addInternal(teamCode, mappings, createdBy, restrictToTeam, origin);
+    }
+
+    private List<StagedTraceMapping> addInternal(String teamCode, List<NewMapping> mappings, String createdBy,
+            boolean restrictToTeam, StagedTraceMapping.Origin origin) {
         Map<String, StagedTraceMapping> existing = new HashMap<>();
         for (StagedTraceMapping m : list(teamCode)) existing.put(key(m.getStage(), m.getSourceId(), m.getTargetId()), m);
 
@@ -97,6 +107,7 @@ public class StagedMappingService {
                 row.setTargetId(requested.targetId());
                 row.setCreatedBy(createdBy);
                 row.setCreatedAt(LocalDateTime.now());
+                row.setOrigin(origin);
                 row = stagedRepository.save(row);
                 existing.put(k, row);
             }
@@ -126,7 +137,9 @@ public class StagedMappingService {
         goalRepository.findByTeamCodeIgnoreCaseOrderByCreatedAtAscIdAsc(teamCode)
             .forEach(goal -> teamGoalIds.add(goal.getId()));
 
-        Set<List<Long>> derived = deriveGoalLinks(list(teamCode), teamGoalIds);
+        List<StagedTraceMapping> chain = list(teamCode);
+        Set<List<Long>> derived = deriveGoalLinks(chain, teamGoalIds);
+        Map<List<Long>, GoalComponentMapping.MappingSource> origins = deriveGoalLinkOrigins(chain, teamGoalIds);
 
         int removed = 0;
         Set<List<Long>> existing = new HashSet<>();
@@ -136,6 +149,8 @@ public class StagedMappingService {
             List<Long> pair = List.of(mapping.getGoalId(), mapping.getComponentId());
             if (derived.contains(pair)) {
                 existing.add(pair);
+                mapping.setSource(origins.getOrDefault(pair, GoalComponentMapping.MappingSource.MANUAL));
+                mappingRepository.save(mapping);
             } else {
                 mappingRepository.delete(mapping);
                 removed++;
@@ -145,7 +160,8 @@ public class StagedMappingService {
         int added = 0;
         for (List<Long> pair : derived) {
             if (existing.contains(pair)) continue;
-            goalService.addGoalComponents(pair.get(0), List.of(pair.get(1)));
+            goalService.addGoalComponents(pair.get(0), List.of(pair.get(1)),
+                origins.getOrDefault(pair, GoalComponentMapping.MappingSource.MANUAL));
             added++;
         }
 
@@ -166,8 +182,31 @@ public class StagedMappingService {
                 links.add(List.of(goalId, m.getTargetId()));
                 if (!"PROPOSAL".equals(stage.sourceType())) links.add(List.of(goalId, m.getSourceId()));
             }
+
         }
         return links;
+    }
+
+    static Map<List<Long>, GoalComponentMapping.MappingSource> deriveGoalLinkOrigins(
+            List<StagedTraceMapping> chain, Set<Long> teamGoalIds) {
+        Map<List<Long>, GoalComponentMapping.MappingSource> origins = new LinkedHashMap<>();
+        for (StagedTraceMapping m : chain) {
+            Stage stage = STAGES.stream().filter(s -> s.key().equals(m.getStage())).findFirst().orElse(null);
+            if (stage == null) continue;
+            GoalComponentMapping.MappingSource source = switch (m.effectiveOrigin()) {
+                case AI_ACCEPTED -> GoalComponentMapping.MappingSource.AI_ACCEPTED;
+                case AI_EDITED -> GoalComponentMapping.MappingSource.AI_EDITED;
+                default -> GoalComponentMapping.MappingSource.MANUAL;
+            };
+            for (Long goalId : resolveGoalIds(m.getSourceId(), stage, chain)) {
+                if (!teamGoalIds.contains(goalId)) continue;
+                origins.put(List.of(goalId, m.getTargetId()), source);
+                if (!"PROPOSAL".equals(stage.sourceType())) {
+                    origins.putIfAbsent(List.of(goalId, m.getSourceId()), source);
+                }
+            }
+        }
+        return origins;
     }
 
     /** Walks a source back through earlier stages to the goal(s) it originates from. */

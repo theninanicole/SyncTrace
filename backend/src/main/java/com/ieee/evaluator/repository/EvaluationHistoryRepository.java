@@ -1,6 +1,7 @@
 package com.ieee.evaluator.repository;
 
 import com.ieee.evaluator.model.EvaluationHistory;
+import com.ieee.evaluator.model.EvaluationHistoryFileNameDTO;
 import com.ieee.evaluator.model.EvaluationHistorySummaryDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -49,4 +50,10 @@ public interface EvaluationHistoryRepository extends JpaRepository<EvaluationHis
     // Used in persistHistory() to compute the next version number
     @Query("SELECT COALESCE(MAX(h.version), 0) FROM EvaluationHistory h WHERE h.fileId = :fileId")
     int findMaxVersionByFileId(@Param("fileId") String fileId);
+
+    // Includes soft-deleted records: components keep the team of the evaluation they came from
+    @Query("SELECT new com.ieee.evaluator.model.EvaluationHistoryFileNameDTO(h.id, h.fileName) " +
+           "FROM EvaluationHistory h " +
+           "WHERE LOCATE(LOWER(:teamCode), LOWER(h.fileName)) > 0")
+    List<EvaluationHistoryFileNameDTO> findFileNamesContaining(@Param("teamCode") String teamCode);
 }

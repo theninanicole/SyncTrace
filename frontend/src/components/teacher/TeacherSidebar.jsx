@@ -5,11 +5,11 @@ import { useTheme } from '../../hooks/useTheme';
 import appLogo from '../../assets/logo.png';
 
 const NAV_ITEMS = [
-  { key: 'submissions',   label: 'Student Submissions' },
+  { key: 'submissions',   label: 'Submissions' },
   { key: 'reports',       label: 'AI Reports' },
   { key: 'synctrace',     label: 'SyncTrace' },
-  { key: 'workspace',     label: 'AI Configurations' },
-  { key: 'settings',      label: 'System Settings' },
+  { key: 'workspace',     label: 'AI Config' },
+  { key: 'settings',      label: 'Settings' },
 ];
 
 function TeacherSidebar({ currentView, onNavigate, onTutorialStart }) {

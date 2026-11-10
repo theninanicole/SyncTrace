@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,6 +32,29 @@ public final class ComponentCodeHelper {
             + "(?:[\\s:\\-]+([^,;\\n]+))?",
         Pattern.CASE_INSENSITIVE
     );
+
+    /** Any ID a document may use: the known prefixes, or an uppercase one like SD-04 or BR_2. */
+    private static final Pattern DOCUMENT_ID_TOKEN = Pattern.compile(
+        "(?<![\\w-])((?i:(?:UC|TC|FR|NFR|REQ|CL|CLS|CD|SQ|SEQ|AD|ACT|DFD|CTX|CX|MS|ML|TK|TSK|DL|DEL|TD|TL|WF|UI|ER|ERD)"
+            + "[-\\s_]?\\d{1,3}(?:\\.\\d{1,3})*)|[A-Z]{1,6}[-_]\\d{1,3}(?:\\.\\d{1,3})*)"
+            + "(?![\\w-])(?:[\\s:\\-]+([^,;\\n]+))?"
+    );
+
+    private static final Pattern ID_PREFIX = Pattern.compile("^[A-Za-z]+");
+
+    /** Prefixes that belong to other artifacts, so on a diagram they cite it rather than name it. */
+    private static final Set<String> KNOWN_PREFIXES = Set.of(
+        "UC", "TC", "FR", "NFR", "REQ", "CL", "CD", "SQ", "AD", "DFD", "CTX", "MS", "TK", "DL", "TD", "TL", "WF", "UI", "ER");
+
+    /** Look like IDs but name a page image, figure or standard. */
+    private static final Set<String> NOT_COMPONENT_IDS = Set.of("IMG", "FIG", "IEEE", "ISO");
+
+    private static final Map<ArtifactKind, Set<String>> EXTRA_OWN_PREFIXES = Map.of(
+        ArtifactKind.USE_CASE, Set.of("UCD"),
+        ArtifactKind.CLASS, Set.of("CD"),
+        ArtifactKind.SEQUENCE, Set.of("SD", "SSD"),
+        ArtifactKind.UI, Set.of("UID"),
+        ArtifactKind.DATA_MODEL, Set.of("DM", "DD"));
 
     private ComponentCodeHelper() {}
 
@@ -67,31 +91,49 @@ public final class ComponentCodeHelper {
 
     /**
      * Codes that identify the diagram itself, taken only from its title line and Elements:
-     * lines and only when the prefix matches the diagram's kind. Codes of other kinds
-     * (e.g. FR-01 cited inside an activity diagram) are references, not the diagram's code.
+     * lines and kept exactly as the document writes them. Codes of other kinds (e.g. FR-01
+     * cited inside an activity diagram) are references, not the diagram's code.
      */
     public static List<CodedElement> extractOwnElements(String text, ArtifactKind kind) {
         if (text == null || text.isBlank()) return List.of();
-        String prefix = prefixFor(kind);
 
-        Map<String, CodedElement> found = new LinkedHashMap<>();
-        parseElementTokens(text.lines().findFirst().orElse(""), found);
+        // Keyed by the normalized code, so UC-1 and UC-01 count as one element.
+        Map<String, CodedElement> own = new LinkedHashMap<>();
+        parseOwnTokens(text.lines().findFirst().orElse(""), kind, own);
         Matcher elementsLine = ELEMENTS_LINE.matcher(text);
         while (elementsLine.find()) {
-            parseElementTokens(elementsLine.group(1), found);
+            parseOwnTokens(elementsLine.group(1), kind, own);
         }
+        return new ArrayList<>(own.values());
+    }
 
-        List<CodedElement> own = new ArrayList<>();
-        for (CodedElement element : found.values()) {
-            if (element.codeName().startsWith(prefix + "-")) own.add(element);
+    private static void parseOwnTokens(String segment, ArtifactKind kind, Map<String, CodedElement> own) {
+        Matcher m = DOCUMENT_ID_TOKEN.matcher(segment);
+        while (m.find()) {
+            String code = m.group(1).trim().toUpperCase(Locale.ROOT).replaceAll("[\\s_]+", "-");
+            if (!isOwnId(code, kind)) continue;
+            String labelPart = m.group(2) != null ? m.group(2).trim().replaceAll("[)\\]]$", "").trim() : "";
+            String label = labelPart.isBlank() ? code : code + " " + labelPart;
+            if (label.length() > 250) label = label.substring(0, 249).trim() + "…";
+            own.putIfAbsent(normalizeCode(code), new CodedElement(code, label));
         }
-        return own;
+    }
+
+    private static boolean isOwnId(String code, ArtifactKind kind) {
+        Matcher m = ID_PREFIX.matcher(code);
+        if (!m.find()) return false;
+        String prefix = m.group();
+        if (NOT_COMPONENT_IDS.contains(prefix)) return false;
+        String canonical = canonicalizePrefix(prefix);
+        if (canonical.equals(prefixFor(kind))) return true;
+        if (EXTRA_OWN_PREFIXES.getOrDefault(kind, Set.of()).contains(prefix)) return true;
+        return !KNOWN_PREFIXES.contains(canonical);
     }
 
     /** Keeps fallback numbering past codes the document already used, so they never collide. */
     public static void reserveCode(String code, Map<String, Integer> counters) {
         if (code == null) return;
-        Matcher m = Pattern.compile("^([A-Z]+)-(\\d{1,3})$").matcher(code);
+        Matcher m = Pattern.compile("^([A-Z]+)-(\\d{1,3})$").matcher(normalizeCode(code));
         if (!m.matches()) return;
         counters.merge(m.group(1), Integer.parseInt(m.group(2)), Math::max);
     }

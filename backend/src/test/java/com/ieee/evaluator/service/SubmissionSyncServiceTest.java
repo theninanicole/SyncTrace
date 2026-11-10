@@ -46,12 +46,12 @@ class SubmissionSyncServiceTest {
         Method extractor = SubmissionSyncService.class.getDeclaredMethod("extractIdFromUrl", String.class);
         extractor.setAccessible(true);
 
-        assertEquals("short_valid_id", extractor.invoke(service,
-                "https://drive.google.com/open?id=short_valid_id"));
-        assertEquals("document_id_123", extractor.invoke(service,
-                "https://docs.google.com/document/d/document_id_123/edit?usp=sharing"));
-        assertEquals("folder_id_123", extractor.invoke(service,
-                "https://drive.google.com/drive/u/0/folders/folder_id_123"));
+        assertEquals("valid_drive_file_id_0123456789", extractor.invoke(service,
+                "https://drive.google.com/open?id=valid_drive_file_id_0123456789"));
+        assertEquals("document_id_1234567890123456", extractor.invoke(service,
+                "https://docs.google.com/document/d/document_id_1234567890123456/edit?usp=sharing"));
+        assertEquals("folder_id_12345678901234567890", extractor.invoke(service,
+                "https://drive.google.com/drive/u/0/folders/folder_id_12345678901234567890"));
     }
 
     @Test

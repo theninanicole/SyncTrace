@@ -12,6 +12,8 @@ import AddComponentDialog from '../../components/teacher/mapping/AddComponentDia
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import { useStagedTraceability } from '../../hooks/useStagedTraceability';
+import { useMappingSuggestions } from '../../hooks/useMappingSuggestions';
+import SuggestionReviewPanel from '../../components/teacher/mapping/SuggestionReviewPanel';
 import { formatDateTime } from '../../../utils/dashboardUtils';
 import { mappingStageLabel } from '../../constants';
 import './TraceabilityMappingPage.css';
@@ -20,16 +22,20 @@ function TraceabilityMappingPage({ focusStep }) {
   const { toast, showToast, hideToast } = useToast();
   const [selectedTeam, setSelectedTeam] = useSelectedTeam();
   const tm = useStagedTraceability(showToast, selectedTeam);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const suggestionState = useMappingSuggestions(selectedTeam, tm.selectedStage, async () => {}, showToast);
 
   const [isExtractGoalsOpen, setIsExtractGoalsOpen] = useState(false);
   const [isExtractComponentsOpen, setIsExtractComponentsOpen] = useState(false);
   const [addComponentDocType, setAddComponentDocType] = useState(null);
   const [previewComponent, setPreviewComponent] = useState(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (focusStep === 'goals') setIsExtractGoalsOpen(true);
     if (focusStep === 'library') setIsExtractComponentsOpen(true);
   }, [focusStep]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const isProposalStage = tm.stage.sourceType === 'PROPOSAL';
   const isSaving = tm.saveState === 'saving';
@@ -64,7 +70,6 @@ function TraceabilityMappingPage({ focusStep }) {
 
       <PanelHeader
         title="Traceability Mapping"
-        subtitle="Establish traceability relationships between project artifacts, one staged mapping at a time."
         actions={
           <div className="teacher-header-actions">
             {isProposalStage && (
@@ -77,6 +82,9 @@ function TraceabilityMappingPage({ focusStep }) {
             </button>
             <button className="btn btn--primary" disabled={isBusy} onClick={tm.saveMapping}>
               {saveButtonLabel()}
+            </button>
+            <button className="btn btn--soft" disabled={isBusy || !selectedTeam || missingArtifact} onClick={() => { setSuggestionsOpen(true); suggestionState.generate().catch(() => {}); }}>
+              Suggest Mappings
             </button>
           </div>
         }
@@ -100,10 +108,25 @@ function TraceabilityMappingPage({ focusStep }) {
           <span>{missingWarning}</span>
         </div>
       )}
+      {suggestionsOpen && (
+        <SuggestionReviewPanel
+          suggestions={suggestionState.suggestions}
+          sourceItems={tm.sourceItems}
+          targetItems={tm.targetItems}
+          onDecide={suggestionState.decide}
+          onAcceptAll={suggestionState.acceptAll}
+          onClose={() => { suggestionState.discard(); setSuggestionsOpen(false); }}
+          state={suggestionState.state}
+          progress={suggestionState.progress}
+          error={suggestionState.error}
+          generation={suggestionState.generation}
+        />
+      )}
 
       <MappingWorkspace
         tm={tm}
         onExtractGoalsClick={() => setIsExtractGoalsOpen(true)}
+        onExtractComponentsClick={() => setIsExtractComponentsOpen(true)}
         onAddComponentClick={(docType) => setAddComponentDocType(docType)}
         onPreviewComponentClick={setPreviewComponent}
         onRemoveComponentClick={(docType, id) => tm.removeComponent(docType, id)}
@@ -131,6 +154,7 @@ function TraceabilityMappingPage({ focusStep }) {
         teamCode={selectedTeam}
         stage={tm.stage}
         extracting={tm.extractingComponents}
+        progress={tm.extractionProgress}
         onExtract={tm.extractComponents}
       />
 
@@ -143,11 +167,12 @@ function TraceabilityMappingPage({ focusStep }) {
 
       <ComponentDetailModal
         component={previewComponent}
+        stage={tm.stage}
         onClose={() => setPreviewComponent(null)}
         showToast={showToast}
         onRenamed={(updated) => {
           setPreviewComponent(updated);
-          tm.refreshComponents();
+          tm.handleComponentUpdated(updated);
         }}
       />
     </div>

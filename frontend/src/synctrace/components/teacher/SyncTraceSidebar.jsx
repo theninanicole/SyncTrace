@@ -5,8 +5,8 @@ import appLogo from '../../../assets/logo.png';
 const NAV_ITEMS = [
   { key: 'overview', label: 'Overview' },
   { key: 'source', label: 'Source Code' },
-  { key: 'traceability', label: 'Traceability Mapping' },
-  { key: 'traceability-results', label: 'Traceability Results' },
+  { key: 'traceability', label: 'Mapping' },
+  { key: 'traceability-results', label: 'Results' },
 ];
 
 function SyncTraceSidebar({ currentView, onNavigate, onBack }) {
@@ -19,7 +19,7 @@ function SyncTraceSidebar({ currentView, onNavigate, onBack }) {
       <p className="teacher-sidebar__caption">Teacher Workspace</p>
 
       <button className="btn btn--ghost teacher-sidebar__back" onClick={onBack}>
-        <ArrowLeft size={14} /> Back to IEEE Docs Evaluator
+        <ArrowLeft size={14} /> Back
       </button>
 
       <nav className="teacher-sidebar__nav">

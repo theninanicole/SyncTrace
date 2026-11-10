@@ -16,6 +16,7 @@ public interface GoalComponentMappingRepository extends JpaRepository<GoalCompon
     List<GoalComponentMapping> findByGoalIdIn(Collection<Long> goalIds);
     Optional<GoalComponentMapping> findByGoalIdAndComponentId(Long goalId, Long componentId);
     List<GoalComponentMapping> findByComponentId(Long componentId);
+    long countByComponentIdIn(Collection<Long> componentIds);
     void deleteByComponentId(Long componentId);
     void deleteByGoalId(Long goalId);
     

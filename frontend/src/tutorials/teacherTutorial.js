@@ -13,7 +13,7 @@ export const teacherTutorialSteps = [
   },
   {
     target: '.teacher-sidebar__nav .nav-btn:nth-child(1)',
-    content: 'Student Submissions: review incoming documents and run AI analysis for each file.',
+    content: 'Submissions: review incoming documents and run AI analysis for each file.',
     placement: 'right',
   },
   {
@@ -23,12 +23,12 @@ export const teacherTutorialSteps = [
   },
   {
     target: '.teacher-sidebar__nav .nav-btn:nth-child(3)',
-    content: 'AI Configurations: manage AI logic, prompt templates,and focus areas for analysis.',
+    content: 'AI Config: manage AI logic, prompt templates,and focus areas for analysis.',
     placement: 'right',
   },
   {
     target: '.teacher-sidebar__nav .nav-btn:nth-child(4)',
-    content: 'System Settings: update API keys, tracker mappings, and evaluation configs.',
+    content: 'Settings: update API keys, tracker mappings, and evaluation configs.',
     placement: 'right',
   },
   {

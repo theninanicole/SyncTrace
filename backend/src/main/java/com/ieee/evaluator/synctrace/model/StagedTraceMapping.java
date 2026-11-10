@@ -38,4 +38,16 @@ public class StagedTraceMapping {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origin", length = 20)
+    private Origin origin = Origin.MANUAL;
+
+    public Origin effectiveOrigin() {
+        return origin == null ? Origin.MANUAL : origin;
+    }
+
+    public enum Origin {
+        MANUAL, AI_ACCEPTED, AI_EDITED
+    }
 }

@@ -386,6 +386,7 @@
 }
 
 .student-section-heading__actions {
+  margin-left: auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -558,4 +559,36 @@ color: var(--brand);
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+.student-section-heading--mapping {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.student-section-heading--mapping .student-stm-context-row {
+  margin: 0;
+}
+
+.student-section-heading--mapping .student-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.student-trace-tabs .student-doc-tab {
+  padding: 0.48rem 1.05rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
+.student-trace-tabs .student-doc-tab--active {
+  border-color: transparent;
+  background: linear-gradient(140deg, var(--brand), var(--brand-strong));
+  color: #fff;
+}
+
+[data-theme='dark'] .student-trace-tabs .student-doc-tab--active {
+  background: var(--brand);
+  color: #17202b;
 }

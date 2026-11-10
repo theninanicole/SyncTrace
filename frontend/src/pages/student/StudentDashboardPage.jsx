@@ -19,9 +19,9 @@ import { getStudentReportById } from '../../api';
 import { useToast } from '../../hooks/useToast';
 
 const TRACEABILITY_TABS = [
-  { key: 'mapping', label: 'Mapping', subtitle: 'Map your team\'s artifacts to the SMART goals they support.' },
-  { key: 'results', label: 'Results', subtitle: 'See how your goals trace across documents and implementation.' },
-  { key: 'source', label: 'Source Code', subtitle: 'Pull your GitHub files into Implementation components and check them against your SDD.' },
+  { key: 'mapping', label: 'Mapping' },
+  { key: 'results', label: 'Results' },
+  { key: 'source', label: 'Source Code' },
 ];
 
 function StudentDashboardPage({ studentData }) {
@@ -52,7 +52,6 @@ function StudentDashboardPage({ studentData }) {
     if (view === 'traceability') setHasOpenedTraceability(true);
   }
 
-  const activeTraceTab = TRACEABILITY_TABS.find((t) => t.key === traceTab);
 
   async function handleOpenReport(reportSummary) {
     vm.markViewed(reportSummary.id);
@@ -97,7 +96,6 @@ function StudentDashboardPage({ studentData }) {
       <main className="layout__main" hidden={currentView !== 'evaluations'}>
         <PanelHeader
           title="My Team Evaluations"
-          subtitle="View feedback sent by your professor."
           actions={
             <div className="student-header-actions">
               <input
@@ -162,8 +160,8 @@ function StudentDashboardPage({ studentData }) {
       </main>
 
       {hasOpenedTraceability && (
-        <main className="layout__main" hidden={currentView !== 'traceability'}>
-          <PanelHeader title="Traceability" subtitle={activeTraceTab.subtitle} />
+        <main className="layout__main student-traceability-view" hidden={currentView !== 'traceability'}>
+          <PanelHeader title="Traceability" />
 
           <nav className="student-trace-tabs" aria-label="Traceability sections">
             {TRACEABILITY_TABS.map((tab) => (
@@ -200,8 +198,7 @@ function StudentDashboardPage({ studentData }) {
               ) : (
                 <div className="card student-traceability-locked">
                   <h3 className="student-empty__title">No team connected</h3>
-                  <p className="student-empty__text">Source code ingestion is available once your team is connected.</p>
-                </div>
+                                  </div>
               )}
             </div>
           )}

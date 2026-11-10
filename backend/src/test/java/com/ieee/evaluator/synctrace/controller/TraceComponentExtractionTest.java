@@ -1,5 +1,6 @@
 package com.ieee.evaluator.synctrace.controller;
 
+import com.ieee.evaluator.synctrace.model.ArtifactKind;
 import com.ieee.evaluator.synctrace.model.TraceComponent;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -41,6 +42,39 @@ class TraceComponentExtractionTest {
             components.stream().map(TraceComponent::getCodeName).toList());
         assertEquals(List.of("a", "b", "c"),
             components.stream().map(TraceComponent::getImageData).toList());
+    }
+
+    @Test
+    void skipsDiagramsHeadedWithARetiredTypeButKeepsOnesThatOnlyMentionIt() {
+        String evaluation = """
+            Diagram Analysis:
+            * [IMG-1] - Context Diagram: Shows the system boundary.
+            * [IMG-2] - Data Flow Diagram: Level 0.
+            * [IMG-3] - Figure 3: Shows how data flow between modules.
+            * [IMG-4] - Use Case Diagram: Main actors.
+            """;
+
+        List<TraceComponent> components = extract(evaluation, List.of("a", "b", "c", "d"));
+
+        assertEquals(List.of("c", "d"), components.stream().map(TraceComponent::getImageData).toList());
+        assertEquals(List.of(ArtifactKind.UNSPECIFIED, ArtifactKind.USE_CASE),
+            components.stream().map(TraceComponent::getArtifactKind).toList());
+    }
+
+    @Test
+    void namesComponentsAfterTheIdsTheDocumentUses() {
+        String evaluation = """
+            Diagram Analysis:
+            * [IMG-1] - Sequence Diagram SD-04: Login flow.
+            * [IMG-2] - Sequence Diagram: No ID on this one.
+            * [IMG-3] - Use Case Diagram:
+              - Elements: UC-1 Login, UC-2 Register
+            """;
+
+        List<TraceComponent> components = extract(evaluation, List.of("a", "b", "c"));
+
+        assertEquals(List.of("SD-04", "SQ-01", "UC-1", "UC-2"),
+            components.stream().map(TraceComponent::getCodeName).toList());
     }
 
     @Test

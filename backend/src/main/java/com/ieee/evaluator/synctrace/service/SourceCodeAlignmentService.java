@@ -9,7 +9,6 @@ import com.ieee.evaluator.synctrace.model.TraceComponent;
 import com.ieee.evaluator.synctrace.model.TraceComponent.DocType;
 import com.ieee.evaluator.synctrace.repository.ContinuityFindingRepository;
 import com.ieee.evaluator.synctrace.repository.DiagnosticRecommendationRepository;
-import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +30,6 @@ public class SourceCodeAlignmentService {
     private static final long DEFAULT_RETRY_BACKOFF_MAX_DELAY_MS = 30_000;
     private static final long DEFAULT_RETRY_TIME_LIMIT_MS = 180_000;
 
-    private final TraceComponentRepository componentRepository;
     private final ContinuityFindingRepository findingRepository;
     private final DiagnosticRecommendationRepository recommendationRepository;
     private final ProgressEmitter progressEmitter;
@@ -41,13 +39,11 @@ public class SourceCodeAlignmentService {
     private final ObjectMapper objectMapper;
 
     public SourceCodeAlignmentService(
-            TraceComponentRepository componentRepository,
             ContinuityFindingRepository findingRepository,
             DiagnosticRecommendationRepository recommendationRepository,
             ProgressEmitter progressEmitter,
             TeamComponentResolverService teamComponentResolver,
             List<AiProvider> providerList) {
-        this.componentRepository = componentRepository;
         this.findingRepository = findingRepository;
         this.recommendationRepository = recommendationRepository;
         this.progressEmitter = progressEmitter;
@@ -157,9 +153,7 @@ public class SourceCodeAlignmentService {
 
         emit(sessionId, "LOADING", "Loading SDD and IMPLEMENTATION components", 15);
 
-        // Get all components and filter by team using shared resolution logic
-        List<TraceComponent> allComponents = componentRepository.findAll();
-        List<TraceComponent> teamComponents = teamComponentResolver.filterByTeam(allComponents, teamCode);
+        List<TraceComponent> teamComponents = teamComponentResolver.findTeamComponents(teamCode);
         
         // Separate into SDD and IMPLEMENTATION components
         List<TraceComponent> sddComponents = teamComponents.stream()
