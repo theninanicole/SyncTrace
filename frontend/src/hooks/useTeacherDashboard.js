@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../api';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { flushSync } from 'react-dom';
 import {
@@ -37,6 +37,15 @@ function generateSessionId() {
   return crypto.randomUUID
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+// Trash entries are either a bare report id (older entries) or { id, evaluatedAt }.
+const trashEntryId = (entry) => (entry && typeof entry === 'object' ? entry.id : entry);
+
+function trashEntryMatches(entry, log) {
+  if (trashEntryId(entry) !== log.id) return false;
+  const stamp = entry && typeof entry === 'object' ? entry.evaluatedAt : null;
+  return !stamp || stamp === log.evaluatedAt;
 }
 
 export function useTeacherDashboard(showToast) {
@@ -92,6 +101,13 @@ export function useTeacherDashboard(showToast) {
       return [];
     }
   });
+
+  // A trashed report is remembered with its evaluation time. Report ids restart when the
+  // database is reset or replaced, and an id alone would then hide an unrelated new report.
+  const isReportTrashed = useCallback(
+    (log) => Boolean(log) && trashedReportIds.some((entry) => trashEntryMatches(entry, log)),
+    [trashedReportIds],
+  );
 
   const [settings, setSettings] = useState([]);
   const [editedSettings, setEditedSettings] = useState({});
@@ -452,7 +468,7 @@ export function useTeacherDashboard(showToast) {
   const filteredHistoryLogs = useMemo(() => {
     const query = reportSearchQuery.trim().toLowerCase();
     return historyLogs.filter((log) => {
-      if (trashedReportIds.includes(log.id)) return false;
+      if (isReportTrashed(log)) return false;
       const docType = extractSubmissionMeta(log.fileName).documentType;
       const meta    = extractSubmissionMeta(log.fileName);
       if (reportStatusFilter === 'sent'    && !log.isSent) return false;
@@ -468,7 +484,7 @@ export function useTeacherDashboard(showToast) {
       }
       return true;
     });
-  }, [historyLogs, trashedReportIds, reportSearchQuery, reportStatusFilter, reportDocTypeFilter, reportSelectedStudent, reportSelectedSection, reportSelectedTeamCode]);
+  }, [historyLogs, isReportTrashed, reportSearchQuery, reportStatusFilter, reportDocTypeFilter, reportSelectedStudent, reportSelectedSection, reportSelectedTeamCode]);
 
   const allHistoryCount = historyLogs.length;
 
@@ -479,7 +495,7 @@ export function useTeacherDashboard(showToast) {
       .filter((item) => hiddenSubmissionIds.includes(item.id))
       .map((item) => ({ id: item.id, kind: 'submission', label: item.name, meta: 'Student Submission' }));
     const trashedReports = historyLogs
-      .filter((item) => trashedReportIds.includes(item.id))
+      .filter((item) => isReportTrashed(item))
       .map((item) => ({ id: item.id, kind: 'report', label: item.fileName, meta: 'AI Report', date: item.evaluatedAt }));
     return {
       submissionCount: trashedSubmissions.length,
@@ -488,13 +504,16 @@ export function useTeacherDashboard(showToast) {
       trashedReports,
       trashedItems: [...trashedReports, ...trashedSubmissions],
     };
-  }, [files, hiddenSubmissionIds, historyLogs, trashedReportIds]);
+  }, [files, hiddenSubmissionIds, historyLogs, isReportTrashed]);
 
-  async function deleteReport(reportId) {
+  async function deleteReport(reportId, evaluatedAt) {
     try {
+      const stamp = evaluatedAt ?? historyLogs.find((log) => log.id === reportId)?.evaluatedAt ?? null;
       setTrashedReportIds((prev) => {
-        if (prev.includes(reportId)) return prev;
-        const next = [reportId, ...prev];
+        const next = [
+          stamp ? { id: reportId, evaluatedAt: stamp } : reportId,
+          ...prev.filter((entry) => trashEntryId(entry) !== reportId),
+        ];
         localStorage.setItem(TRASHED_REPORTS_KEY, JSON.stringify(next));
         return next;
       });
@@ -523,7 +542,7 @@ export function useTeacherDashboard(showToast) {
       setHiddenSubmissionIds((prev) => prev.filter((id) => !restoredSubmissionIds.includes(id)));
       if (restoredReportIds.length) {
         setTrashedReportIds((prev) => {
-          const next = prev.filter((id) => !restoredReportIds.includes(id));
+          const next = prev.filter((entry) => !restoredReportIds.includes(trashEntryId(entry)));
           localStorage.setItem(TRASHED_REPORTS_KEY, JSON.stringify(next));
           return next;
         });
@@ -535,8 +554,17 @@ export function useTeacherDashboard(showToast) {
   async function safeEmptyAllTrashBins() {
     if (!hiddenSubmissionIds.length && !trashedReportIds.length) { showToast('Trash bins are already empty.', 'success'); return; }
     try {
-      const trashDeletes = trashedReportIds.length
-        ? Promise.all(trashedReportIds.map((id) => softDeleteReport(id)))
+      // Skip trash entries that point at a different report than the one now holding that id.
+      const idsToDelete = [...new Set(
+        trashedReportIds
+          .filter((entry) => {
+            const loaded = historyLogs.find((log) => log.id === trashEntryId(entry));
+            return !loaded || trashEntryMatches(entry, loaded);
+          })
+          .map(trashEntryId),
+      )];
+      const trashDeletes = idsToDelete.length
+        ? Promise.all(idsToDelete.map((id) => softDeleteReport(id)))
         : Promise.resolve();
       const restoreSubmissions = hiddenSubmissionIds.length
         ? Promise.all(hiddenSubmissionIds.map((id) => restoreSubmission(id)))
@@ -547,8 +575,8 @@ export function useTeacherDashboard(showToast) {
         localStorage.setItem(TRASHED_REPORTS_KEY, JSON.stringify([]));
         return [];
       });
-      if (trashedReportIds.length) {
-        setHistoryLogs((prev) => prev.filter((log) => !trashedReportIds.includes(log.id)));
+      if (idsToDelete.length) {
+        setHistoryLogs((prev) => prev.filter((log) => !idsToDelete.includes(log.id)));
       }
       showToast('Trash cleared.', 'success');
     } catch (err) { showToast(`Failed to empty trash: ${err.message}`, 'error'); }
@@ -827,7 +855,7 @@ export function useTeacherDashboard(showToast) {
     openAnalyzeModal, runAnalysis,
     loadHistory, startEditingHistory, saveEditedHistory, sendHistoryToStudent, closeHistoryModal,
     handleSettingChange, saveAiSettingsBatch, saveAllSettings, loadSettings,
-    deleteReport, deleteSubmission, restoreSelectedTrashItems, safeEmptyAllTrashBins,
+    deleteReport, isReportTrashed, deleteSubmission, restoreSelectedTrashItems, safeEmptyAllTrashBins,
     trashBinSummary, hiddenSubmissionIds, dangerClearAllHistory,
   };
 }

@@ -1,7 +1,19 @@
 import AppModal from '../common/AppModal';
 import { extractSubmissionMeta, formatDateTime } from '../../utils/dashboardUtils';
 
-function TeacherSubmissionHistoryModal({ isOpen, file, logs, onViewReport, onDelete, onClose, onReturn }) {
+function TeacherSubmissionHistoryModal({
+	isOpen, file, logs, loading = false, error = '', trashedCount = 0,
+	onViewReport, onDelete, onClose, onReturn,
+}) {
+	function emptyMessage() {
+		if (loading) return 'Loading evaluations…';
+		if (error) return `Could not load evaluations: ${error}`;
+		if (trashedCount > 0) {
+			return `${trashedCount} saved evaluation${trashedCount === 1 ? ' is' : 's are'} in the Trash. Restore from Settings to see ${trashedCount === 1 ? 'it' : 'them'} here.`;
+		}
+		return 'No saved evaluations found for this submission.';
+	}
+
 	const subtitle = file?.name ? `Submission: ${file.name}` : '';
 
 	function parseOverallScore(text) {
@@ -109,7 +121,7 @@ function TeacherSubmissionHistoryModal({ isOpen, file, logs, onViewReport, onDel
 					<tbody>
 						{logs.length === 0 ? (
 							<tr>
-								<td colSpan="5" className="muted">No saved evaluations found for this submission.</td>
+								<td colSpan="5" className="muted">{emptyMessage()}</td>
 							</tr>
 						) : (
 							logs.map((log, index) => {
@@ -151,7 +163,7 @@ function TeacherSubmissionHistoryModal({ isOpen, file, logs, onViewReport, onDel
 												</button>
 												<button
 													className="btn btn--danger btn--small"
-													onClick={() => onDelete(log.id)}
+													onClick={() => onDelete(log.id, log.evaluatedAt)}
 													title="Remove from view (data preserved in database)"
 												>
 													Delete

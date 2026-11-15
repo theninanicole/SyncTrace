@@ -3,7 +3,7 @@ import { fetchClassRoster } from '../../../services/dashboardService';
 import { getTeamRepositories } from '../../api';
 import './TeamSelect.css';
 
-function TeamSelect({ value, onChange }) {
+function TeamSelect({ value, onChange, disabled = false, refreshKey = 0 }) {
   const [teams, setTeams] = useState([]);
 
   useEffect(() => {
@@ -28,13 +28,14 @@ function TeamSelect({ value, onChange }) {
       });
       setTeams(Array.from(codesByKey.values()).sort((a, b) => a.localeCompare(b)));
     });
-  }, []);
+  }, [refreshKey]);
 
   return (
     <label className="team-select">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
         aria-label="Filter by team"
       >
         <option value="" disabled hidden>Select a team</option>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import PanelHeader from '../../../components/common/PanelHeader';
 import ToastMessage from '../../../components/common/ToastMessage';
 import { useToast } from '../../../hooks/useToast';
@@ -19,7 +19,8 @@ import ComponentDetailModal from '../../components/teacher/ComponentDetailModal'
 import LinkRepositoryDialog from '../../components/teacher/LinkRepositoryDialog';
 import RepositoryCard from '../../components/teacher/RepositoryCard';
 import UnlinkConfirmModal from '../../components/teacher/UnlinkConfirmModal';
-import '../../components/common/TeamSelect.css';
+import TeamSelect from '../../components/common/TeamSelect';
+import { useSelectedTeam } from '../../hooks/useSelectedTeam';
 import './SourceCodePage.css';
 import './TraceabilityMappingPage.css';
 
@@ -37,8 +38,10 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
   const isTeamLocked = Boolean(lockedTeamCode);
   const { toast, showToast, hideToast } = useToast();
   const [teams, setTeams] = useState([]);
-  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [selectedTeamCode, setSelectedTeamCode] = useSelectedTeam();
   const [loadingTeams, setLoadingTeams] = useState(true);
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
+  const [teamListVersion, setTeamListVersion] = useState(0);
   const [repositories, setRepositories] = useState([]);
   const [loadingRepositories, setLoadingRepositories] = useState(false);
 
@@ -62,27 +65,33 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
     setLoadingTeams(true);
     try {
       const data = await getTeamRepositories();
-      if (isTeamLocked) {
-        const ownRows = data.filter((team) => team.teamCode === lockedTeamCode);
-        const ownTeam = ownRows[ownRows.length - 1] || { teamCode: lockedTeamCode, githubUrl: '' };
-        setTeams([ownTeam]);
-        setSelectedTeam(ownTeam);
-        return;
-      }
       setTeams(data);
-      setSelectedTeam(data[0] || null);
     } catch (err) {
-      if (isTeamLocked) {
-        const ownTeam = { teamCode: lockedTeamCode, githubUrl: '' };
-        setTeams([ownTeam]);
-        setSelectedTeam(ownTeam);
-      } else {
-        showToast(err.message, 'error');
-      }
+      setTeams([]);
+      if (!isTeamLocked) showToast(err.message, 'error');
     } finally {
       setLoadingTeams(false);
+      setTeamsLoaded(true);
     }
-  }, [isTeamLocked, lockedTeamCode, showToast]);
+  }, [isTeamLocked, showToast]);
+
+  // The picker (shared TeamSelect) only yields a team code; the rest of this
+  // page works with the GitHub-sheet row for that team (its code + githubUrl).
+  // Resolve it here, falling back to a bare row for teams that are only in the
+  // class roster. Held back until the sheet has loaded so the code's casing
+  // doesn't flip mid-load and refetch everything.
+  const selectedTeam = useMemo(() => {
+    if (!teamsLoaded) return null;
+    if (isTeamLocked) {
+      const ownRows = teams.filter((team) => team.teamCode === lockedTeamCode);
+      return ownRows[ownRows.length - 1] || { teamCode: lockedTeamCode, githubUrl: '' };
+    }
+    const code = (selectedTeamCode || '').trim();
+    if (!code) return null;
+    const key = code.toUpperCase();
+    return teams.find((team) => (team.teamCode || '').trim().toUpperCase() === key)
+      || { teamCode: code, githubUrl: '' };
+  }, [teamsLoaded, isTeamLocked, lockedTeamCode, teams, selectedTeamCode]);
 
   useEffect(() => {
     loadTeams();
@@ -350,7 +359,11 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
             title="Source Code"
             actions={
               <div className="teacher-header-actions">
-                <button className="btn btn--soft" onClick={loadTeams} disabled={loadingTeams}>
+                <button
+                  className="btn btn--soft"
+                  onClick={() => { loadTeams(); setTeamListVersion((v) => v + 1); }}
+                  disabled={loadingTeams}
+                >
                   Refresh Teams
                 </button>
               </div>
@@ -358,23 +371,12 @@ function SourceCodePage({ onProgressRefresh, teamCode: lockedTeamCode = null }) 
           />
 
           <div className="tm-team-filter-row">
-            <label className="team-select">
-              <select
-                value={selectedTeam?.teamCode || ''}
-                onChange={(e) => {
-                  const team = teams.find(t => t.teamCode === e.target.value);
-                  setSelectedTeam(team || null);
-                }}
-                disabled={loadingTeams || ingesting || analyzing}
-                aria-label="Select team"
-              >
-                {teams.map((team) => (
-                  <option key={team.teamCode} value={team.teamCode}>
-                    {team.teamCode} {team.section && `(${team.section})`}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <TeamSelect
+              value={selectedTeamCode}
+              onChange={setSelectedTeamCode}
+              disabled={loadingTeams || ingesting || analyzing}
+              refreshKey={teamListVersion}
+            />
           </div>
         </>
       )}

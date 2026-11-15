@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import PanelHeader from '../../components/common/PanelHeader';
 import ToastMessage from '../../components/common/ToastMessage';
 import TeacherAnalyzeModal from '../../components/teacher/TeacherAnalyzeModal';
@@ -12,6 +12,7 @@ import TeacherSubmissionsTable from '../../components/teacher/TeacherSubmissions
 import TutorialOverlay from '../../components/common/TutorialOverlay';
 import ProfessorWorkspacePage from './ProfessorWorkspacePage';
 import { useTeacherDashboard } from '../../hooks/useTeacherDashboard';
+import { fetchTeacherHistory } from '../../services/dashboardService';
 import { useTheme } from '../../hooks/useTheme';
 import { useTutorial } from '../../hooks/useTutorial';
 import { useToast } from '../../hooks/useToast';
@@ -35,12 +36,32 @@ function TeacherDashboardPage({ user, onOpenSyncTrace }) {
   const [submissionHistoryFile, setSubmissionHistoryFile] = useState(null);
   const [isSubmissionHistoryFlow, setIsSubmissionHistoryFlow] = useState(false);
 
-  const submissionHistoryLogs = useMemo(() => {
-    if (!submissionHistoryFile?.id) return [];
-    return vm.historyLogs
-      .filter((log) => log.fileId === submissionHistoryFile.id)
-      .sort((a, b) => new Date(b.evaluatedAt) - new Date(a.evaluatedAt));
-  }, [vm.historyLogs, submissionHistoryFile]);
+  // The dashboard list only holds the latest reports and follows the AI Reports filters, so the
+  // history of one submission is loaded on its own.
+  const [submissionHistory, setSubmissionHistory] = useState({ fileId: null, logs: [], error: '' });
+  const submissionHistoryFileId = submissionHistoryFile?.id || null;
+
+  useEffect(() => {
+    if (!submissionHistoryFileId) return undefined;
+    let cancelled = false;
+    fetchTeacherHistory(submissionHistoryFileId, 100)
+      .then((logs) => {
+        if (!cancelled) setSubmissionHistory({ fileId: submissionHistoryFileId, logs: Array.isArray(logs) ? logs : [], error: '' });
+      })
+      .catch((err) => {
+        if (!cancelled) setSubmissionHistory({ fileId: submissionHistoryFileId, logs: [], error: err.message });
+      });
+    return () => { cancelled = true; };
+    // vm.historyLogs: reload when a report is saved, sent or removed elsewhere on the dashboard.
+  }, [submissionHistoryFileId, vm.historyLogs]);
+
+  const isSubmissionHistoryLoading = Boolean(submissionHistoryFileId) && submissionHistory.fileId !== submissionHistoryFileId;
+  const loadedSubmissionLogs = isSubmissionHistoryLoading ? [] : submissionHistory.logs;
+
+  const submissionHistoryLogs = loadedSubmissionLogs
+    .filter((log) => !vm.isReportTrashed(log))
+    .sort((a, b) => new Date(b.evaluatedAt) - new Date(a.evaluatedAt));
+  const trashedSubmissionLogCount = loadedSubmissionLogs.length - submissionHistoryLogs.length;
 
   function openSubmissionHistoryModal() {
     if (!vm.selectedFile?.id) return;
@@ -292,6 +313,9 @@ function TeacherDashboardPage({ user, onOpenSyncTrace }) {
         isOpen={isSubmissionHistoryOpen}
         file={submissionHistoryFile}
         logs={submissionHistoryLogs}
+        loading={isSubmissionHistoryLoading}
+        error={isSubmissionHistoryLoading ? '' : submissionHistory.error}
+        trashedCount={trashedSubmissionLogCount}
         onViewReport={viewSubmissionHistoryReport}
         onDelete={vm.deleteReport}
         onClose={closeSubmissionHistoryModal}
