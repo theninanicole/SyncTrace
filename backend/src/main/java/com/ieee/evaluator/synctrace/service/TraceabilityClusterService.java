@@ -285,7 +285,14 @@ public class TraceabilityClusterService {
 
     private static String describe(TraceComponent component) {
         String code = component.getCodeName();
-        return "'" + component.getName() + "'" + (code != null && !code.isBlank() ? " (" + code + ")" : "");
+        return "'" + currentName(component) + "'" + (code != null && !code.isBlank() ? " (" + code + ")" : "");
+    }
+
+    /** The component's name with its leading code matching the code it has now. */
+    private static String currentName(TraceComponent component) {
+        return component.getDocType() == DocType.IMPLEMENTATION
+            ? component.getName()
+            : ComponentCodeHelper.displayName(component.getName(), component.getCodeName());
     }
 
     private void checkCorrespondence(List<TraceIssue> issues, GoalCluster cluster, DocType from, DocType to) {
@@ -301,7 +308,7 @@ public class TraceabilityClusterService {
             boolean matched = targetTokens.stream().anyMatch(tokens -> !Collections.disjoint(sourceTokens, tokens));
             if (!matched) {
                 issues.add(new TraceIssue(from, to, Severity.HIGH,
-                    "Component '" + source.getName() + "' has no semantically corresponding " + to + " component."));
+                    "Component '" + currentName(source) + "' has no semantically corresponding " + to + " component."));
             }
         }
     }

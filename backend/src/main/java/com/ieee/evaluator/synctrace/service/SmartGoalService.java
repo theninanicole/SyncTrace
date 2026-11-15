@@ -398,7 +398,8 @@ public class SmartGoalService {
             c.getId(),
             c.getDocType(),
             kind,
-            c.getName(),
+            c.getDocType() == DocType.IMPLEMENTATION
+                ? c.getName() : ComponentCodeHelper.displayName(c.getName(), code),
             c.getContent(),
             code,
             c.getAiExtracted(),

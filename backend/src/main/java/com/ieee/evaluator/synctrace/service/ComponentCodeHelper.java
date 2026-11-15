@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -184,6 +185,36 @@ public final class ComponentCodeHelper {
             case IMPL_OO, IMPL_NON_OO, OTHER_IMPLEMENTATION -> "SRC";
             default -> "CMP";
         };
+    }
+
+    /** A code at the start of a component name: "UC-01" in "UC-01 — Use Case Diagram". */
+    private static final Pattern LEADING_NAME_CODE = Pattern.compile(
+        "^\\s*([A-Za-z]{1,6}[-_ ]?\\d{1,3}(?:\\.\\d{1,3})*)(?=\\s*[—–:\\-]|\\s|$)");
+
+    /**
+     * A component's name with its leading code kept in step with the component's current code.
+     * Names are stored as "UC-01 — Use Case Diagram"; when the code is edited (or renumbered) the
+     * name would otherwise keep showing the old one. Names without a leading code are left alone.
+     */
+    public static String displayName(String name, String codeName) {
+        if (name == null || name.isBlank() || codeName == null || codeName.isBlank()) return name;
+        Matcher m = LEADING_NAME_CODE.matcher(name);
+        if (!m.find()) return name;
+        String current = codeName.trim();
+        String inName = m.group(1);
+        if (inName.equalsIgnoreCase(current)
+                || Objects.equals(normalizeCode(inName), normalizeCode(current))) {
+            return name;
+        }
+        return current + name.substring(m.end(1));
+    }
+
+    /** The descriptive part of a component name, without its leading code. */
+    public static String nameWithoutCode(String name) {
+        if (name == null) return "";
+        Matcher m = LEADING_NAME_CODE.matcher(name);
+        String rest = m.find() ? name.substring(m.end(1)) : name;
+        return rest.replaceFirst("^[\\s—–:\\-]+", "").trim();
     }
 
     /** Prefer stored code (as saved), else derive from name/content, else null. */

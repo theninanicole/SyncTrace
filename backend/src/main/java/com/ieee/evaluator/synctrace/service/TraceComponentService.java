@@ -171,6 +171,11 @@ public class TraceComponentService {
             throw new IllegalArgumentException("Component name must be 64 characters or fewer.");
         }
         component.setCodeName(trimmed);
+        // The name starts with the code ("UC-01 — Use Case Diagram"), so it follows the edit.
+        // A code file's name is its path and identifies its team, so it is left as is.
+        if (component.getDocType() != DocType.IMPLEMENTATION) {
+            component.setName(truncate(ComponentCodeHelper.displayName(component.getName(), trimmed), 250));
+        }
         return componentRepository.save(component);
     }
 
@@ -293,6 +298,10 @@ public class TraceComponentService {
                 continue;
             }
             candidate.setCodeName(uniqueCode(code, candidate.getDocType(), sameHistory));
+            if (candidate.getDocType() != DocType.IMPLEMENTATION) {
+                candidate.setName(truncate(
+                    ComponentCodeHelper.displayName(candidate.getName(), candidate.getCodeName()), 250));
+            }
             if (candidate.getArtifactKind() == null) {
                 candidate.setArtifactKind(ArtifactKind.defaultFor(candidate.getDocType()));
             }
@@ -321,6 +330,12 @@ public class TraceComponentService {
         return sameDiagram.stream()
             .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(candidate.getName()))
             .findFirst()
+            // A renamed component's name carries its new code; the rest of the name still matches.
+            .or(() -> sameDiagram.stream()
+                .filter(c -> !ComponentCodeHelper.nameWithoutCode(candidate.getName()).isEmpty()
+                    && ComponentCodeHelper.nameWithoutCode(candidate.getName())
+                        .equalsIgnoreCase(ComponentCodeHelper.nameWithoutCode(c.getName())))
+                .findFirst())
             .or(() -> sameDiagram.stream()
                 .filter(c -> candidate.getCodeName() != null && candidate.getCodeName().equalsIgnoreCase(c.getCodeName()))
                 .findFirst())
@@ -360,7 +375,7 @@ public class TraceComponentService {
             c.id(),
             c.docType(),
             kind,
-            c.name(),
+            c.docType() == DocType.IMPLEMENTATION ? c.name() : ComponentCodeHelper.displayName(c.name(), code),
             c.content(),
             code,
             c.aiExtracted(),

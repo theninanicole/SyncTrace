@@ -79,6 +79,22 @@ export function formatArtifactKind(kind) {
 }
 
 /** Short label for matrices/chips — prefers document code (UC-01). */
+/**
+ * The descriptive part of a component's name, without the code shown as its label
+ * ("Use Case Diagram" for "UC-1.1 — Use Case Diagram"). Empty when the name adds nothing.
+ */
+export function componentDescription(component) {
+  const name = (component?.name || '').trim();
+  if (!name) return '';
+  const label = componentLabel(component);
+  if (name.toLowerCase() === label.toLowerCase()) return '';
+  if (!name.toLowerCase().startsWith(label.toLowerCase())) return name;
+  const rest = name.slice(label.length);
+  // Only strip a whole leading code: "UC-1" must not be cut out of "UC-10 — Checkout".
+  if (!/^[\s—–:-]/.test(rest)) return name;
+  return rest.replace(/^[\s—–:-]+/, '').trim();
+}
+
 export function componentLabel(component) {
   if (!component) return '';
   const code = (component.codeName || '').trim();

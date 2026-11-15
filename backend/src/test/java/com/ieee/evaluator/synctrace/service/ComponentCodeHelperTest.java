@@ -99,4 +99,29 @@ class ComponentCodeHelperTest {
     void storedCodeIsDisplayedExactlyAsSaved() {
         assertEquals("uc 1.1 - Login flow", ComponentCodeHelper.resolveDisplayCode("  uc 1.1 - Login flow ", "UC-01", null));
     }
+
+    @Test
+    void displayNameFollowsAnEditedCode() {
+        assertEquals("UC-1.1 — Use Case Diagram",
+            ComponentCodeHelper.displayName("UC-01 — Use Case Diagram", "UC-1.1"));
+        assertEquals("Login — Use Case Diagram",
+            ComponentCodeHelper.displayName("UC-02 — Use Case Diagram", "Login"));
+        assertEquals("UC-1.4 Manage Users", ComponentCodeHelper.displayName("UC-04 Manage Users", "UC-1.4"));
+    }
+
+    @Test
+    void displayNameLeavesMatchingOrUncodedNamesAlone() {
+        assertEquals("UC-01 — Use Case Diagram",
+            ComponentCodeHelper.displayName("UC-01 — Use Case Diagram", "UC-01"));
+        assertEquals("UC-1 — Use Case Diagram",
+            ComponentCodeHelper.displayName("UC-1 — Use Case Diagram", "UC-01"));
+        assertEquals("Login screen", ComponentCodeHelper.displayName("Login screen", "UI-03"));
+        assertEquals("UC-01 — Use Case Diagram", ComponentCodeHelper.displayName("UC-01 — Use Case Diagram", " "));
+    }
+
+    @Test
+    void nameWithoutCodeKeepsTheDescription() {
+        assertEquals("Use Case Diagram", ComponentCodeHelper.nameWithoutCode("UC-1.1 — Use Case Diagram"));
+        assertEquals("Login screen", ComponentCodeHelper.nameWithoutCode("Login screen"));
+    }
 }

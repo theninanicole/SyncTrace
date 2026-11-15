@@ -268,7 +268,9 @@ public class AuditExportService {
     private ComponentRef toRef(TraceComponent c) {
         String code = ComponentCodeHelper.resolveDisplayCode(c.getCodeName(), c.getName(), c.getContent());
         ArtifactKind kind = c.getArtifactKind() == null ? ArtifactKind.UNSPECIFIED : c.getArtifactKind();
-        return new ComponentRef(c.getId(), code, c.getName(), label(c.getDocType()), kind.name());
+        String name = c.getDocType() == DocType.IMPLEMENTATION
+            ? c.getName() : ComponentCodeHelper.displayName(c.getName(), code);
+        return new ComponentRef(c.getId(), code, name, label(c.getDocType()), kind.name());
     }
 
     private static String label(DocType docType) {

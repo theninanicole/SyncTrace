@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { componentLabel } from '../../../constants';
 
 function label(items, id) {
   const item = items.find((value) => value.id === id);
-  return item?.code || item?.name || item?.description || `#${id}`;
+  if (!item) return `#${id}`;
+  // SMART goals carry a code (G1); components show their current, possibly edited, code.
+  return item.code || componentLabel(item);
 }
 
 export default function SuggestionReviewPanel({

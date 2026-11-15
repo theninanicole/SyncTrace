@@ -1,4 +1,4 @@
-import { componentLabel } from '../../../constants';
+import { componentDescription, componentLabel } from '../../../constants';
 
 /** Short identifier: G1… for SMART goals, the document code (UC-01) for components. */
 function itemCode(item) {
@@ -10,9 +10,7 @@ function itemCode(item) {
 function itemDetail(item) {
   if (!item) return null;
   if (item.code) return item.description;
-  const name = (item.name || '').trim();
-  const code = itemCode(item);
-  return name && name !== code ? name : item.type;
+  return componentDescription(item) || item.type;
 }
 
 function ItemLine({ item, fallback }) {

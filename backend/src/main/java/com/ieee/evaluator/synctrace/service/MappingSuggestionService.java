@@ -402,7 +402,9 @@ public class MappingSuggestionService {
     }
 
     private Candidate candidate(TraceComponentSummaryDTO component) {
-        return new Candidate(component.id(), truncate(component.name() + "\n" + component.content()));
+        String name = component.docType() == DocType.IMPLEMENTATION
+            ? component.name() : ComponentCodeHelper.displayName(component.name(), component.codeName());
+        return new Candidate(component.id(), truncate(name + "\n" + component.content()));
     }
 
     private StagedMappingService.Stage stage(String key) {
