@@ -3,7 +3,8 @@ import { fetchClassRoster } from '../../../services/dashboardService';
 import { getTeamRepositories } from '../../api';
 import './TeamSelect.css';
 
-function TeamSelect({ value, onChange, disabled = false, refreshKey = 0 }) {
+/** @param allLabel when set, an empty value is a selectable "every team" option with this label */
+function TeamSelect({ value, onChange, disabled = false, refreshKey = 0, allLabel = null }) {
   const [teams, setTeams] = useState([]);
 
   useEffect(() => {
@@ -38,7 +39,9 @@ function TeamSelect({ value, onChange, disabled = false, refreshKey = 0 }) {
         disabled={disabled}
         aria-label="Filter by team"
       >
-        <option value="" disabled hidden>Select a team</option>
+        {allLabel
+          ? <option value="">{allLabel}</option>
+          : <option value="" disabled hidden>Select a team</option>}
         {teams.map((code) => (
           <option key={code} value={code}>{code}</option>
         ))}

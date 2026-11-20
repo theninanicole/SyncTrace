@@ -130,7 +130,7 @@ class MappingSuggestionServiceTest {
 
         assertThrows(MappingSuggestionService.AiUnavailableException.class,
             () -> service.generate("TEAM", "PROPOSAL_SRS", "session"));
-        verify(suggestions, never()).deletePendingByTeamAndStage(anyString(), anyString(), any());
+        verify(suggestions, never()).markPendingWithdrawn(anyString(), anyString(), anyString(), any());
     }
 
     @Test
@@ -206,7 +206,7 @@ class MappingSuggestionServiceTest {
     }
 
     @Test
-    void crossTeamDecisionIsDeniedAndDiscardOnlyDeletesPending() {
+    void crossTeamDecisionIsDeniedAndDiscardOnlyWithdrawsPending() {
         MappingSuggestion otherTeam = pending(1L, 10L);
         otherTeam.setId(4L);
         otherTeam.setTeamCode("OTHER");
@@ -216,8 +216,9 @@ class MappingSuggestionServiceTest {
                 new MappingSuggestionService.Decision("ACCEPT", null), "user", false));
 
         service.discard("TEAM", "PROPOSAL_SRS");
-        verify(suggestions).deletePendingByTeamAndStage(
-            "TEAM", "PROPOSAL_SRS", MappingSuggestion.Status.PENDING);
+        verify(suggestions).markPendingWithdrawn(
+            eq("TEAM"), eq("PROPOSAL_SRS"), eq(MappingSuggestion.WITHDRAWN_DISCARDED), any());
+        verify(suggestions, never()).delete(any());
     }
 
     private static TraceComponentSummaryDTO summary(Long id, String name) {

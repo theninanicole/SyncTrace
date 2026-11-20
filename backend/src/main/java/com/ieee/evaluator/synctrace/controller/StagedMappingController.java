@@ -5,6 +5,8 @@ import com.ieee.evaluator.synctrace.model.TraceabilityMappingActivity;
 import com.ieee.evaluator.synctrace.repository.TraceabilityMappingActivityRepository;
 import com.ieee.evaluator.synctrace.service.StagedMappingService;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.validation.service.ValidationRecorder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +30,17 @@ public class StagedMappingController {
         this.stagedMappingService = stagedMappingService;
         this.accessGuard = accessGuard;
         this.mappingActivityRepository = mappingActivityRepository;
+    }
+
+    private ValidationRecorder validationRecorder;
+
+    @Autowired(required = false)
+    void setValidationRecorder(ValidationRecorder validationRecorder) {
+        this.validationRecorder = validationRecorder;
+    }
+
+    private void linkChanged(String teamCode, String stage) {
+        if (validationRecorder != null) validationRecorder.linkChanged(teamCode, stage);
     }
 
     @ExceptionHandler(SyncTraceAccessGuard.AccessDeniedException.class)
@@ -59,6 +72,9 @@ public class StagedMappingController {
         }
         List<StagedTraceMapping> rows = stagedMappingService.add(
             teamCode, mappings, accessGuard.currentUserEmail(), accessGuard.isStudent());
+        // M4: a link change keeps the stage session active (or reopens a finalized stage).
+        mappings.stream().map(StagedMappingService.NewMapping::stage).distinct()
+            .forEach(stage -> linkChanged(teamCode, stage));
         return ResponseEntity.ok(rows);
     }
 
@@ -69,7 +85,7 @@ public class StagedMappingController {
     @DeleteMapping("/{mappingId}")
     public ResponseEntity<?> remove(@PathVariable Long mappingId, @RequestParam(required = false) String teamCode) {
         String team = scopedTeamCode(teamCode);
-        stagedMappingService.remove(team, mappingId);
+        stagedMappingService.remove(team, mappingId).ifPresent(stage -> linkChanged(team, stage));
         StagedMappingService.SyncResult result = syncAndRecord(team, null);
         return ResponseEntity.ok(Map.of("message", "Mapping removed", "analysisCleared", result.analysisCleared()));
     }
@@ -78,8 +94,12 @@ public class StagedMappingController {
     @PostMapping("/sync")
     public ResponseEntity<?> sync(@RequestBody Map<String, Object> payload) {
         String teamCode = scopedTeamCode((String) payload.get("teamCode"));
-        StagedMappingService.SyncResult result = syncAndRecord(
-            teamCode, payload.get("stage") != null ? String.valueOf(payload.get("stage")) : null);
+        String stage = payload.get("stage") != null ? String.valueOf(payload.get("stage")) : null;
+        StagedMappingService.SyncResult result = syncAndRecord(teamCode, stage);
+        // M4: Save Mapping with a stage selected finalizes that stage's open session.
+        if (validationRecorder != null && stage != null) {
+            validationRecorder.stageSaved(teamCode, stage, accessGuard.currentUserId());
+        }
 
         return ResponseEntity.ok(Map.of(
             "linkCount", result.linkCount(),

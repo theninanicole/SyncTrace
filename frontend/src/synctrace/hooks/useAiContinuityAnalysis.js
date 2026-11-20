@@ -59,12 +59,14 @@ export function useAiContinuityAnalysis(teamCode, { showToast, setAiFindings, se
       // belong to teamCode (goals with none are skipped), and recommendations are generated
       // only from findings already tagged with that teamCode. Students are always scoped
       // to their own team server-side regardless of the teamCode sent.
+      // The session id doubles as the analysis run id, so the server can time both steps
+      // of this one run together (validation metric M6).
       setProgress({ step: 'DETECTING', message: 'Detecting continuity gaps...', percent: 30 });
-      const gapsData = await detectContinuityGaps(teamCode, null);
+      const gapsData = await detectContinuityGaps(teamCode, null, sessionId);
       setAiFindings(gapsData.findings || []);
 
       setProgress({ step: 'RECOMMENDING', message: 'Generating diagnostic recommendations...', percent: 60 });
-      const recommendationsData = await generateDiagnosticRecommendations(teamCode, 'auto', sessionId);
+      const recommendationsData = await generateDiagnosticRecommendations(teamCode, 'auto', sessionId, sessionId);
       setAiRecommendations(recommendationsData.recommendations || []);
       await onComplete?.();
 

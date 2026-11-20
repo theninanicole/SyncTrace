@@ -67,7 +67,7 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
       ) : (
         <MappingWorkspace
           tm={tm}
-          readOnly
+          onExtractGoalsClick={hasEvaluatedDocument ? () => setIsExtractGoalsOpen(true) : undefined}
           onAddComponentClick={setAddComponentDocType}
           onExtractComponentsClick={hasEvaluatedDocument ? () => setIsExtractComponentsOpen(true) : undefined}
           onPreviewComponentClick={setPreviewComponent}
@@ -121,6 +121,7 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         extracting={tm.extractingGoals}
         onExtract={tm.extractSmartGoals}
         onSave={tm.saveReviewedGoals}
+        reviewBeforeSave
       />
 
       <ExtractComponentsDialog

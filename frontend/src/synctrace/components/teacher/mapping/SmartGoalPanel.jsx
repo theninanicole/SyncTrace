@@ -117,7 +117,7 @@ function SmartGoalPanel({
       return (
         <div className="stm-column-empty">
           <p>No SMART goals yet</p>
-          {!readOnly && <button className="btn btn--primary" onClick={onExtractClick}>Extract SMART Goals</button>}
+          {!readOnly && onExtractClick && <button className="btn btn--primary" onClick={onExtractClick}>Extract SMART Goals</button>}
         </div>
       );
     }
@@ -126,7 +126,7 @@ function SmartGoalPanel({
       return (
         <div className="stm-column-empty">
           <p>No SMART goals found</p>
-          {!readOnly && <button className="btn btn--soft" onClick={onExtractClick}>Re-extract SMART Goals</button>}
+          {!readOnly && onExtractClick && <button className="btn btn--soft" onClick={onExtractClick}>Re-extract SMART Goals</button>}
         </div>
       );
     }

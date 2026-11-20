@@ -11,6 +11,10 @@ import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
 import com.ieee.evaluator.synctrace.service.TeamCodeResolver;
 import com.ieee.evaluator.synctrace.service.TeamComponentResolverService;
 import com.ieee.evaluator.synctrace.service.TraceComponentService;
+import com.ieee.evaluator.synctrace.validation.model.ValidationOperation;
+import com.ieee.evaluator.synctrace.validation.service.ValidationContext;
+import com.ieee.evaluator.synctrace.validation.service.ValidationTiming;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -46,6 +50,18 @@ public class TraceComponentController {
         this.teamComponentResolver = teamComponentResolver;
         this.accessGuard = accessGuard;
         this.progressEmitter = progressEmitter;
+    }
+
+    private ValidationTiming validationTiming = ValidationTiming.passThrough();
+
+    @Autowired(required = false)
+    void setValidationTiming(ValidationTiming validationTiming) {
+        this.validationTiming = validationTiming;
+    }
+
+    private static int componentCount(ResponseEntity<?> response) {
+        return response.getBody() instanceof Map<?, ?> body && body.get("count") instanceof Number count
+            ? count.intValue() : 0;
     }
 
     @GetMapping
@@ -215,32 +231,37 @@ public class TraceComponentController {
                 return ResponseEntity.badRequest().body(Map.of("error", "historyId is required"));
             }
 
-            progressEmitter.emit(sessionId, "LOADING", "Loading the evaluated document…", 10);
-            EvaluationHistory history = historyRepository.findById(historyId)
-                .orElseThrow(() -> new RuntimeException("Evaluation record not found"));
+            // M2: from loading the evaluator report until the components are saved.
+            ValidationContext metric = new ValidationContext();
+            return validationTiming.<ResponseEntity<?>>time(ValidationOperation.COMPONENT_RETRIEVAL, metric, () -> {
+                progressEmitter.emit(sessionId, "LOADING", "Loading the evaluated document…", 10);
+                EvaluationHistory history = historyRepository.findById(historyId)
+                    .orElseThrow(() -> new RuntimeException("Evaluation record not found"));
+                metric.teamId(TeamCodeResolver.extractTeamCode(history.getFileName()));
 
-            String evaluationResult = history.getEvaluationResult();
-            if (evaluationResult == null || evaluationResult.isBlank()) {
+                String evaluationResult = history.getEvaluationResult();
+                if (evaluationResult == null || evaluationResult.isBlank()) {
+                    progressEmitter.complete(sessionId);
+                    return ResponseEntity.ok(Map.of("components", List.of(), "count", 0));
+                }
+
+                progressEmitter.emit(sessionId, "READING", "Reading the Diagram Analysis…", 30);
+                List<TraceComponent> extractedComponents = extractComponentsFromEvaluation(
+                    evaluationResult, historyId, history.getExtractedImages());
+
+                int total = extractedComponents.size();
+                List<TraceComponent> savedComponents = componentService.persistExtractedComponents(
+                    extractedComponents,
+                    index -> progressEmitter.emit(sessionId, "SAVING",
+                        "Saving component " + (index + 1) + " of " + total + "…", 50 + 45 * index / total));
+
+                progressEmitter.emit(sessionId, "COMPLETE", "Extraction complete", 100);
                 progressEmitter.complete(sessionId);
-                return ResponseEntity.ok(Map.of("components", List.of(), "count", 0));
-            }
-
-            progressEmitter.emit(sessionId, "READING", "Reading the Diagram Analysis…", 30);
-            List<TraceComponent> extractedComponents = extractComponentsFromEvaluation(
-                evaluationResult, historyId, history.getExtractedImages());
-
-            int total = extractedComponents.size();
-            List<TraceComponent> savedComponents = componentService.persistExtractedComponents(
-                extractedComponents,
-                index -> progressEmitter.emit(sessionId, "SAVING",
-                    "Saving component " + (index + 1) + " of " + total + "…", 50 + 45 * index / total));
-
-            progressEmitter.emit(sessionId, "COMPLETE", "Extraction complete", 100);
-            progressEmitter.complete(sessionId);
-            return ResponseEntity.ok(Map.of(
-                "components", savedComponents,
-                "count", savedComponents.size()
-            ));
+                return ResponseEntity.ok(Map.of(
+                    "components", savedComponents,
+                    "count", savedComponents.size()
+                ));
+            }, TraceComponentController::componentCount);
         } catch (Exception e) {
             progressEmitter.error(sessionId, "Extraction failed: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

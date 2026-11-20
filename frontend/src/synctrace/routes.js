@@ -8,6 +8,7 @@ export const VIEW_TO_SEGMENT = {
   traceability: 'tmapping',
   'traceability-results': 'results',
   source: 'source',
+  metrics: 'metrics',
   results: 'group', // group/:teamCode
 };
 
@@ -17,6 +18,7 @@ export const SEGMENT_TO_VIEW = {
   tmapping: 'traceability',
   results: 'traceability-results',
   source: 'source',
+  metrics: 'metrics',
   group: 'results',
 };
 

@@ -34,8 +34,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7);
             
             try {
-                String email = jwtValidator.validateToken(token);
-                
+                SupabaseJwtValidator.VerifiedToken verified = jwtValidator.validate(token);
+                String email = verified.email();
+
                 if (email != null) {
                     var userRecord = allowlistService.verifyUser(email);
                     
@@ -43,7 +44,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         String role = userRecord.getRole();
                         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
                         
-                        AuthenticatedUser principal = new AuthenticatedUser(email, role, userRecord.getGroupCode());
+                        AuthenticatedUser principal = new AuthenticatedUser(email, role, userRecord.getGroupCode(), verified.subject());
                         UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

@@ -17,6 +17,10 @@ import com.ieee.evaluator.synctrace.service.GitHubRepositoryLinkService.Reposito
 import com.ieee.evaluator.synctrace.service.GitHubRepositoryLinkService.RepositoryIngestionException;
 import com.ieee.evaluator.synctrace.service.GitHubRepositoryLinkService.RepositoryNotFoundException;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.validation.model.ValidationOperation;
+import com.ieee.evaluator.synctrace.validation.service.ValidationContext;
+import com.ieee.evaluator.synctrace.validation.service.ValidationTiming;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -50,6 +54,13 @@ public class GitHubController {
         this.repositoryLinkService = repositoryLinkService;
         this.accessGuard = accessGuard;
         this.progressEmitter = progressEmitter;
+    }
+
+    private ValidationTiming validationTiming = ValidationTiming.passThrough();
+
+    @Autowired(required = false)
+    void setValidationTiming(ValidationTiming validationTiming) {
+        this.validationTiming = validationTiming;
     }
 
     @GetMapping("/teams")
@@ -237,19 +248,24 @@ public class GitHubController {
             if (teamCode == null || teamCode.isBlank()) return error(HttpStatus.BAD_REQUEST, "teamCode is required.");
             if (githubUrl == null || githubUrl.isBlank()) return error(HttpStatus.BAD_REQUEST, "githubUrl is required.");
 
-            List<TraceComponent> components = ingestionService.ingestRepository(githubUrl, teamCode, sessionId);
-            String[] parsedUrl = GitHubIngestionService.parseGitHubUrl(githubUrl);
-            if (parsedUrl != null) {
-                repositoryLinkRepository.findByOwnerAndRepo(parsedUrl[0], parsedUrl[1])
-                        .filter(repository -> Boolean.TRUE.equals(repository.getActive()))
-                        .ifPresent(repository -> {
-                            repository.setLastIngestedAt(LocalDateTime.now());
-                            repository.setIngestionStatus("INGESTED");
-                            repository.setIngestedFileCount(components.size());
-                            repository.setLastIngestError(null);
-                            repositoryLinkRepository.save(repository);
-                        });
-            }
+            // M3: ingestion plus the link status update, for a repository given by URL.
+            ValidationContext metric = ValidationContext.forTeam(teamCode);
+            List<TraceComponent> components = validationTiming.time(ValidationOperation.REPO_INGESTION, metric, () -> {
+                String[] parsedUrl = GitHubIngestionService.parseGitHubUrl(githubUrl);
+                java.util.Optional<GitHubRepositoryLink> link = parsedUrl == null ? java.util.Optional.empty()
+                        : repositoryLinkRepository.findByOwnerAndRepo(parsedUrl[0], parsedUrl[1])
+                            .filter(repository -> Boolean.TRUE.equals(repository.getActive()));
+                link.ifPresent(repository -> metric.repositoryId(repository.getId()));
+                List<TraceComponent> ingested = ingestionService.ingestRepository(githubUrl, teamCode, sessionId);
+                link.ifPresent(repository -> {
+                    repository.setLastIngestedAt(LocalDateTime.now());
+                    repository.setIngestionStatus("INGESTED");
+                    repository.setIngestedFileCount(ingested.size());
+                    repository.setLastIngestError(null);
+                    repositoryLinkRepository.save(repository);
+                });
+                return ingested;
+            }, List::size);
             List<TraceComponentSummaryDTO> summaries = components.stream()
                     .map(this::toSummaryDTO).collect(Collectors.toList());
             return ResponseEntity.ok(Map.of("components", summaries, "count", summaries.size()));

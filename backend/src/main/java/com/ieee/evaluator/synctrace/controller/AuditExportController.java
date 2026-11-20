@@ -2,6 +2,10 @@ package com.ieee.evaluator.synctrace.controller;
 
 import com.ieee.evaluator.synctrace.service.AuditExportService;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
+import com.ieee.evaluator.synctrace.validation.model.ValidationOperation;
+import com.ieee.evaluator.synctrace.validation.service.ValidationContext;
+import com.ieee.evaluator.synctrace.validation.service.ValidationTiming;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,6 +29,13 @@ public class AuditExportController {
         this.accessGuard = accessGuard;
     }
 
+    private ValidationTiming validationTiming = ValidationTiming.passThrough();
+
+    @Autowired(required = false)
+    void setValidationTiming(ValidationTiming validationTiming) {
+        this.validationTiming = validationTiming;
+    }
+
     @GetMapping("/{teamCode}/export")
     public ResponseEntity<?> exportAuditReport(
             @PathVariable String teamCode,
@@ -33,7 +44,12 @@ public class AuditExportController {
             // Teachers may export any team; students only their own (same rule as the Results page).
             String effectiveTeamCode = accessGuard.resolveEffectiveTeamCode(teamCode);
             String normalizedFormat = format.toLowerCase(Locale.ROOT);
-            byte[] reportData = auditExportService.exportAuditReport(effectiveTeamCode, normalizedFormat);
+            // M8: building the report and rendering it in the requested format.
+            byte[] reportData = validationTiming.time(ValidationOperation.AUDIT_EXPORT,
+                ValidationContext.forTeam(effectiveTeamCode).exportFormat(normalizedFormat)
+                    .notARunWhen(error -> error instanceof IllegalArgumentException),
+                () -> auditExportService.exportAuditReport(effectiveTeamCode, normalizedFormat),
+                bytes -> bytes.length);
 
             MediaType mediaType = switch (normalizedFormat) {
                 case "pdf" -> MediaType.APPLICATION_PDF;

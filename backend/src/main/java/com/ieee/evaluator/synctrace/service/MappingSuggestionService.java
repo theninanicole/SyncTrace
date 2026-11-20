@@ -179,8 +179,9 @@ public class MappingSuggestionService {
 
     private List<MappingSuggestion> persistGeneratedRows(String teamCode, String stageKey,
             List<MappingSuggestion> generated, long started) {
-        suggestionRepository.deletePendingByTeamAndStage(
-            teamCode, stageKey, MappingSuggestion.Status.PENDING);
+        // Older undecided suggestions are kept (withdrawn as superseded) so M5 can count them.
+        suggestionRepository.markPendingWithdrawn(
+            teamCode, stageKey, MappingSuggestion.WITHDRAWN_SUPERSEDED, LocalDateTime.now());
         generated.forEach(suggestion -> suggestion.setTeamCode(teamCode));
         List<MappingSuggestion> saved = suggestionRepository.saveAll(generated);
         MappingGenerationRun run = new MappingGenerationRun();
@@ -200,6 +201,7 @@ public class MappingSuggestionService {
             .findByTeamCodeIgnoreCaseAndStageAndStatusOrderByScoreDesc(
                 teamCode, stage, MappingSuggestion.Status.PENDING)
             .stream()
+            .filter(suggestion -> !suggestion.isWithdrawn())
             .filter(suggestion -> componentRepository.existsById(suggestion.getTargetComponentId()))
             .toList();
     }
@@ -207,6 +209,16 @@ public class MappingSuggestionService {
     @Transactional
     public List<StagedTraceMapping> decide(String teamCode, Long id, Decision decision, String user,
             boolean student) {
+        return decide(teamCode, id, decision, user, null, student, MappingSuggestion.METHOD_SINGLE);
+    }
+
+    /**
+     * @param userId     the decider's user id, stored for the M5 record (the email stays in decidedBy)
+     * @param method     {@link MappingSuggestion#METHOD_SINGLE} or {@link MappingSuggestion#METHOD_ACCEPT_ALL}
+     */
+    @Transactional
+    public List<StagedTraceMapping> decide(String teamCode, Long id, Decision decision, String user,
+            String userId, boolean student, String method) {
         MappingSuggestion suggestion = suggestionRepository.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Suggestion not found."));
         if (!suggestion.getTeamCode().equalsIgnoreCase(teamCode)) {
@@ -216,6 +228,12 @@ public class MappingSuggestionService {
         if (suggestion.getStatus() != MappingSuggestion.Status.PENDING) {
             throw new IllegalArgumentException("Suggestion has already been decided.");
         }
+        // Discarded or replaced suggestions used to be deleted; they stay undecidable.
+        if (suggestion.isWithdrawn()) {
+            throw new IllegalArgumentException("Suggestion not found.");
+        }
+        suggestion.setDecidedByUserId(userId);
+        suggestion.setDecisionMethod(method);
         if (!componentRepository.existsById(suggestion.getTargetComponentId())) {
             markStale(suggestion, user);
             throw new IllegalArgumentException(
@@ -256,6 +274,10 @@ public class MappingSuggestionService {
             teamCode, mappings, user, student, origin);
         suggestion.setStatus("EDIT".equals(action)
             ? MappingSuggestion.Status.EDITED : MappingSuggestion.Status.ACCEPTED);
+        if (rows != null && !rows.isEmpty()) {
+            suggestion.setResultingLinkId(rows.get(0).getId());
+            suggestion.setResultingLinkCount(rows.size());
+        }
         suggestion.setDecidedBy(user);
         suggestion.setDecidedAt(LocalDateTime.now());
         suggestionRepository.save(suggestion);
@@ -264,13 +286,20 @@ public class MappingSuggestionService {
 
     @Transactional
     public int acceptAll(String teamCode, String stage, String user, boolean student) {
+        return acceptAll(teamCode, stage, user, null, student);
+    }
+
+    @Transactional
+    public int acceptAll(String teamCode, String stage, String user, String userId, boolean student) {
         int count = 0;
         stage(stage);
         for (MappingSuggestion suggestion : new ArrayList<>(
                 suggestionRepository.findByTeamCodeIgnoreCaseAndStageAndStatus(
                     teamCode, stage, MappingSuggestion.Status.PENDING))) {
+            if (suggestion.isWithdrawn()) continue;
             try {
-                decide(teamCode, suggestion.getId(), new Decision("ACCEPT", null), user, student);
+                decide(teamCode, suggestion.getId(), new Decision("ACCEPT", null), user, userId, student,
+                    MappingSuggestion.METHOD_ACCEPT_ALL);
                 count++;
             } catch (IllegalArgumentException e) {
                 log.info("Skipping suggestion {} during accept-all: {}",
@@ -283,8 +312,15 @@ public class MappingSuggestionService {
     @Transactional
     public void discard(String teamCode, String stage) {
         stage(stage);
-        suggestionRepository.deletePendingByTeamAndStage(
-            teamCode, stage, MappingSuggestion.Status.PENDING);
+        // Kept for M5 (still PENDING, withdrawn as discarded); hidden from the pending list.
+        suggestionRepository.markPendingWithdrawn(
+            teamCode, stage, MappingSuggestion.WITHDRAWN_DISCARDED, LocalDateTime.now());
+    }
+
+    /** Ids of the stage's mappable sources, by the same rule generation uses. Read-only. */
+    @Transactional(readOnly = true)
+    public List<Long> sourceIds(String teamCode, String stageKey) {
+        return sources(teamCode, stage(stageKey)).stream().map(Candidate::id).toList();
     }
 
     private List<Candidate> sources(String team, StagedMappingService.Stage stage) {
@@ -389,6 +425,7 @@ public class MappingSuggestionService {
 
     private void markStale(MappingSuggestion suggestion, String user) {
         suggestion.setStatus(MappingSuggestion.Status.REJECTED);
+        suggestion.setSystemRejected(true);
         suggestion.setReason("Target component no longer exists.");
         suggestion.setDecidedBy(user);
         suggestion.setDecidedAt(LocalDateTime.now());
