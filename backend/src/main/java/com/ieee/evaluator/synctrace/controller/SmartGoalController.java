@@ -70,17 +70,20 @@ public class SmartGoalController {
         }
     }
 
-    /** Adding, editing and deleting SMART goals is a teacher action. */
-    private void requireTeacher() {
-        if (accessGuard.isStudent()) {
-            throw new SyncTraceAccessGuard.AccessDeniedException("Only teachers can change SMART goals.");
+    /** Teachers may change any team's SMART goals; students only their own team's. */
+    private void requireMayChange(Long goalId) {
+        if (!accessGuard.isStudent() || goalId == null) return;
+        SmartGoal goal = goalRepository.findById(goalId).orElse(null);
+        if (goal == null) return; // the service reports a missing goal
+        String ownTeam = accessGuard.resolveEffectiveTeamCode(null);
+        if (goal.getTeamCode() == null || ownTeam == null || !ownTeam.equalsIgnoreCase(goal.getTeamCode())) {
+            throw new SyncTraceAccessGuard.AccessDeniedException("You can only change your own team's SMART goals.");
         }
     }
 
     @PostMapping
     public ResponseEntity<?> createSmartGoal(@RequestBody Map<String, Object> payload) {
         try {
-            requireTeacher();
             String description = payload.get("description") != null
                 ? String.valueOf(payload.get("description")) : null;
             if (description == null || description.isBlank()) {
@@ -97,8 +100,12 @@ public class SmartGoalController {
                 parentGoalId = Long.valueOf(String.valueOf(payload.get("parentGoalId")));
             }
 
-            String teamCode = payload.get("teamCode") != null
+            // A specific objective joins its parent's team; students may only add under their own.
+            requireMayChange(parentGoalId);
+            String requestedTeam = payload.get("teamCode") != null
                 ? String.valueOf(payload.get("teamCode")) : null;
+            // Students always add to their own team.
+            String teamCode = accessGuard.isStudent() ? accessGuard.resolveEffectiveTeamCode(requestedTeam) : requestedTeam;
 
             return ResponseEntity.ok(goalService.addGoal(description, goalKind, parentGoalId, teamCode));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
@@ -114,7 +121,7 @@ public class SmartGoalController {
     @PutMapping("/{goalId}")
     public ResponseEntity<?> updateSmartGoal(@PathVariable Long goalId, @RequestBody Map<String, Object> payload) {
         try {
-            requireTeacher();
+            requireMayChange(goalId);
             String description = payload.get("description") != null
                 ? String.valueOf(payload.get("description")) : null;
             return ResponseEntity.ok(goalService.updateGoalDescription(goalId, description));
@@ -131,7 +138,7 @@ public class SmartGoalController {
     @DeleteMapping("/{goalId}")
     public ResponseEntity<?> deleteSmartGoal(@PathVariable Long goalId) {
         try {
-            requireTeacher();
+            requireMayChange(goalId);
             goalService.deleteGoal(goalId);
             return ResponseEntity.ok(Map.of("message", "Goal deleted successfully"));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {

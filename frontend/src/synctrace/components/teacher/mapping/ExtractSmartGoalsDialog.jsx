@@ -62,7 +62,7 @@ function ExtractSmartGoalsDialog({ isOpen, onClose, teamCode, extracting, onExtr
   async function handleExtract() {
     const doc = proposals.find((d) => d.id === selectedId);
     if (!doc) return;
-    const goals = await onExtract(doc.fileId, doc.fileName, doc.evaluationResult);
+    const goals = await onExtract(doc.fileId, doc.fileName, doc.id);
     if (!goals) return;
     if (reviewBeforeSave) {
       setDraft(toEditableGoalDraft(goals));

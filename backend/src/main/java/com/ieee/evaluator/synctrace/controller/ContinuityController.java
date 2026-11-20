@@ -11,6 +11,12 @@ import com.ieee.evaluator.synctrace.service.DiagnosticRecommendationService;
 import com.ieee.evaluator.synctrace.service.SourceCodeAlignmentService;
 import com.ieee.evaluator.synctrace.service.SyncTraceAccessGuard;
 import com.ieee.evaluator.synctrace.service.TeamAnalysisLock;
+import com.ieee.evaluator.synctrace.validation.model.ValidationEvent;
+import com.ieee.evaluator.synctrace.validation.model.ValidationOperation;
+import com.ieee.evaluator.synctrace.validation.service.ValidationContext;
+import com.ieee.evaluator.synctrace.validation.service.ValidationRecorder;
+import com.ieee.evaluator.synctrace.validation.service.ValidationTiming;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/synctrace/continuity")
@@ -51,6 +58,26 @@ public class ContinuityController {
         this.analysisLock = analysisLock;
     }
 
+    private ValidationTiming validationTiming = ValidationTiming.passThrough();
+    private ValidationRecorder validationRecorder;
+
+    @Autowired(required = false)
+    void setValidationMetrics(ValidationTiming validationTiming, ValidationRecorder validationRecorder) {
+        this.validationTiming = validationTiming;
+        this.validationRecorder = validationRecorder;
+    }
+
+    private void recordCoverage(String teamCode, String analysisRunId, String status) {
+        if (validationRecorder != null) validationRecorder.recordCoverage(teamCode, analysisRunId, status);
+    }
+
+    /** The client sends one analysisRunId for both steps of a run; without one, each request is its own run. */
+    private static String runId(Object requested) {
+        String value = requested == null ? null : String.valueOf(requested).trim();
+        if (value == null || value.isEmpty()) return UUID.randomUUID().toString();
+        return value.length() > 64 ? value.substring(0, 64) : value;
+    }
+
     // Students can run and read analysis, but only ever for their own team.
     @ExceptionHandler(SyncTraceAccessGuard.AccessDeniedException.class)
     public ResponseEntity<?> handleAccessDenied(SyncTraceAccessGuard.AccessDeniedException e) {
@@ -72,8 +99,11 @@ public class ContinuityController {
                 return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
             }
 
-            List<ContinuityFinding> findings = alignmentService.analyzeAlignment(teamCode, model, sessionId);
-            
+            // Recorded under M6 as ALIGNMENT, but not counted toward the M6 target.
+            List<ContinuityFinding> findings = validationTiming.time(ValidationOperation.ALIGNMENT,
+                ValidationContext.forTeam(teamCode).analysisRunId(runId(payload.get("analysisRunId"))),
+                () -> alignmentService.analyzeAlignment(teamCode, model, sessionId), List::size);
+
             return ResponseEntity.ok(Map.of("findings", findings, "count", findings.size()));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
             return handleAccessDenied(e);
@@ -95,9 +125,12 @@ public class ContinuityController {
             // Teachers and students can both run analysis now; serialize per team so two
             // overlapping runs can't both insert and leave duplicate findings.
             final String scopedTeam = teamCode;
-            List<ContinuityFinding> findings = analysisLock.run(scopedTeam,
-                    () -> gapDetectionService.detectGaps(scopedTeam, goalId));
-            
+            // M6 step 1: includes waiting for the team's analysis lock.
+            List<ContinuityFinding> findings = validationTiming.time(ValidationOperation.GAP_DETECTION,
+                    ValidationContext.forTeam(scopedTeam).analysisRunId(runId(payload.get("analysisRunId"))),
+                    () -> analysisLock.run(scopedTeam, () -> gapDetectionService.detectGaps(scopedTeam, goalId)),
+                    List::size);
+
             return ResponseEntity.ok(Map.of("findings", findings, "count", findings.size()));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
             return handleAccessDenied(e);
@@ -118,9 +151,20 @@ public class ContinuityController {
                 return ResponseEntity.badRequest().body(Map.of("error", "teamCode is required"));
             }
 
-            List<DiagnosticRecommendation> recommendations = 
-                recommendationService.generateRecommendations(teamCode, model, sessionId);
-            
+            // M6 step 2 (AI) and, whatever its outcome, the M7 coverage snapshot of this run.
+            ValidationContext metric = ValidationContext.forTeam(teamCode)
+                .analysisRunId(runId(payload.get("analysisRunId")));
+            List<DiagnosticRecommendation> recommendations;
+            try {
+                recommendations = validationTiming.time(ValidationOperation.RECOMMENDATIONS, metric,
+                    () -> recommendationService.generateRecommendations(teamCode, model, sessionId), List::size);
+            } catch (Exception e) {
+                String status = ValidationTiming.statusOf(e, metric);
+                if (status != null) recordCoverage(teamCode, metric.analysisRunId(), status);
+                throw e;
+            }
+            recordCoverage(teamCode, metric.analysisRunId(), ValidationEvent.SUCCESS);
+
             return ResponseEntity.ok(Map.of("recommendations", recommendations, "count", recommendations.size()));
         } catch (SyncTraceAccessGuard.AccessDeniedException e) {
             return handleAccessDenied(e);

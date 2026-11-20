@@ -29,6 +29,18 @@ public class SyncTraceAccessGuard {
         return currentUser().email();
     }
 
+    /** The Supabase user id of the caller, or null when the token carried none. */
+    public String currentUserId() {
+        return currentUser().userId();
+    }
+
+    /** Teacher-only endpoints (validation metrics) call this first; others get a 403. */
+    public void requireTeacher() {
+        if (!currentUser().isTeacher()) {
+            throw new AccessDeniedException("Only teachers can view validation metrics.");
+        }
+    }
+
     public String resolveEffectiveTeamCode(String requestedTeamCode) {
         AuthenticatedUser user = currentUser();
 

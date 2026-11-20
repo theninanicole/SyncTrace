@@ -37,7 +37,14 @@ public class SupabaseJwtValidator {
         this.objectMapper = new ObjectMapper();
     }
 
+    /** The identity a verified token carries: its email and Supabase user id ({@code sub}). */
+    public record VerifiedToken(String email, String subject) {}
+
     public String validateToken(String token) throws Exception {
+        return validate(token).email();
+    }
+
+    public VerifiedToken validate(String token) throws Exception {
         if (jwtIssuer == null || jwtIssuer.isBlank()) {
             throw new IllegalStateException("Supabase JWT issuer not configured");
         }
@@ -99,8 +106,10 @@ public class SupabaseJwtValidator {
             throw new SecurityException("Token expired");
         }
 
-        // Extract email
-        return payload.get("email").asText();
+        // Extract email and user id
+        JsonNode subject = payload.get("sub");
+        return new VerifiedToken(payload.get("email").asText(),
+            subject == null || subject.isNull() ? null : subject.asText());
     }
 
     private JsonNode getJwks() throws Exception {

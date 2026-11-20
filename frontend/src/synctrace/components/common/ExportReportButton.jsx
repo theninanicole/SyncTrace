@@ -8,7 +8,7 @@ const FORMAT_OPTIONS = [
   { value: 'pdf', label: 'PDF', description: 'Formatted document, ready to share or print.' },
 ];
 
-function ExportReportButton({ showToast, teamCode }) {
+function ExportReportButton({ showToast, teamCode, className = 'btn btn--primary', disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [format, setFormat] = useState('json');
   const [loading, setLoading] = useState(false);
@@ -43,8 +43,9 @@ function ExportReportButton({ showToast, teamCode }) {
     <>
       <button
         type="button"
-        className="btn btn--primary"
+        className={className}
         onClick={openModal}
+        disabled={disabled}
         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
       >
         Export Report

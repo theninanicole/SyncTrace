@@ -4,6 +4,7 @@ import TraceabilityResults from '../../synctrace/components/common/TraceabilityR
 import ComponentDetailModal from '../../synctrace/components/teacher/ComponentDetailModal';
 import { useTraceabilityResultsData } from '../../synctrace/hooks/useTraceabilityResultsData';
 import { useAiContinuityAnalysis } from '../../synctrace/hooks/useAiContinuityAnalysis';
+import ExportReportButton from '../../synctrace/components/common/ExportReportButton';
 import ToastMessage from '../common/ToastMessage';
 import { useToast } from '../../hooks/useToast';
 import '../../synctrace/pages/teacher/SourceCodePage.css';
@@ -45,6 +46,12 @@ function StudentTraceabilityResults({ teamCode }) {
           <button className="btn btn--soft student-results__refresh" type="button" onClick={refresh} disabled={loading || runningAiAnalysis || !teamCode}>
             {loading ? 'Loading...' : 'Refresh'}
           </button>
+          <ExportReportButton
+            showToast={showToast}
+            teamCode={teamCode}
+            className="btn btn--soft student-results__export"
+            disabled={loading || runningAiAnalysis || !teamCode}
+          />
         </div>
       </div>
 

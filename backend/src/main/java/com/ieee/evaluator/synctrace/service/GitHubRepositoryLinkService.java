@@ -6,7 +6,11 @@ import com.ieee.evaluator.synctrace.repository.GitHubRepositoryLinkRepository;
 import com.ieee.evaluator.synctrace.repository.GoalComponentMappingRepository;
 import com.ieee.evaluator.synctrace.repository.StagedTraceMappingRepository;
 import com.ieee.evaluator.synctrace.repository.TraceComponentRepository;
+import com.ieee.evaluator.synctrace.validation.model.ValidationOperation;
+import com.ieee.evaluator.synctrace.validation.service.ValidationContext;
+import com.ieee.evaluator.synctrace.validation.service.ValidationTiming;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +77,13 @@ public class GitHubRepositoryLinkService {
         this.goalMappingRepository = goalMappingRepository;
         this.ingestionService = ingestionService;
         this.accessGuard = accessGuard;
+    }
+
+    private ValidationTiming validationTiming = ValidationTiming.passThrough();
+
+    @Autowired(required = false)
+    void setValidationTiming(ValidationTiming validationTiming) {
+        this.validationTiming = validationTiming;
     }
 
     public List<GitHubRepositoryLink> list(String requestedTeamCode) {
@@ -175,6 +186,21 @@ public class GitHubRepositoryLinkService {
     public IngestionResult ingest(
             Long repositoryId, String requestedTeamCode, String sessionId, boolean completeProgress) {
         GitHubRepositoryLink repository = requireRepository(repositoryId, requestedTeamCode);
+        // M3: one run per repository, until the final INGESTED/FAILED status is saved.
+        // Includes every GitHub API call and rate-limit retry.
+        try {
+            return validationTiming.time(ValidationOperation.REPO_INGESTION,
+                ValidationContext.forTeam(repository.getTeamCode()).repositoryId(repository.getId()),
+                () -> ingestResolved(repository, sessionId, completeProgress),
+                result -> result.components().size());
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RepositoryIngestionException(messageFor(e), e);
+        }
+    }
+
+    private IngestionResult ingestResolved(GitHubRepositoryLink repository, String sessionId, boolean completeProgress) {
         repository.setIngestionStatus("INGESTING");
         repository.setLastIngestError(null);
         repositoryLinkRepository.save(repository);

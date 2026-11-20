@@ -32,11 +32,11 @@ public class SettingsInitializer {
         upsertSetting("COL_INDEX_NAME", "2", "GENERAL", "Column index for student name");
         upsertSetting("COL_INDEX_SECTION", "3", "GENERAL", "Column index for section");
         upsertSetting("COL_INDEX_TEAM", "4", "GENERAL", "Column index for team code");
-        upsertSetting("COL_INDEX_SRS", "5", "GENERAL", "Column index for SRS link");
-        upsertSetting("COL_INDEX_SDD", "6", "GENERAL", "Column index for SDD link");
-        upsertSetting("COL_INDEX_SPMP", "7", "GENERAL", "Column index for SPMP link");
-        upsertSetting("COL_INDEX_STD", "8", "GENERAL", "Column index for STD link");
-        upsertSetting("COL_INDEX_PROPOSAL", "9", "GENERAL", "Column index for Proposal link");
+        upsertSetting("COL_INDEX_SRS", "6", "GENERAL", "Column index for SRS link");
+        upsertSetting("COL_INDEX_SDD", "7", "GENERAL", "Column index for SDD link");
+        upsertSetting("COL_INDEX_SPMP", "8", "GENERAL", "Column index for SPMP link");
+        upsertSetting("COL_INDEX_STD", "9", "GENERAL", "Column index for STD link");
+        upsertSetting("COL_INDEX_PROPOSAL", "5", "GENERAL", "Column index for Proposal link");
         upsertSetting("COL_INDEX_GITHUB", "10", "GENERAL", "Column index for GitHub link");
         
         log.info("System settings initialization complete");

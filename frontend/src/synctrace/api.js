@@ -263,11 +263,11 @@ export const removeGoalComponent = async (goalId, componentId) => {
 
 // ── SyncTrace: Proposal Analysis ─────────────────────────────────────────────
 
-export const extractSmartGoalsFromProposal = async (fileId, fileName, model, sessionId, teamCode) => {
+export const extractSmartGoalsFromProposal = async (fileId, fileName, model, sessionId, teamCode, historyId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/proposals/extract-goals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, fileName, model, sessionId, teamCode: teamCode || null }),
+        body: JSON.stringify({ fileId, fileName, model, sessionId, teamCode: teamCode || null, historyId: historyId ?? null }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to extract SMART goals.');
@@ -299,11 +299,12 @@ export const analyzeSourceCodeAlignment = async (teamCode, model, sessionId) => 
     return data;
 };
 
-export const detectContinuityGaps = async (teamCode, goalId) => {
+// analysisRunId (optional) ties the two steps of one "Run analysis" together for metric M6.
+export const detectContinuityGaps = async (teamCode, goalId, analysisRunId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/detect-gaps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamCode, goalId }),
+        body: JSON.stringify({ teamCode, goalId, analysisRunId }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to detect continuity gaps.');
@@ -324,11 +325,11 @@ export const getContinuityAnalysisStatus = async (teamCode) => {
     return data;
 };
 
-export const generateDiagnosticRecommendations = async (teamCode, model, sessionId) => {
+export const generateDiagnosticRecommendations = async (teamCode, model, sessionId, analysisRunId) => {
     const response = await authorizedFetch(`${API_BASE_URL}/synctrace/continuity/recommendations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamCode, model, sessionId }),
+        body: JSON.stringify({ teamCode, model, sessionId, analysisRunId }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to generate recommendations.');
@@ -450,4 +451,83 @@ export const exportAuditReport = async (teamCode, format = 'json') => {
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
     return { success: true };
+};
+
+// ── SyncTrace: Validation Metrics (teacher only) ───────────────────────────
+
+function validationQuery({ teamCodes = [], sessionId = null, from = null, to = null, format = null } = {}) {
+    const params = new URLSearchParams();
+    if (format) params.set('format', format);
+    if (teamCodes.length > 0) params.set('teamCodes', teamCodes.join(','));
+    if (sessionId) params.set('sessionId', String(sessionId));
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+}
+
+async function validationJson(path, options = {}) {
+    const response = await authorizedFetch(`${API_BASE_URL}/synctrace/validation${path}`, options);
+    if (response.status === 204) return null;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Validation metrics request failed.');
+    return data;
+}
+
+export const getValidationTeams = () => validationJson('/teams');
+
+export const getValidationSummary = (filter) => validationJson(`/summary${validationQuery(filter)}`);
+
+export const getValidationSessions = () => validationJson('/sessions');
+
+export const createValidationSession = (session) => validationJson('/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(session),
+});
+
+export const deleteValidationSession = (id) => validationJson(`/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+});
+
+/** Downloads the ZIP (summary.csv + raw CSVs) or the Excel workbook for the current filter. */
+export const exportValidationMetrics = async (format, filter) => {
+    const response = await authorizedFetch(
+        `${API_BASE_URL}/synctrace/validation/export${validationQuery({ ...filter, format })}`,
+    );
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to export validation metrics.');
+    }
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? match[1] : `validation-metrics.${format}`;
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    return { filename };
+};
+
+/**
+ * M4 heartbeat while a mapping stage is open. Fire-and-forget: it never retries, never shows
+ * an error, and never delays the page. keepalive lets the final "hidden" beat leave even as
+ * the page is closing.
+ */
+export const sendStageHeartbeat = async (teamCode, stage, state) => {
+    try {
+        await fetchWithSession(`${API_BASE_URL}/synctrace/validation/stage-heartbeat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teamCode, stage, state }),
+            keepalive: true,
+        });
+    } catch {
+        // Metrics must never affect the mapping page.
+    }
 };

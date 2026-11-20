@@ -17,9 +17,9 @@ import {
   syncStagedMappings,
 } from '../api';
 import { notifyMappingsChanged, useMappingsChangedRefresh } from '../utils/mappingEvents';
+import { useStageHeartbeat } from './useStageHeartbeat';
 import { API_BASE_URL, getEvaluationHistory } from '../../api';
 import { extractSubmissionMeta } from '../../utils/dashboardUtils';
-import { readSmartGoals } from '../../utils/smartGoalsSection';
 import {
   STAGES,
   COMPONENT_DOC_TYPES,
@@ -131,6 +131,8 @@ export function openProgressStream(sessionId, onProgress) {
  */
 export function useStagedTraceability(showToast, teamCode) {
   const [selectedStage, setSelectedStageState] = useState(STAGES[0].key);
+  // Invisible validation metric M4: time spent on the open stage.
+  useStageHeartbeat(teamCode, selectedStage);
   const [selectedSourceId, setSelectedSourceId] = useState(null);
   const [selectedTargetIds, setSelectedTargetIds] = useState(() => new Set());
 
@@ -453,22 +455,21 @@ export function useStagedTraceability(showToast, teamCode) {
    * Reads the goals for a proposal and returns the draft goal tree for review, or null on failure.
    * Nothing is saved until saveReviewedGoals() is called with the reviewed tree.
    */
-  async function extractSmartGoals(fileId, fileName, evaluationReport) {
-    // The proposal's evaluation report is the basis: its SMART Goals section, as the teacher
-    // last edited it. Only a report without that section is extracted from the document by AI.
-    const fromReport = readSmartGoals(evaluationReport);
-    if (fromReport.found) {
-      if (fromReport.goals.length === 0) {
-        showToast?.('The SMART Goals section of this evaluation report is empty.', 'info');
-      }
-      return fromReport.goals;
-    }
+  async function extractSmartGoals(fileId, fileName, historyId) {
+    // The server takes the goals from the proposal evaluation report's SMART Goals section (as the
+    // teacher last edited it) and uses AI on the document only when the report has no such section.
+    // Both paths go through the server so the run is timed as M1.
     setExtractingGoals(true);
     setLastError(null);
     try {
       const sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-      const result = await extractSmartGoalsFromProposal(fileId, fileName, 'auto', sessionId, teamCode || undefined);
-      if (!result.goals?.length) showToast?.('No SMART goals found in this proposal.', 'info');
+      const result = await extractSmartGoalsFromProposal(
+        fileId, fileName, 'auto', sessionId, teamCode || undefined, historyId);
+      if (!result.goals?.length) {
+        showToast?.(result.source === 'report'
+          ? 'The SMART Goals section of this evaluation report is empty.'
+          : 'No SMART goals found in this proposal.', 'info');
+      }
       return result.goals || [];
     } catch (err) {
       setLastError(err.message || 'Failed to extract SMART goals.');

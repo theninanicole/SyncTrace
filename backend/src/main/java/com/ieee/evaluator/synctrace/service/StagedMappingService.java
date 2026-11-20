@@ -116,13 +116,15 @@ public class StagedMappingService {
         return result;
     }
 
+    /** @return the stage of the removed link, or empty when there was no such link */
     @Transactional
-    public void remove(String teamCode, Long mappingId) {
-        stagedRepository.findById(mappingId).ifPresent(row -> {
+    public Optional<String> remove(String teamCode, Long mappingId) {
+        return stagedRepository.findById(mappingId).map(row -> {
             if (!row.getTeamCode().equalsIgnoreCase(teamCode)) {
                 throw new SyncTraceAccessGuard.AccessDeniedException("You are not allowed to change this mapping.");
             }
             stagedRepository.delete(row);
+            return row.getStage();
         });
     }
 

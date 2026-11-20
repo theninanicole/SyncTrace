@@ -5,6 +5,7 @@ import TraceabilityMappingPage from './TraceabilityMappingPage';
 import GroupTraceabilityPage from './GroupTraceabilityPage';
 import TraceabilityResultsPage from './TraceabilityResultsPage';
 import SourceCodePage from './SourceCodePage';
+import ValidationMetricsPage from './ValidationMetricsPage';
 import { useSyncTraceProgress } from '../../hooks/useSyncTraceProgress';
 import {
   buildSyncTracePath,
@@ -96,6 +97,7 @@ function SyncTraceDashboardPage({ onBack }) {
         {currentView === 'source' && (
           <SourceCodePage onProgressRefresh={progress.refresh} />
         )}
+        {currentView === 'metrics' && <ValidationMetricsPage />}
         {currentView === 'results' && (
           <GroupTraceabilityPage
             teamCode={selectedTeamCode}
