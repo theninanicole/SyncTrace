@@ -4,7 +4,6 @@ import {
   createSmartGoal,
   updateSmartGoal,
   deleteSmartGoal,
-  getLatestMappingActivity,
   extractSmartGoalsFromProposal,
   saveReviewedSmartGoals,
   getTraceComponents,
@@ -151,19 +150,6 @@ export function useStagedTraceability(showToast, teamCode) {
   const [saveState, setSaveState] = useState('idle'); // idle | saving | verifying
   const [verification, setVerification] = useState({ status: 'idle', message: null, verifiedAt: null });
   const [lastError, setLastError] = useState(null);
-  const [mappingActivity, setMappingActivity] = useState(null);
-
-  const loadMappingActivity = useCallback(async () => {
-    if (!teamCode) {
-      setMappingActivity(null);
-      return;
-    }
-    try {
-      setMappingActivity(await getLatestMappingActivity(teamCode));
-    } catch {
-      setMappingActivity(null);
-    }
-  }, [teamCode]);
 
   // Switching teams while a load is still running used to let the earlier team's response
   // land last (or clear the loading flag early), leaving the wrong or no data until a page
@@ -224,7 +210,6 @@ export function useStagedTraceability(showToast, teamCode) {
   useEffect(() => {
     loadSmartGoals();
     loadComponents();
-    loadMappingActivity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamCode]);
 
@@ -631,7 +616,6 @@ export function useStagedTraceability(showToast, teamCode) {
       // links an earlier save produced that the chain no longer implies.
       await syncStagedMappings(teamCode, selectedStage);
       notifyMappingsChanged(teamCode);
-      await loadMappingActivity();
 
       setSaveState('verifying');
 
@@ -708,7 +692,6 @@ export function useStagedTraceability(showToast, teamCode) {
     saveState,
     verification,
     lastError,
-    mappingActivity,
     saveMapping,
   };
 }

@@ -9,8 +9,6 @@ import MappingWorkspace from '../../synctrace/components/teacher/mapping/Mapping
 import { useStagedTraceability } from '../../synctrace/hooks/useStagedTraceability';
 import { useMappingSuggestions } from '../../synctrace/hooks/useMappingSuggestions';
 import SuggestionReviewPanel from '../../synctrace/components/teacher/mapping/SuggestionReviewPanel';
-import { formatDateTime } from '../../utils/dashboardUtils';
-import { mappingStageLabel } from '../../synctrace/constants';
 import '../../synctrace/pages/teacher/TraceabilityMappingPage.css';
 
 function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument = false }) {
@@ -53,12 +51,6 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         </div>
       </div>
 
-      {tm.mappingActivity && (
-        <p className="tm-muted student-mapping-activity">
-          Last mapping: {formatDateTime(tm.mappingActivity.performedAt)} by {tm.mappingActivity.performedBy}
-          {tm.mappingActivity.stage ? ` (${mappingStageLabel(tm.mappingActivity.stage)})` : ''}
-        </p>
-      )}
 
       {!teamCode ? (
         <div className="student-traceability-locked">
