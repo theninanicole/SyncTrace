@@ -89,14 +89,11 @@ function MappingControls({
             <span className="stm-coverage__value">{coverage.unmapped}</span>
             <span className="stm-coverage__label">Unmapped</span>
           </div>
-          <div className="stm-coverage__stat">
-            <span className="stm-coverage__value">{coverage.percent}%</span>
-            <span className="stm-coverage__label">{isProposalStage ? 'Goal coverage' : 'Coverage'}</span>
-          </div>
-          {isProposalStage && coverage.total > 0 && (
-            <p className={`stm-coverage__note ${coverage.percent >= 90 ? 'stm-coverage__note--ok' : ''}`}>
-              {coverage.percent >= 90 ? 'Meets' : 'Below'} 90% target
-            </p>
+          {!isProposalStage && (
+            <div className="stm-coverage__stat">
+              <span className="stm-coverage__value">{coverage.percent}%</span>
+              <span className="stm-coverage__label">Coverage</span>
+            </div>
           )}
         </div>
       )}

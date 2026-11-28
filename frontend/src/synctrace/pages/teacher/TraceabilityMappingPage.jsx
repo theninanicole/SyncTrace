@@ -8,6 +8,7 @@ import MappingStatusBadge from '../../components/teacher/mapping/MappingStatusBa
 import MappingWorkspace from '../../components/teacher/mapping/MappingWorkspace';
 import ExtractSmartGoalsDialog from '../../components/teacher/mapping/ExtractSmartGoalsDialog';
 import ExtractComponentsDialog from '../../components/teacher/mapping/ExtractComponentsDialog';
+import ExtractMenu from '../../components/teacher/mapping/ExtractMenu';
 import AddComponentDialog from '../../components/teacher/mapping/AddComponentDialog';
 import ComponentDetailModal from '../../components/teacher/ComponentDetailModal';
 import { useSelectedTeam } from '../../hooks/useSelectedTeam';
@@ -70,14 +71,11 @@ function TraceabilityMappingPage({ focusStep }) {
         title="Traceability Mapping"
         actions={
           <div className="teacher-header-actions">
-            {isProposalStage && (
-              <button className="btn btn--soft" onClick={() => setIsExtractGoalsOpen(true)}>
-                Extract SMART Goals
-              </button>
-            )}
-            <button className="btn btn--soft" onClick={() => setIsExtractComponentsOpen(true)}>
-              Extract Components
-            </button>
+            <ExtractMenu
+              isProposalStage={isProposalStage}
+              onExtractGoals={() => setIsExtractGoalsOpen(true)}
+              onExtractComponents={() => setIsExtractComponentsOpen(true)}
+            />
             <button className="btn btn--primary" disabled={isBusy} onClick={tm.saveMapping}>
               {saveButtonLabel()}
             </button>

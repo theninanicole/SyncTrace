@@ -72,13 +72,8 @@ export const studentTutorialSteps = [
     requireClick: true,
   },
   {
-    target: '.student-mapping__extract-goals',
-    content: 'Step 1: Extract SMART Goals pulls the general and specific objectives from your evaluated project proposal. These goals are what every other document traces back to. (This button appears in the Proposal → SRS stage once your team has an evaluated document.)',
-    placement: 'bottom',
-  },
-  {
-    target: '.student-mapping__extract-components',
-    content: 'Step 2: Extract Components pulls the individual components (use cases, class diagrams, test cases, and so on) out of your evaluated SRS, SDD, STD, and SPMP so you can map them. Only the documents for the selected stage are listed, e.g. SRS → SDD shows just your SRS and SDD.',
+    target: '.student-mapping__extract',
+    content: 'Extract pulls what you map out of your evaluated documents. In the Proposal → SRS stage, pick SMART Goals (the general and specific objectives every other document traces back to) or Components from its dropdown; other stages extract components directly. Components pulls the individual components (use cases, class diagrams, test cases, and so on) out of your evaluated SRS, SDD, STD, and SPMP so you can map them. Only the documents for the selected stage are listed, e.g. SRS → SDD shows just your SRS and SDD.',
     placement: 'bottom',
   },
   {

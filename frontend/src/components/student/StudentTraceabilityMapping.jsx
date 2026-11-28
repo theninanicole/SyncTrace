@@ -2,6 +2,7 @@ import { useState } from 'react';
 import AddComponentDialog from '../../synctrace/components/teacher/mapping/AddComponentDialog';
 import ComponentDetailModal from '../../synctrace/components/teacher/ComponentDetailModal';
 import ExtractComponentsDialog from '../../synctrace/components/teacher/mapping/ExtractComponentsDialog';
+import ExtractMenu from '../../synctrace/components/teacher/mapping/ExtractMenu';
 import ExtractSmartGoalsDialog from '../../synctrace/components/teacher/mapping/ExtractSmartGoalsDialog';
 import MappingStageSelector from '../../synctrace/components/teacher/mapping/MappingStageSelector';
 import MappingStatusBadge from '../../synctrace/components/teacher/mapping/MappingStatusBadge';
@@ -31,16 +32,12 @@ function StudentTraceabilityMapping({ teamCode, showToast, hasEvaluatedDocument 
         </div>
         <div className="student-header-actions">
           {hasEvaluatedDocument && (
-            <>
-              {isProposalStage && (
-                <button className="btn btn--soft student-mapping__extract-goals" type="button" onClick={() => setIsExtractGoalsOpen(true)}>
-                  Extract SMART Goals
-                </button>
-              )}
-              <button className="btn btn--soft student-mapping__extract-components" type="button" onClick={() => setIsExtractComponentsOpen(true)}>
-                Extract Components
-              </button>
-            </>
+            <ExtractMenu
+              className="student-mapping__extract"
+              isProposalStage={isProposalStage}
+              onExtractGoals={() => setIsExtractGoalsOpen(true)}
+              onExtractComponents={() => setIsExtractComponentsOpen(true)}
+            />
           )}
           <button className="btn btn--primary student-mapping__save" type="button" onClick={tm.saveMapping} disabled={isBusy || !teamCode}>
             {tm.saveState === 'saving' ? 'Saving mapping...' : tm.saveState === 'verifying' ? 'Verifying...' : 'Save Mapping'}
